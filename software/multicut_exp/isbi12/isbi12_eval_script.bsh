@@ -1,0 +1,18 @@
+import ij.IJ;
+import trainableSegmentation.metrics.*;
+
+labels   = IJ.openImage(bsh.args[0]);
+proposal = IJ.openImage(bsh.args[1]);
+
+ri_metric = new RandError( labels, proposal );
+max_ri_score = ri_metric.getMaximalVRandAfterThinning( 0.0, 0.0, 0.1, true );  
+
+vi_metric = new VariationOfInformation( labels, proposal );
+max_vi_score = vi_metric.getMaximalVInfoAfterThinning(0.0, 0.0, 0.1);
+
+// write scors to tmpfile
+tmp_file = bsh.args[2];
+writer = new PrintWriter(tmp_file, "UTF-8");
+writer.println(String.valueOf(max_ri_score));
+writer.println(String.valueOf(max_vi_score));
+writer.close();
