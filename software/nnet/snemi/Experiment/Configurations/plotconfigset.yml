@@ -1,0 +1,19 @@
+# General configurations
+device: gpu1
+
+# Paths to model and data files
+modelpath: '/Models/icv1def.py'
+dplpath: '/Boilerplate/dataplate.py'
+dataconf: '/Experiment/Configurations/testdataconf.yml'
+
+# Network build parameters
+buildconfig:
+  numinp: 3
+  numout: 3
+  parampath: null
+
+# Plot configurations
+plotconfig:
+  params: '/Experiment/Weights/*'
+  numbatches: 3
+  plotdir: 'Experiment/Plots/'

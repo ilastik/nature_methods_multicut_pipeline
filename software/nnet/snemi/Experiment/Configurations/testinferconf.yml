@@ -1,0 +1,38 @@
+# Data Paths
+datapaths:
+  # Insert path to SNEMI HDF5 test raw data (shape 1024, 1024, 100) here. Leave h5path to null if there are no 
+  # subdirectories within the HDF5 data.
+  A: null  # INSERT BY REPLACING null
+h5paths:
+  A: null
+writepaths:
+  # Where to write output? Insert path below. 
+  A: null  # INSERT BY REPLACING null
+
+# Data augmentation parameters
+daconfig:
+  et:
+    sigma: 65.0
+    alpha: 2000.0
+  pad: 16
+
+# Network parameters
+modelpath: '/Models/icv1def.py'
+batchsize: 10
+buildparams:
+  numinp: 3
+  numout: 3
+  parampath: '/Experiment/Weights/*'
+
+# Supervisor parameters
+logfile: '/Experiment/Logs/infer.log'
+numworkers: 4   # Example configuration to run on a 4-GPU server
+devices: 
+  - gpu0
+  - gpu1
+  - gpu2
+  - gpu3
+numfolds: 20
+padmultiple: 16
+numzslices: 3
+ds: 2

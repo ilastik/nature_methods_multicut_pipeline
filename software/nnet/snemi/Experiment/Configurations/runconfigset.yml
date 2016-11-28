@@ -1,0 +1,21 @@
+# General configurations
+device: gpu1
+
+# Paths to model and data files
+modelpath: '/Models/icv1def.py'
+dplpath: '/Boilerplate/dataplate.py'
+dataconf: '/Experiment/Configurations/dataconf.yml'
+
+# Network build parameters
+buildconfig:
+  numinp: 3
+  numout: 3
+  wmap: true
+  parampath: null
+
+# Training configurations
+runconfig:
+  savedir: '/Experiment/Weights'
+  logfile: '/Experiment/Logs/train.log'
+  relayfile: '/Experiment/Control/control.yml'
+  picklejar: 'Experiment/Picklejar/'

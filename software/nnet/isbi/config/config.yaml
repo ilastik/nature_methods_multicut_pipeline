@@ -1,0 +1,24 @@
+# Full path to ISBI ground truth labels (must be a .tiff or .h5 file):
+gtpath: none
+
+# Full path to ISBI training raw data (must be a .tiff or .h5 file):
+rdpath: none
+
+# Full path to ISBI test raw data (must be a .tiff or .h5 file):
+trdpath: none
+
+# Where to save inferred volumes (network output, must be a .tiff or .h5 file). Must be a full path. 
+infpath: none
+
+# Where to back up network parameters. Must be a full path. 
+backuppath: none
+
+# Whether the network is to be trained or used for inference. Possible keys: 'train', 'infer'
+mode: none
+
+# Paths to network parameters. Must be a full path.  
+# Download from here [*], unzip the archive and provide path to the unzipped folder here: 
+parampath: none
+
+# [*] http://hci.iwr.uni-heidelberg.de/system/files/private/downloads/1362115697/params.zip
+

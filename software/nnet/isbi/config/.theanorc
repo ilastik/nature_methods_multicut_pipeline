@@ -1,0 +1,10 @@
+[global]
+floatX=float32
+# Set device to cpu if you cannot use a GPU
+device=gpu0
+# Useful for debugging
+exception_verbosity=high
+
+[cuda]
+# Should work if you have Cuda installed in Ubuntu or OSX
+root=/usr/local/cuda

@@ -1,0 +1,51 @@
+# Loading data from file
+loadconfig:
+  X:
+    # Insert path to SNEMI HDF5 raw data (shape 1024, 1024, 100) here. Leave h5path to null if there are no 
+    # subdirectories within the HDF5 data.
+    path: null  # INSERT BY REPLACING null
+    h5path: null
+    dataslice: '(slice(0, None), slice(0, None), slice(0, 50))'
+  Y:
+    # Insert path to SNEMI HDF5 label volume here (like for raw data)
+    path: # INSERT BY REPLACING null
+    h5path: null
+    dataslice: '(slice(0, None), slice(0, None), slice(0, 50))'
+
+# Preprocessing
+prepconfig:
+  make-wmap: true
+  edt-params:
+    gain: 0.7
+  elastic-transform: true
+  elastic-transform-params:
+    sigma: 50.
+    alpha: 2000.
+    order: 0
+    planewise: false
+  wmap-maker-params:
+    groundstate: 1.0
+    w0: 10.0
+    sigma: 2.0
+    zeroweightdist: 7.0
+  random-flip-z: true
+  random-rotate: true
+  random-flip: true
+
+# General
+batchsize: 3
+nhoodsize:
+  - 3
+  - 1024
+  - 1024
+stride:
+  - 1
+  - 1
+  - 1
+ds:
+  - 1
+  - 2
+  - 2
+
+# For testing
+plotdir: '/Experiments/Plots/'

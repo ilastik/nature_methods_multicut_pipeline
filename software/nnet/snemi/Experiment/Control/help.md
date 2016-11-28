@@ -1,0 +1,1 @@
+Learning rate can be annealed while the network is being trained by changing the control.yml file and saving to disk. 
