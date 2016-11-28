@@ -1,0 +1,39 @@
+package:
+    name: wsdt
+
+  {% if GIT_DESCRIBE_NUMBER|int == 0 %}
+    version: {{GIT_DESCRIBE_TAG}}
+  {% else %}
+    # If we're using a non-tagged revision, append '.postN' to the version
+    version: {{GIT_DESCRIBE_TAG}}.post{{GIT_DESCRIBE_NUMBER}}
+  {% endif %}
+  
+source:
+  git_url: ../
+  git_tag: HEAD
+
+build:
+  number: 0
+  string: py27_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
+
+requirements:
+  build:
+    - python 2.7*
+    - setuptools
+
+  run:
+    - python 2.7*
+    - numpy
+    - vigra >=1.11
+    - networkx
+
+test:
+  requires:
+    - nose
+    - numpy-allocation-tracking # This package can be found in the ilastik channel
+
+  imports:
+    - wsdt
+  
+about:
+  summary: Implementation of a distance-transform-based watershed algorithm
