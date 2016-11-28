@@ -1,0 +1,27 @@
+{% import '$CONDA_DEFAULT_ENV/toolset-info/config.yaml' as toolset %}
+
+package:
+  name: wsdt
+  version: "0.1"
+
+source:
+  path: ../../dependencies/wsdt
+
+
+build:
+  number: 0
+  string: py27_{{PKG_BUILDNUM}}
+
+requirements:
+  build:
+    - python 2.7.10*{{toolset.suffix}}
+    - setuptools
+
+  run:
+    - python 2.7.10*{{toolset.suffix}}
+    - numpy  1.10.1*{{toolset.suffix}}
+    - vigra-thorsten 1.11.0post1{{toolset.suffix}}
+    - networkx
+
+about:
+  summary: Implementation of a distance-transform-based watershed algorithm

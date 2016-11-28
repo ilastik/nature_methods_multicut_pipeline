@@ -1,0 +1,79 @@
+{% if not WITH_CPLEX is defined %}
+  {% set WITH_CPLEX = false %}
+{% endif %}
+
+package:
+    # Unlike our standard recipe for opengm, here we
+    # do not rename the package for the CPLEX case.
+    name: opengm-thorsten
+    version: "2.3.6.post1"
+
+source:
+  git_url: https://github.com/DerThorsten/opengm
+  git_rev: 059e15995a4f2b219b350c58290cec74696d9b7e
+
+build:
+  number: 11
+
+  {% if WITH_CPLEX %}
+      {% set cplex_string = '_with_cplex' %}
+  {% else %}
+      {% set cplex_string = '' %}
+  {% endif %}
+
+  #
+  # You must build this recipe using 'conda build --numpy=X.Y'
+  #
+  string: np{{CONDA_NPY[:]}}py{{CONDA_PY}}_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}{{cplex_string}}
+
+  detect_binary_files_with_prefix: true
+  script_env:
+     - WITH_CPLEX
+     - WITH_EXTERNAL_LIBS
+     - CPLEX_ROOT_DIR
+
+requirements:
+  build:
+    - gcc 4.8.5 # [unix]
+    - boost 1.55.0
+    - python 2.7*
+    - numpy >=1.9,{{NPY_VER}}*
+    - hdf5 1.8.14
+    - vigra-thorsten
+    - cmake
+    - nose
+
+    {% if WITH_CPLEX %}
+    - cplex-shared # Need to make sure that cplex dylibs exist
+    {% endif %}
+
+  run:
+    - libgcc # [unix]
+    - boost 1.55.0
+    - python {{PY_VER}}*
+    - numpy  {{NPY_VER}}*
+    - hdf5 1.8.14
+    - vigra-thorsten
+
+    {% if WITH_CPLEX %}
+    - cplex-shared # Need to make sure that cplex dylibs exist and are linked into the environment
+    {% endif %}
+    
+test:
+    # Unlike our standard recipe for opengm,
+    # the python module is not renamed even if we linked with CPLEX.
+    imports:
+      - opengm
+
+# Note: tests are run when building the package, they are not accessible
+# in the installed package.
+
+about:
+  {% if WITH_CPLEX %}
+    summary: 'A C++ Library for Discrete Graphical Models. This package was linked against the CPLEX commercial ILP solver, which you will need to install separately.'
+  {% else %}
+    summary: 'A C++ Library for Discrete Graphical Models'
+  {% endif %}
+
+    home: https://github.com/opengm/opengm
+    license: GNU General Public License (GPL)

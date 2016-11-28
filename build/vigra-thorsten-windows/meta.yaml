@@ -1,0 +1,60 @@
+{% import '$CONDA_DEFAULT_ENV/toolset-info/config.yaml' as toolset %}
+
+package:
+  name: vigra-thorsten
+  version: "1.11.0post1{{toolset.suffix}}"
+
+source:
+  git_url: https://github.com/ukoethe/vigra
+  git_tag: thorsten-master
+
+build:
+  features:
+    - {{toolset.short}}
+
+  script_env:
+   - LD_LIBRARY_PATH      # [unix]
+   - DYLD_LIBRARY_PATH    # [unix]
+
+  number: 0
+  detect_binary_files_with_prefix: true
+#  string: 10_ca22467
+  msvc_compiler: {{toolset.version}}  # [win]
+
+requirements:
+  build:
+    - {{toolset.build_requirement}}
+    - python   2.7.10*{{toolset.suffix}}
+    - numpy    1.10.1*{{toolset.suffix}}
+    - jpeg     1.2.1*{{toolset.suffix}}
+    - libtiff  4.0.6*{{toolset.suffix}}
+    - libpng   1.5.13*{{toolset.suffix}}
+    - fftw     3.3.4*{{toolset.suffix}}
+    - hdf5     1.8.12*{{toolset.suffix}}
+    - h5py     2.5.0*{{toolset.suffix}}
+    - boost    1.55.0*{{toolset.suffix}}
+    - nose
+    # - sphinx
+#    - zlib     1.2*     # only indirectly used by vigra
+
+  run:
+    - {{toolset.run_requirement}}
+    - python   2.7.10*{{toolset.suffix}}
+    - numpy    1.10.1*{{toolset.suffix}} # [win]
+    - jpeg     1.2.1*{{toolset.suffix}}
+    - libtiff  4.0.6*{{toolset.suffix}}
+    - libpng   1.5.13*{{toolset.suffix}} # [win]
+    - fftw     3.3.4*{{toolset.suffix}}
+    - hdf5     1.8.12*{{toolset.suffix}} # [win]
+    - h5py     2.5.0*{{toolset.suffix}}
+    - boost    1.55.0*{{toolset.suffix}}
+#    - zlib     1.2*
+
+# test:
+  # imports:
+    # - vigra
+
+about:
+  home: http://ukoethe.github.io/vigra
+  license: MIT
+  summary: Generic Programming for Computer Vision

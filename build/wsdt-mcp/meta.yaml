@@ -1,0 +1,33 @@
+package:
+  name: wsdt-mcp
+  version: "0.1"
+
+source:
+  path: ../../dependencies/wsdt
+  
+
+build:
+  number: 0
+  string: py27_{{PKG_BUILDNUM}}
+
+requirements:
+  build:
+    - python 2.7*
+    - setuptools
+
+  run:
+    - python 2.7*
+    - numpy
+    - vigra-thorsten
+    - networkx
+
+test:
+  requires:
+    - nose
+    - numpy-allocation-tracking # This package can be found in the ilastik channel
+
+  imports:
+    - wsdt
+  
+about:
+  summary: Implementation of a distance-transform-based watershed algorithm

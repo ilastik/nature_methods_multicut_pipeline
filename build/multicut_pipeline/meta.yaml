@@ -1,0 +1,32 @@
+package:
+   name: multicut_pipeline
+   version: v1.0
+
+source:
+   path: ../../software/multicut_src
+
+build:
+  number: 2
+  string: py{{CONDA_PY}}_{{PKG_BUILDNUM}}
+
+requirements:
+  build:
+    - python
+    - graph
+    - vigra-thorsten
+    - wsdt-mcp
+    - opengm-thorsten
+    - scikit-learn
+  run:
+    - python
+    - graph
+    - vigra-thorsten
+    - wsdt-mcp
+    - opengm-thorsten
+    - scikit-learn
+    - h5py
+    - futures
+
+about:
+  license: BSD
+  summary: Neuro segmentation pipeline from probability maps to neurons

@@ -1,0 +1,42 @@
+package:
+   name: graph
+   version: "1.6"
+
+source:
+   path: ../../dependencies/graph-1.6/
+
+build:
+  #
+  # You must build this recipe using 'conda build --numpy=X.Y'
+  #
+  number: 1
+  string: np{{CONDA_NPY[:]}}py{{CONDA_PY}}_{{PKG_BUILDNUM}}
+
+  detect_binary_files_with_prefix: true
+
+requirements:
+   build:
+    - gcc 4.8.5 # [linux]
+    - gcc 4.8.5 # [osx]
+    - python 2.7*,{{PY_VER}}*
+    - numpy >=1.9,{{NPY_VER}}*
+    - hdf5  1.8.14
+    - boost 1.55.0
+    - vigra-thorsten
+
+   run:
+    - libgcc   4.8*
+    - python   {{PY_VER}}*
+    - numpy    {{NPY_VER}}*
+    - hdf5     1.8.14
+    - boost    1.55.0
+    - vigra-thorsten
+
+test:
+  imports:
+    - graph
+
+about:
+  home: http://www.andres.sc/graph.html
+  license: BSD
+  summary: Graphs and Graph Algorithms in C++

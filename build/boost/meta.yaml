@@ -1,0 +1,31 @@
+package:
+  name: boost
+  version: 1.55.0
+
+source:
+  fn: boost_1_55_0.tar.bz2
+  url: http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.bz2
+
+  patches:
+    - 1.55.0_patches/6bb71fdd.diff  [osx]
+    - 1.55.0_patches/e4bde20f.diff  [osx]
+    - 1.55.0_patches/0005-Boost.S11n-include-missing-algorithm.patch  [osx]
+
+build:
+  number: 5
+  detect_binary_files_with_prefix: true
+
+requirements:
+  build:
+    - gcc 4.8.5 # [linux]
+    - gcc 4.8.5 # [osx]
+    - python
+    - zlib
+
+  run:
+    - libgcc
+
+about:
+  home: http://www.boost.org/
+  license: Boost-1.0
+

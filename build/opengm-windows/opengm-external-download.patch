@@ -1,0 +1,370 @@
+diff --git a/src/external/patches/CMakeLists.txt b/src/external/patches/CMakeLists.txt
+index fbbb7b1..61aacc8 100644
+--- a/src/external/patches/CMakeLists.txt
++++ b/src/external/patches/CMakeLists.txt
+@@ -8,11 +8,11 @@ add_custom_target(externalLibs
+                   COMMENT "Download, patch and install external libraries used by openGM"
+ )
+
+-add_custom_command(TARGET externalLibs PRE_BUILD
+-                   COMMAND ./patchAD3.sh
+-                   COMMENT "AD3"
+-                   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/AD3"
+-)
++# add_custom_command(TARGET externalLibs PRE_BUILD
++                   # COMMAND ./patchAD3.sh
++                   # COMMENT "AD3"
++                   # WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/AD3"
++# )
+
+
+ add_custom_command(TARGET externalLibs PRE_BUILD
+@@ -45,11 +45,11 @@ add_custom_command(TARGET externalLibs PRE_BUILD
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/TRWS"
+ )
+
+-add_custom_command(TARGET externalLibs PRE_BUILD
+-                   COMMAND ./patchConicBundle-v0.3.11.sh
+-                   COMMENT "ConicBundle"
+-                   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ConicBundle"
+-)
++# add_custom_command(TARGET externalLibs PRE_BUILD
++                   # COMMAND ./patchConicBundle-v0.3.11.sh
++                   # COMMENT "ConicBundle"
++                   # WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ConicBundle"
++# )
+
+ add_custom_command(TARGET externalLibs PRE_BUILD
+                    COMMAND ./patchIBFS.sh
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e864d39..9d2f3ed 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -690,12 +690,26 @@ if(BUILD_PYTHON_WRAPPER)
+       MESSAGE(STATUS "Could NOT find Python nosetests ('import nose' failed)")
+    ENDIF()
+
+-   install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/interfaces/python/opengm"
+-     DESTINATION "lib/python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}/site-packages"
++    IF(NOT DEFINED PYTHON_INSTALL_DIR OR PYTHON_INSTALL_DIR MATCHES "^$")
++        execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
++                         "from distutils.sysconfig import *; print(get_python_lib(1))"
++                          OUTPUT_VARIABLE PYTHON_SITE_PACKAGES OUTPUT_STRIP_TRAILING_WHITESPACE)
++        FILE(TO_CMAKE_PATH "${PYTHON_SITE_PACKAGES}/opengm" PYTHON_INSTALL_DIR)
++    ENDIF()
++    SET(PYTHON_INSTALL_DIR ${PYTHON_INSTALL_DIR}
++        CACHE PATH "where to install the opengm Python package" FORCE)
++    FILE(RELATIVE_PATH PYTHON_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${PYTHON_INSTALL_DIR})
++
++   install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/interfaces/python/opengm/"
++     DESTINATION "${PYTHON_INSTALL_DIR}"
+      FILES_MATCHING
+      PATTERN "*.py"
+      PATTERN "*.so"
+      PATTERN "CMakeFiles" EXCLUDE
++     PATTERN "Debug" EXCLUDE
++     PATTERN "Release" EXCLUDE
++     PATTERN "RelWithDebInfo" EXCLUDE
++     PATTERN "_*.dir" EXCLUDE
+    )
+ endif()
+
+diff --git a/include/opengm/inference/auxiliary/fusion_move/permutable_label_fusion_mover.hxx b/include/opengm/inference/auxiliary/fusion_move/permutable_label_fusion_mover.hxx
+index c57b601..82ceb78 100644
+--- a/include/opengm/inference/auxiliary/fusion_move/permutable_label_fusion_mover.hxx
++++ b/include/opengm/inference/auxiliary/fusion_move/permutable_label_fusion_mover.hxx
+@@ -486,6 +486,8 @@ public:
+             valRes=valB;
+             res = b;
+         }
++        assert(false);  // FIXME: the return of this function was missing, just added something arbitrary
++        return false;
+     }
+
+     bool fuseMmwc(
+diff --git a/include/opengm/inference/reducedinference.hxx b/include/opengm/inference/reducedinference.hxx
+index 4ed215b..8948283 100644
+--- a/include/opengm/inference/reducedinference.hxx
++++ b/include/opengm/inference/reducedinference.hxx
+@@ -274,13 +274,15 @@ namespace opengm {
+ 	hoe.AddUnaryTerm(var, e1 - e0);
+       } else {
+ 	unsigned int numAssignments = 1 << size;
+-	ValueType coeffs[numAssignments];
++	std::unique_ptr<ValueType[]> coeffs_array(new ValueType[numAssignments]);
++	ValueType * coeffs = coeffs_array.get();
+ 	for (unsigned int subset = 1; subset < numAssignments; ++subset) {
+ 	  coeffs[subset] = 0;
+ 	}
+ 	// For each boolean assignment, get the clique energy at the
+ 	// corresponding labeling
+-	LabelType cliqueLabels[size];
++	std::unique_ptr<LabelType[]> cliqueLabels_array(new LabelType[size]);
++	LabelType * cliqueLabels = cliqueLabels_array.get();
+ 	for(unsigned int assignment = 0;  assignment < numAssignments; ++assignment){
+ 	  for (unsigned int i = 0; i < size; ++i) {
+ 	    if (assignment & (1 << i)) {
+diff --git a/include/opengm/inference/auxiliary/minstcutboost.hxx b/include/opengm/inference/auxiliary/minstcutboost.hxx
+index b5171eb..3f6642a 100644
+--- a/include/opengm/inference/auxiliary/minstcutboost.hxx
++++ b/include/opengm/inference/auxiliary/minstcutboost.hxx
+@@ -143,7 +143,7 @@ namespace opengm {
+          q.push(*(vertices(graph_).first)); // source
+          while (!q.empty()) {
+             out_edge_iterator current, end;
+-            tie(current, end) = out_edges(q.front(), graph_);
++            boost::tuples::tie(current, end) = out_edges(q.front(), graph_);
+             q.pop();
+             while (current != end) {
+                if (graph_[*current].residual > 0) {
+diff --git a/include/opengm/inference/dmc.hxx b/include/opengm/inference/dmc.hxx
+index 7bf6535..80b6383 100644
+--- a/include/opengm/inference/dmc.hxx
++++ b/include/opengm/inference/dmc.hxx
+@@ -59,7 +59,8 @@ public:
+     void setStartingPoint(typename std::vector<LabelType>::const_iterator);
+     virtual InferenceTermination arg(std::vector<LabelType>&, const size_t = 1) const ;
+     virtual ValueType value()const{
+-
++        assert(false);  // FIXME: the return of this function was missing, just added something arbitrary
++        return ValueType();
+     }
+
+ private:
+diff --git a/include/opengm/inference/hqpbo.hxx b/include/opengm/inference/hqpbo.hxx
+index b67fc80..7ea0cb6 100644
+--- a/include/opengm/inference/hqpbo.hxx
++++ b/include/opengm/inference/hqpbo.hxx
+@@ -107,14 +107,16 @@ HQPBO<GM,ACC>::HQPBO
+       else
+       {
+          unsigned int numAssignments = 1 << size;
+-         ValueType coeffs[numAssignments];
++         std::unique_ptr<ValueType[]> coeffs_array(new ValueType[numAssignments]);
++         ValueType * coeffs = coeffs_array.get();
+          for (unsigned int subset = 1; subset < numAssignments; ++subset)
+          {
+             coeffs[subset] = 0;
+          }
+          // For each boolean assignment, get the clique energy at the
+          // corresponding labeling
+-         LabelType cliqueLabels[size];
++         std::unique_ptr<LabelType[]> cliqueLabels_array(new LabelType[size]);
++         LabelType * cliqueLabels = cliqueLabels_array.get();
+          for (unsigned int assignment = 0;  assignment < numAssignments; ++assignment)
+          {
+             for (unsigned int i = 0; i < size; ++i)
+diff --git a/src/external/patches/ConicBundle/patchConicBundle-v0.3.11.sh b/src/external/patches/ConicBundle/patchConicBundle-v0.3.11.sh
+index 53b25c6..0e4b306 100755
+--- a/src/external/patches/ConicBundle/patchConicBundle-v0.3.11.sh
++++ b/src/external/patches/ConicBundle/patchConicBundle-v0.3.11.sh
+@@ -6,7 +6,7 @@
+ ZIP_FOLDER=../zip_files/
+ PATCH_FOLDER=./
+ ConicBundle_FILENAME=CB_v0.3.11.tgz
+-ConicBundle_URL=http://www-user.tu-chemnitz.de/~helmberg/ConicBundle/
++ConicBundle_URL=https://www-user.tu-chemnitz.de/~helmberg/ConicBundle/
+ ConicBundle_SOURCE_FOLDER=../../ConicBundle-v0.3.11.src-patched/
+ ConicBundle_PATCH_NAME=ConicBundle-v0.3.11.patch
+
+@@ -25,7 +25,7 @@ if [ -e "$ZIP_FOLDER$ConicBundle_FILENAME" ]
+ then
+     echo "$ConicBundle_FILENAME already exists, skipping download."
+ else
+-    wget -q $ConicBundle_URL$ConicBundle_FILENAME -P $ZIP_FOLDER
++    wget --no-check-certificate -q $ConicBundle_URL$ConicBundle_FILENAME -P $ZIP_FOLDER
+ fi
+
+ # check if download was successful
+diff --git a/src/external/patches/DAOOPT/patchDAOOPT.sh b/src/external/patches/DAOOPT/patchDAOOPT.sh
+index 581999d..e6024f2 100755
+--- a/src/external/patches/DAOOPT/patchDAOOPT.sh
++++ b/src/external/patches/DAOOPT/patchDAOOPT.sh
+@@ -21,7 +21,7 @@ if [ -e "$ZIP_FOLDER$DAOOPT_FILENAME" ]
+ then
+     echo "$DAOOPT_FILENAME already exists, skipping download."
+ else
+-    wget --no-check-certificate -q $DAOOPT_URL$DAOOPT_FILENAME -P $ZIP_FOLDER
++    wget --no-check-certificate -q $DAOOPT_URL$DAOOPT_FILENAME -P $ZIP_FOLDER -O $ZIP_FOLDER$DAOOPT_FILENAME
+ fi
+
+ # check if download was successful
+diff --git a/src/interfaces/python/opengm/CMakeLists.txt b/src/interfaces/python/opengm/CMakeLists.txt
+index 4511e23..f6feaf6 100644
+--- a/src/interfaces/python/opengm/CMakeLists.txt
++++ b/src/interfaces/python/opengm/CMakeLists.txt
+@@ -30,10 +30,10 @@ include_directories(
+     ${Boost_PYTHON_INCLUDE_DIR}
+ )
+
+-
+-
+-
+-
++if((Boost_PYTHON_LIBRARY MATCHES "boost_python\\.lib") OR
++   (Boost_PYTHON_LIBRARY MATCHES "boost_python3\\.lib"))
++    ADD_DEFINITIONS(-DBOOST_AUTO_LINK_NOMANGLE)
++endif()
+
+ add_subdirectory(opengmcore)
+ add_subdirectory(inference)
+diff --git a/src/interfaces/python/opengm/hdf5/CMakeLists.txt b/src/interfaces/python/opengm/hdf5/CMakeLists.txt
+index f726d0c..44ea1f0 100644
+--- a/src/interfaces/python/opengm/hdf5/CMakeLists.txt
++++ b/src/interfaces/python/opengm/hdf5/CMakeLists.txt
+@@ -54,7 +54,7 @@ endif(APPLE)
+ if(MSVC AND NOT(MSVC_VERSION LESS 1400))
+     SET_TARGET_PROPERTIES(_hdf5 PROPERTIES COMPILE_FLAGS "/bigobj")
+ endif()
+-target_link_libraries(_hdf5 ${Boost_PYTHON_LIBRARIES}  ${HDF5_LIBRARIES})
++target_link_libraries(_hdf5 ${PYTHON_LIBRARY} ${Boost_PYTHON_LIBRARIES}  ${HDF5_LIBRARIES})
+ set_target_properties(_hdf5 PROPERTIES PREFIX "")
+
+
+@@ -67,7 +67,11 @@ ELSE()
+     SET_TARGET_PROPERTIES(_hdf5 PROPERTIES OUTPUT_NAME "hdf5"   PREFIX "_")
+ ENDIF()
+
+-
++IF(WIN32)
++    INSTALL(TARGETS _hdf5 RUNTIME DESTINATION ${PYTHON_INSTALL_DIR}/hdf5)
++ELSE()
++    INSTALL(TARGETS _hdf5 LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/hdf5)
++ENDIF()
+
+ #--------------------------------------------------------------
+ # Copy from src to build
+diff --git a/src/interfaces/python/opengm/inference/CMakeLists.txt b/src/interfaces/python/opengm/inference/CMakeLists.txt
+index 5878e6f..07426d7 100644
+--- a/src/interfaces/python/opengm/inference/CMakeLists.txt
++++ b/src/interfaces/python/opengm/inference/CMakeLists.txt
+@@ -82,7 +82,7 @@ if(LINK_RT)
+     find_library(RT rt)
+     target_link_libraries(_inference ${Boost_PYTHON_LIBRARIES} rt)
+ else()
+-    target_link_libraries(_inference ${Boost_PYTHON_LIBRARIES})
++    target_link_libraries(_inference ${PYTHON_LIBRARY} ${Boost_PYTHON_LIBRARIES})
+ endif(LINK_RT)
+
+ set_target_properties(_inference PROPERTIES PREFIX "")
+@@ -94,28 +94,28 @@ if(WITH_LIBDAI)
+ endif()
+
+ if(WITH_QPBO)
+-   target_link_libraries(_inference external-library-qpbo-shared)
++   target_link_libraries(_inference external-library-qpbo)
+ endif()
+
+ if(WITH_MAXFLOW)
+-   target_link_libraries(_inference external-library-maxflow-shared)
++   target_link_libraries(_inference external-library-maxflow)
+ endif()
+
+ if(WITH_MAXFLOW_IBFS)
+-  target_link_libraries(_inference external-library-maxflow-ibfs-shared)
++  target_link_libraries(_inference external-library-maxflow-ibfs)
+ endif()
+
+ if(WITH_TRWS)
+-   target_link_libraries(_inference external-library-trws-shared)
++   target_link_libraries(_inference external-library-trws)
+ endif()
+
+
+ if(WITH_FASTPD)
+-   target_link_libraries(_inference external-library-fastpd-shared)
++   target_link_libraries(_inference external-library-fastpd)
+ endif()
+
+ if(WITH_AD3)
+-   target_link_libraries(_inference external-library-ad3-shared )
++   target_link_libraries(_inference external-library-ad3 )
+ endif()
+
+
+@@ -125,7 +125,7 @@ if(WITH_CONICBUNDLE)
+ endif()
+
+ if(WITH_MRF)
+-   target_link_libraries(_inference external-library-mrf-shared)
++   target_link_libraries(_inference external-library-mrf)
+ endif()
+
+ if(WITH_CPLEX)
+@@ -150,8 +150,8 @@ endif()
+
+
+ if(WITH_PLANARITY AND WITH_BLOSSOM5)
+-  target_link_libraries(_inference opengm-external-planarity-shared)
+-  target_link_libraries(_inference opengm-external-blossom5-shared)
++  target_link_libraries(_inference opengm-external-planarity)
++  target_link_libraries(_inference opengm-external-blossom5)
+   #target_link_libraries(test-planar-maxcut ${HDF5_LIBRARIES})
+ endif()
+
+@@ -166,11 +166,11 @@ ELSE()
+     SET_TARGET_PROPERTIES(_inference PROPERTIES OUTPUT_NAME "inference"   PREFIX "_")
+ ENDIF()
+
+-
+-
+-
+-
+-
++IF(WIN32)
++    INSTALL(TARGETS _inference RUNTIME DESTINATION ${PYTHON_INSTALL_DIR}/inference)
++ELSE()
++    INSTALL(TARGETS _inference LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/inference)
++ENDIF()
+
+ #--------------------------------------------------------------
+ # Copy from src to build
+diff --git a/src/interfaces/python/opengm/opengmcore/CMakeLists.txt b/src/interfaces/python/opengm/opengmcore/CMakeLists.txt
+index b0e8ad0..53d9071 100644
+--- a/src/interfaces/python/opengm/opengmcore/CMakeLists.txt
++++ b/src/interfaces/python/opengm/opengmcore/CMakeLists.txt
+@@ -81,7 +81,7 @@ if(LINK_RT)
+     find_library(RT rt)
+     target_link_libraries(_opengmcore ${Boost_PYTHON_LIBRARIES} rt)
+ else()
+-    target_link_libraries(_opengmcore ${Boost_PYTHON_LIBRARIES})
++    target_link_libraries(_opengmcore ${PYTHON_LIBRARY} ${Boost_PYTHON_LIBRARIES})
+ endif(LINK_RT)
+
+ IF(WITH_MAXFLOW)
+@@ -100,8 +100,11 @@ ELSE()
+     SET_TARGET_PROPERTIES(_opengmcore PROPERTIES OUTPUT_NAME "opengmcore"   PREFIX "_")
+ ENDIF()
+
+-
+-
++IF(WIN32)
++    INSTALL(TARGETS _opengmcore RUNTIME DESTINATION ${PYTHON_INSTALL_DIR}/opengmcore)
++ELSE()
++    INSTALL(TARGETS _opengmcore LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/opengmcore)
++ENDIF()
+
+ #--------------------------------------------------------------
+ # Copy from src to build
+diff --git a/src/interfaces/python/opengm/opengmcore/opengmcore.cpp b/src/interfaces/python/opengm/opengmcore/opengmcore.cpp
+index dee2b1e..c30d048 100644
+--- a/src/interfaces/python/opengm/opengmcore/opengmcore.cpp
++++ b/src/interfaces/python/opengm/opengmcore/opengmcore.cpp
+@@ -697,13 +697,15 @@ BOOST_PYTHON_MODULE_INIT(_opengmcore) {
+
+
+       typedef std::deque<opengm::UInt64Type>  DequeUInt64;
++      typedef void (DequeUInt64::*DequePush)(opengm::UInt64Type const &);
++
+       boost::python::class_<DequeUInt64>("DequeUInt64" ,init<>())
+       .def("pop_front",&DequeUInt64::pop_front)
+       .def("pop_back",&DequeUInt64::pop_back)
+       .def("front",&dequeFront<DequeUInt64>)
+       .def("back",&dequeBack<DequeUInt64>)
+-      .def("push_front",&DequeUInt64::push_front)
+-      .def("push_back",&DequeUInt64::push_back)
++      .def("push_front",(DequePush)&DequeUInt64::push_front)
++      .def("push_back",(DequePush)&DequeUInt64::push_back)
+       .def("push_back",&dequePushBack<DequeUInt64>)
+       .def("__len__",&DequeUInt64::size)
+       .def("empty",&DequeUInt64::empty)

@@ -1,0 +1,49 @@
+{% import '$CONDA_DEFAULT_ENV/toolset-info/config.yaml' as toolset %}
+
+package:
+    name: opengm-thorsten
+    version: "2.3.5post2{{toolset.suffix}}"
+
+source:
+    git_url: https://github.com/DerThorsten/opengm
+    git_tag: vn1.1
+
+build:
+  features:
+    - {{toolset.short}}
+  number: 0
+  string: 0
+  detect_binary_files_with_prefix: true
+  msvc_compiler: {{toolset.version}}  # [win]
+
+requirements:
+  build:
+    - {{toolset.build_requirement}}
+    # - gcc 4.8.2.99                   # [linux]
+    # - gcc 4.8.2                      # [osx]
+    - boost 1.55.*{{toolset.suffix}}
+    - python  2.7.*{{toolset.suffix}}
+    - numpy    >=1.10,*{{toolset.suffix}}
+    - hdf5     1.8.*{{toolset.suffix}} # [win]
+    - vigra-thorsten    1.11.0post1{{toolset.suffix}} # [win]
+  run:
+    - {{toolset.run_requirement}}
+    # - libgcc                         # [unix]
+    - boost 1.55.*{{toolset.suffix}}
+    - python  2.7.*{{toolset.suffix}}
+    - numpy   >=1.10,*{{toolset.suffix}}
+    - hdf5     1.8.*{{toolset.suffix}} # [win]
+    - vigra-thorsten 1.11.0post1{{toolset.suffix}} # [win]
+
+# FIXME: upgrade opengm to make the Python bindings work on Windows
+test:          # [unix]
+  imports:     # [unix]
+    - opengm   # [unix]
+
+# Note: tests are run when building the package, they are not accessible
+# in the installed package.
+
+about:
+    home: https://github.com/opengm/opengm
+    license: GNU General Public License (GPL)
+    summary: 'A C++ Library for Discrete Graphical Models'

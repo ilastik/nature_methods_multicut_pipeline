@@ -1,0 +1,39 @@
+{% import '$CONDA_DEFAULT_ENV/toolset-info/config.yaml' as toolset %}
+
+package:
+   name: multicut_pipeline
+   version: 1.0
+
+source:
+   path: ../../software/multicut_src
+
+build:
+  number: 0
+  string: py27_{{PKG_BUILDNUM}}
+
+requirements:
+  build:
+    - python 2.7.10{{toolset.suffix}}
+    - numpy  1.10.1{{toolset.suffix}}
+    - scikit-learn 0.16.1post1{{toolset.suffix}}
+    - vigra-thorsten 1.11.0post1{{toolset.suffix}}
+    - opengm-thorsten 2.3.5post2{{toolset.suffix}}
+    - graph 1.6post1{{toolset.suffix}}
+    - h5py 2.5.0post1{{toolset.suffix}}
+    - wsdt 0.1
+    - futures 2.1.3
+  run:
+    - python 2.7.10{{toolset.suffix}}
+    - numpy  1.10.1{{toolset.suffix}}
+    - scikit-learn 0.16.1post1{{toolset.suffix}}
+    - vigra-thorsten 1.11.0post1{{toolset.suffix}}
+    - opengm-thorsten 2.3.5post2{{toolset.suffix}}
+    - graph 1.6post1{{toolset.suffix}}
+    - h5py 2.5.0post1{{toolset.suffix}}
+    - wsdt 0.1
+    - futures 2.1.3
+
+
+about:
+  license: BSD
+  summary: Neuro segmentation pipeline from probability maps to neurons

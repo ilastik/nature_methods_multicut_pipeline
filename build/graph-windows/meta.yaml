@@ -1,0 +1,42 @@
+{% import '$CONDA_DEFAULT_ENV/toolset-info/config.yaml' as toolset %}
+
+package:
+    name: graph
+    version: "1.6post1{{toolset.suffix}}"
+
+source:
+   path: ../../dependencies/graph-1.6/
+
+build:
+  features:
+    - {{toolset.short}}
+  number: 0
+  msvc_compiler: {{toolset.version}}  # [win]
+
+requirements:
+  build:
+    - {{toolset.build_requirement}}
+    # - gcc 4.8.2.99                   # [linux]
+    # - gcc 4.8.2                      # [osx]
+    - boost 1.55.*{{toolset.suffix}}
+    - python  2.7.*{{toolset.suffix}}
+    - numpy    >=1.10,*{{toolset.suffix}}
+    - hdf5     1.8.*{{toolset.suffix}} # [win]
+    - vigra-thorsten    1.11.0post1{{toolset.suffix}} # [win]
+  run:
+    - {{toolset.run_requirement}}
+    # - libgcc                         # [unix]
+    - boost 1.55.*{{toolset.suffix}}
+    - python  2.7.*{{toolset.suffix}}
+    - numpy   >=1.10,*{{toolset.suffix}}
+    - hdf5     1.8.*{{toolset.suffix}} # [win]
+    - vigra-thorsten 1.11.0post1{{toolset.suffix}} # [win]
+
+
+# Note: tests are run when building the package, they are not accessible
+# in the installed package.
+
+about:
+    home: https://github.com/bjoern-andres/graph
+    license: BSD
+    summary: Graphs and Graph Algorithms in C++
