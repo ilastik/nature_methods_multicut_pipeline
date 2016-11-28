@@ -7,20 +7,19 @@ source:
   git_tag: 575e7eb
 
 build:
-  {% set build_num = 2 %}
-  number: {{ build_num }}
+  number: 3
 
   #
   # You must build this recipe using 'conda build --numpy=X.Y'
   #
-  string: np{{CONDA_NPY[:]}}py{{CONDA_PY}}_{{build_num}}_g{{GIT_FULL_HASH[:7]}}
-
-  detect_binary_files_with_prefix: true
+  string: np{{CONDA_NPY[:]}}py{{CONDA_PY}}_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
 
 requirements:
   build:
-    - gcc 4.8.5 # [linux]
-    - gcc 4.8.5 # [osx]
+    # Special gcc versions from channel 'ilastik'
+    - gcc 4.8.5  7999 # [linux]
+    - gcc 4.8.5  999  # [osx]
+
     - python   2.7*
     - numpy    >=1.9,{{NPY_VER}}*
     - jpeg     8d
@@ -28,13 +27,15 @@ requirements:
     - libpng   1.6.17
     - fftw     3.3*
     - hdf5     1.8.14
-    - boost    1.55.0
+    - boost    1.55.0 # from channel 'ilastik'
     - zlib     1.2*
     - nose
     - cmake    
 
   run:
-    - libgcc   4.8*
+    # Special libgcc version from channel 'ilastik'
+    - libgcc   4.8.5  1999 # [linux]
+    - libgcc   4.8.5  1    # [osx]
     - python   {{PY_VER}}*
     - numpy    {{NPY_VER}}*
     - jpeg     8d
@@ -42,7 +43,7 @@ requirements:
     - libpng   1.6.17
     - fftw     3.3*
     - hdf5     1.8.14
-    - boost    1.55.0
+    - boost    1.55.0 # from channel 'ilastik'
     - zlib     1.2*
     - nose
 
