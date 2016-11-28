@@ -1,6 +1,7 @@
 {% if not WITH_CPLEX is defined %}
-  {% set WITH_CPLEX = false %}
+  {% set WITH_CPLEX = 0 %}
 {% endif %}
+{% set WITH_CPLEX = WITH_CPLEX|int %}
 
 package:
     # Unlike our standard recipe for opengm, here we
@@ -13,7 +14,7 @@ source:
   git_rev: 059e15995a4f2b219b350c58290cec74696d9b7e
 
 build:
-  number: 11
+  number: 12
 
   {% if WITH_CPLEX %}
       {% set cplex_string = '_with_cplex' %}
@@ -34,8 +35,11 @@ build:
 
 requirements:
   build:
-    - gcc 4.8.5 # [unix]
-    - boost 1.55.0
+    # Special gcc versions from channel 'ilastik'
+    - gcc 4.8.5  7999 # [linux]
+    - gcc 4.8.5  999  # [osx]
+
+    - boost 1.55.0 # from channel 'ilastik'
     - python 2.7*
     - numpy >=1.9,{{NPY_VER}}*
     - hdf5 1.8.14
@@ -48,8 +52,10 @@ requirements:
     {% endif %}
 
   run:
-    - libgcc # [unix]
-    - boost 1.55.0
+    # Special libgcc version from channel 'ilastik'
+    - libgcc   4.8.5  1999 # [linux]
+    - libgcc   4.8.5  1    # [osx]
+    - boost 1.55.0 # from channel 'ilastik'
     - python {{PY_VER}}*
     - numpy  {{NPY_VER}}*
     - hdf5 1.8.14

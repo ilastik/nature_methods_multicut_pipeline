@@ -31,12 +31,7 @@ if [[ "$WITH_CPLEX" == "" ]]; then
     CPLEX_ARGS=""
     LINKER_FLAGS=""
 else
-	if [ $(echo $PREFIX | grep -q envs)$? -eq 0 ]; then
-	    ROOT_ENV_PREFIX="${PREFIX}/../.."
-	else
-	    ROOT_ENV_PREFIX="${PREFIX}"
-	fi
-	CPLEX_LOCATION_CACHE_FILE="${ROOT_ENV_PREFIX}/share/cplex-root-dir.path"
+	CPLEX_LOCATION_CACHE_FILE="$(conda info --root)/share/cplex-root-dir.path"
 	
 	if [[ "$CPLEX_ROOT_DIR" == "<UNDEFINED>" || "$CPLEX_ROOT_DIR" == "" ]]; then
 	    # Look for CPLEX_ROOT_DIR in the cplex-shared cache file.
