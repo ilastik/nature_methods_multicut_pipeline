@@ -195,7 +195,7 @@ def run_and_eval_mc(sample):
     sample.make_filters(1, 25.)
 
     mc_node, mc_edges, mc_energy, t_inf = multicut_workflow(
-        sample.get_cutout(0), sample.get_cutout(1)
+        sample.get_cutout(0), sample.get_cutout(1),
         0,0,
         local_feats_list, exp_params)
 
