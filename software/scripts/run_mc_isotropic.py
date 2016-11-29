@@ -170,6 +170,9 @@ def main():
 
     # experiment settings
     exp_params = ExperimentSettings()
+
+    exp_params.set_rfcache( os.path.join(cache_folder, "rf_cache") )
+
     exp_params.set_ntrees(500)
     exp_params.set_anisotropy(1.)
     exp_params.set_use2d(False)

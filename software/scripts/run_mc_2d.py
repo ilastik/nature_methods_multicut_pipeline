@@ -221,6 +221,8 @@ def main():
     # experiment settings
     exp_params = ExperimentSettings()
 
+    exp_params.set_rfcache( os.path.join(cache_folder, "rf_cache") )
+
     # use extra 2d features
     exp_params.set_use2d(True)
 
