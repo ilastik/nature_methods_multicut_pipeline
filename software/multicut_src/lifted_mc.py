@@ -300,7 +300,7 @@ def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, lif
             energies = np.multiply(w, energies)
 
         # get the energies (need to copy code here, because we can't use caching in threads)
-        mc_node, mc_energy, t_inf = multicut_fusionmoves(
+        mc_node, _, mc_energy, t_inf = multicut_fusionmoves(
                 n_var, uv_ids,
                 energies, pipelineParam)
 
