@@ -3,28 +3,28 @@ package:
    version: v1.0
 
 source:
-   path: ../../software/multicut_src
+   path: ../..
 
 build:
-  number: 2
-  string: py{{CONDA_PY}}_{{PKG_BUILDNUM}}
+  number: 3
+  string: py{{CONDA_PY}}_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
 
 requirements:
   build:
-    - python
-    - graph
-    - vigra-thorsten
-    - wsdt-mcp
-    - opengm-thorsten
-    - scikit-learn
+    - python 2.7*
+    - graph 1.6 np19py27_2_g764505d
+    - vigra-thorsten 1.11 np19py27_3_g575e7eb
+    - wsdt-mcp 0.1 py27_1_g764505d
+    - opengm-thorsten 2.3.6.post1 np19py27_12_g059e159_with_cplex
+    - scikit-learn 0.16.1
   run:
-    - python
-    - graph
-    - vigra-thorsten
-    - wsdt-mcp
-    - opengm-thorsten
-    - scikit-learn
-    - h5py
+    - python 2.7*
+    - graph 1.6 np19py27_2_g764505d
+    - vigra-thorsten 1.11 np19py27_3_g575e7eb
+    - wsdt-mcp 0.1 py27_1_g764505d
+    - opengm-thorsten 2.3.6.post1 np19py27_12_g059e159_with_cplex
+    - scikit-learn 0.16.1
+    - h5py 2.6.0
     - futures
 
 about:
