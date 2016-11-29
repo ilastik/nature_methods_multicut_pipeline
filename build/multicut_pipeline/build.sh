@@ -1,5 +1,11 @@
-cp software/multicut_src/*.py ${PREFIX}/lib/python2.7/site-packages/
-mkdir ${PREFIX}/scripts
+# Install python modules
+mkdir -p ${PREFIX}/multicut_src
+cp software/multicut_src/*.py ${PREFIX}/multicut_src
+echo "${PREFIX}/multicut_src" > ${PREFIX}/lib/python2.7/site-packages/multicut_src.pth
+python -m compileall ${PREFIX}/multicut_src
+
+# Install scripts
+mkdir -p ${PREFIX}/scripts
 cp software/scripts/*.py ${PREFIX}/scripts/.
 cp software/scripts/*.sh ${PREFIX}/.
 cp software/scripts/README.txt ${PREFIX}/.
