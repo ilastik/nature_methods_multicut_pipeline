@@ -5,9 +5,9 @@ import cPickle as pickle
 import vigra.graphs as vgraph
 
 import graph as agraph
-import nifty
+#import nifty
 import numpy
-import scipy.ndimage
+#import scipy.ndimage
 from MCSolverImpl import *
 from Tools import *
 from sklearn.ensemble import RandomForestClassifier
@@ -127,6 +127,8 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is
 # TODO we might even loop over different solver here ?! -> nifty greedy ?!
 @cacher_hdf5(ignoreNumpyArrays=True)
 def compute_lifted_feature_multiple_segmentations(ds, trainsets, referenceSegId, featureListLocal, uvIdsLifted, pipelineParam):
+
+    import nifty
 
     print "Computing lifted features from multople segmentations from %i segmentations for reference segmentation %i" % (ds.n_seg, referenceSegId)
 
@@ -298,7 +300,7 @@ def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, lif
             energies = np.multiply(w, energies)
 
         # get the energies (need to copy code here, because we can't use caching in threads)
-        mc_node, mc_energy, t_inf = nifty_fusionmoves(
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(
                 n_var, uv_ids,
                 energies, pipelineParam)
 
@@ -334,6 +336,8 @@ def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, lif
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds, liftedNeighborhood):
+
+    import nifty
 
     print "Computing multcut features for lifted neighborhood", liftedNeighborhood
 

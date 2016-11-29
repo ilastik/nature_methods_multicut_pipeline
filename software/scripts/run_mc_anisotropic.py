@@ -24,11 +24,10 @@ import numpy as np
 # watershed on distance transform
 from wsdt import wsDtSegmentation
 
-from MetaSet import MetaSet
-from DataSet import DataSet
-from MCSolver import multicut_workflow, lifted_multicut_workflow
-from ExperimentSettings import ExperimentSettings
-
+from multicut_src import MetaSet
+from multicut_src import DataSet
+from multicut_src import multicut_workflow, lifted_multicut_workflow
+from multicut_src import ExperimentSettings
 
 def process_command_line():
 
@@ -75,9 +74,13 @@ def wsdt(prob_map):
         wsdt = wsDtSegmentation(prob_map[:,:,z], threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
+
+        if not 0 in wsdt:
+            wsdt -= 1
+
         segmentation[:,:,z] = wsdt
         segmentation[:,:,z] += offset
-        offset = np.max(segmentation)
+        offset = np.max(segmentation) + 1
 
     return segmentation
 

@@ -24,10 +24,10 @@ import numpy as np
 # change for conda package
 from wsdt import wsDtSegmentation
 
-from MetaSet import MetaSet
-from DataSet import DataSet
-from MCSolver import multicut_workflow, lifted_multicut_workflow
-from ExperimentSettings import ExperimentSettings
+from multicut_src import MetaSet
+from multicut_src import DataSet
+from multicut_src import multicut_workflow, lifted_multicut_workflow
+from multicut_src import ExperimentSettings
 
 
 def process_command_line():
@@ -92,6 +92,9 @@ def wsdt(prob_map):
     segmentation = wsDtSegmentation(prob_map, threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
+
+    if not 0 in segmentation:
+        segmentation -= 1
 
     return segmentation
 
