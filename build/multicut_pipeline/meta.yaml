@@ -24,7 +24,7 @@ requirements:
     - wsdt-mcp 0.1 py27_1_g764505d
     - opengm-thorsten 2.3.6.post1 np19py27_12_g059e159_with_cplex
     - scikit-learn 0.16.1
-    - h5py 2.6.0
+    - h5py 2.5.0
     - futures
 
 about:
