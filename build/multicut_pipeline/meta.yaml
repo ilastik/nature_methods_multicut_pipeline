@@ -6,7 +6,7 @@ source:
    path: ../..
 
 build:
-  number: 4
+  number: 5
   string: py{{CONDA_PY}}_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
 
 requirements:

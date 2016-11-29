@@ -13,4 +13,5 @@ chmod a+x ${PREFIX}/run_mc_2d.sh
 chmod a+x ${PREFIX}/run_mc_isotropic.sh
 chmod a+x ${PREFIX}/run_mc_anisotropic.sh
 
-
+# Install README to top-level
+cp ${RECIPE_DIR}/TARBALL_README.txt ${PREFIX}/README.txt
