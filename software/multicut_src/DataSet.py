@@ -371,14 +371,14 @@ class DataSet(object):
 
         sigmas = [1.6, 4.2, 8.3]
 
-        #filter_names = [ "vigra.filters.gaussianSmoothing",
-        #                 "vigra.filters.hessianOfGaussianEigenvalues",
-        #                 "vigra.filters.laplacianOfGaussian"]
+        filter_names = [ "vigra.filters.gaussianSmoothing",
+                         "vigra.filters.hessianOfGaussianEigenvalues",
+                         "vigra.filters.laplacianOfGaussian"]
 
-        import fastfilters
-        filter_names = [ "fastfilters.gaussianSmoothing",
-                         "fastfilters.hessianOfGaussianEigenvalues",
-                         "fastfilters.laplacianOfGaussian"]
+        #import fastfilters
+        #filter_names = [ "fastfilters.gaussianSmoothing",
+        #                 "fastfilters.hessianOfGaussianEigenvalues",
+        #                 "fastfilters.laplacianOfGaussian"]
 
         inp = self.inp(inp_id)
         # update the filter folder to the input

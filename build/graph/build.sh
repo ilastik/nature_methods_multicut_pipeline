@@ -4,6 +4,9 @@ export CFLAGS=""
 export CXXFLAGS=""
 export LDFLAGS=""
 
+# The graph source code is in a subdirectory of the full multicut_pipeline git repo
+cd dependencies/graph-1.6
+
 # CONFIGURE
 mkdir build
 cd build
