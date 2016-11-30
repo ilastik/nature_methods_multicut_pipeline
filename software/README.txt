@@ -29,10 +29,10 @@ multicut_src:
 
 nnet:
     training and prediction of membrane probability maps using
-    neural networks
+    the ICV1 architecture
 
 dependencies/graph-1.6:
-    library to construct the graphs defining the multicut problem
+    library to construct the graphs defining the lifted multicut problem
 
 dependencies/wsdt:
     library to compute superpixels from membrane probability maps
