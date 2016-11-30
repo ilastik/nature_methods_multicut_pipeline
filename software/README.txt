@@ -17,6 +17,12 @@ scripts:
     *.py:  toplevel Python programs called by above scripts
     README*: usage instructions
 
+multicur_exp:
+    code for running the experiments for the publication on data from
+    the ISBI2012 Challenge (http://brainiac2.mit.edu/isbi_challenge/home),
+    the SNEMI3D Challenge (http://brainiac2.mit.edu/SNEMI3D/home)
+    and the Neuroproof Examples Data (https://github.com/janelia-flyem/neuroproof_examples)
+
 multicut_src:
     core software (set-up and optimization of multicut problems,
     training and prediction of edge potentials in the MC graph)
@@ -30,6 +36,3 @@ dependencies/graph-1.6:
 
 dependencies/wsdt:
     library to compute superpixels from membrane probability maps
-
-examples:
-    Jupyter notebooks illustrating key aspects of the pipeline
