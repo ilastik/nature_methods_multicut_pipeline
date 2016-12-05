@@ -48,7 +48,7 @@ class ExperimentSettings(object):
         # total number of iterations for fusion moves
         self.num_it = 3000
         # number of iterations without changes after which fusion moves stop
-        self.num_it_stop = 10
+        self.num_it_stop = 20
         self.verbose = False
 
         # parameters for lifted multicut

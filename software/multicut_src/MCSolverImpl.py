@@ -241,7 +241,11 @@ def nifty_exact(n_var, uv_ids, edge_energies, exp_params):
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
 
-    ret = solver.optimize()
+    if exp_params.verbose:
+        visitor = obj.multicutVerboseVisitor(1)
+        ret = solver.optimize(visitor=visitor)
+    else:
+        ret = solver.optimize()
 
     t_inf = time.time() - t_inf
 
@@ -252,6 +256,8 @@ def nifty_exact(n_var, uv_ids, edge_energies, exp_params):
 
 
 def nifty_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,returnObj=False):
+
+    print "Here"
 
     import nifty
 
@@ -276,6 +282,9 @@ def nifty_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,return
         addOnlyViolatedThreeCyclesConstraints=True
     )
 
+    print "Num It Stop:"
+    print exp_params.num_it_stop
+
     factory = obj.fusionMoveBasedFactory(
         verbose=1,
         fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
@@ -291,7 +300,7 @@ def nifty_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,return
 
     if exp_params.verbose:
         visitor = obj.multicutVerboseVisitor(1)
-        ret = solver.optimize(nodeLabels=ret)
+        ret = solver.optimize(nodeLabels=ret,visitor=visitor)
     else:
         ret = solver.optimize(nodeLabels=ret)
 
