@@ -51,7 +51,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         if exp_params.use_ignore_mask:
             ignore_mask = cutout.ignore_mask(seg_id_train)
             assert ignore_mask.shape[0] == labels_cut.shape[0]
-            labels_cut[ np.logical_not(ignore_mask) ] = 0.5
+            labels_cut[ ignore_mask ] = 0.5
 
         # set z edges to 0.5
         if exp_params.learn_2d:

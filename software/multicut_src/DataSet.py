@@ -56,9 +56,9 @@ class DataSet(object):
         self.aniso_max = 20.
 
         # gt ids to be ignored for positive training examples
-        self.gt_false_splits = []
+        self.gt_false_splits = set()
         # gt ids to be ignored for negative training examples
-        self.gt_false_merges = [0,]
+        self.gt_false_merges = set([0])
 
 
     def __str__(self):
@@ -66,10 +66,10 @@ class DataSet(object):
 
 
     def add_false_split_gt_id(self, gt_id):
-        self.gt_false_splits.append(gt_id)
+        self.gt_false_splits.add(gt_id)
 
     def add_false_merge_gt_id(self, gt_id):
-        self.gt_false_merges.append(gt_id)
+        self.gt_false_merges.add(gt_id)
 
     #
     # Interface for adding inputs, segmentations and groundtruth
@@ -1122,12 +1122,13 @@ class DataSet(object):
             n1 = uv_ids[edge_id][1]
             # if both superpixel have ignore label in the gt
             # block them in our mask
-            for ignore_merge in self.gt_false_merges:
-                if node_gt[n0] == ignore_merge and node_gt[n1] == ignore_merge:
-                    ignore_mask[edge_id] = False
-            for ignore_split in self.gt_false_merges:
-                if (node_gt[n0] == ignore_split or node_gt[n1] == ignore_split) and node_gt[n0] != node_gt[n1]:
-                    ignore_mask[edge_id] = False
+            if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
+                if node_gt[n0] != node_gt[n1]:
+                    ignore_mask[edge_id] = True
+            if node_gt[n0] in self.gt_false_merges and node_gt[n1] in self.gt_false_merges:
+                ignore_mask[edge_id] = True
+
+        print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
         return ignore_mask
 
 
