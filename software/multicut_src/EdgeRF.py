@@ -87,6 +87,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     labels_train = np.concatenate(labels_train)
 
     assert features_train.shape[0] == labels_train.shape[0]
+    print np.unique(labels_train)
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))
 
     features_test  = ds_test.local_feature_aggregator(seg_id_test, feature_list,

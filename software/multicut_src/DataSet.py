@@ -518,12 +518,17 @@ class DataSet(object):
                          "fastfilters.laplacianOfGaussian"]
         sigmas = [1.6, 4.2, 8.3]
 
-        inp = self.inp(inp_id)
-        assert inp.ndim == 4, "Need affinity channels"
-        assert inp.shape[3] == 3, "Need 3 affinity channels"
+        #inp = self.inp(inp_id)
+        #assert inp.ndim == 4, "Need affinity channels"
+        #assert inp.shape[3] == 3, "Need 3 affinity channels"
 
-        inpXY = np.maximum( inp[:,:,:,0], inp[:,:,:,1] )
-        inpZ  = inp[:,:,:,2]
+        #inpXY = np.maximum( inp[:,:,:,0], inp[:,:,:,1] )
+        #inpZ  = inp[:,:,:,2]
+
+        rag = self._rag(seg_id)
+
+        inpXY = self.inp(inp_id)
+        inpZ = self.inp(inp_id+1)
 
         edge_indications = self.edge_indications(seg_id)
         edge_features = []
@@ -537,10 +542,10 @@ class DataSet(object):
                 print "Accumulating features:", n, "/", N
 
                 # filters for xy channels
-                with futures.ThreadPoolExecutor(max_workers = 20 ) as executor:
+                with futures.ThreadPoolExecutor(max_workers = 35 ) as executor:
                     tasks = []
-                    for z in xrange(inp.shape[2]):
-                        tasks.append( executor.submit(filter_fu, inpXY[:,:,z], sig ) )
+                    for z in xrange(inpXY.shape[2]):
+                        tasks.append( executor.submit(filter_fu, inpXY[:,:,z], sigma ) )
                     filtXY = [task.result() for task in tasks]
 
                 if filtXY[0].ndim == 2:
@@ -551,19 +556,20 @@ class DataSet(object):
                 # filters for xy channels
                 with futures.ThreadPoolExecutor(max_workers = 20 ) as executor:
                     tasks = []
-                    for z in xrange(inp.shape[2]):
-                        tasks.append( executor.submit(filter_fu, inpZ[:,:,z], sig ) )
+                    for z in xrange(inpZ.shape[2]):
+                        tasks.append( executor.submit(filter_fu, inpZ[:,:,z], sigma ) )
                     filtZ = [task.result() for task in tasks]
 
                 if filtZ[0].ndim == 2:
                     filtZ = np.concatenate([re[:,:,None] for re in filtZ], axis = 2)
-                elif res[0].ndim == 3:
+                elif filtZ[0].ndim == 3:
                     filtZ = np.concatenate([re[:,:,None,:] for re in filtZ], axis = 2)
 
-
                 # accumulate over the edge
-                featsXY, _ = np.concatenate(self._accumulate_filter_over_edge(seg_id, filtXY, "", rag), axis = 1)
-                featsZ, _  = np.concatenate(self._accumulate_filter_over_edge(seg_id, filtZ, "", rag),  axis = 1)
+                featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag)
+                featsXY    = np.concatenate(featsXY, axis = 1)
+                featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag)
+                featsZ     = np.concatenate(featsZ,  axis = 1)
 
                 feats = np.zeros_like(featsXY)
                 feats[edge_indications==1] = featsXY[edge_indications==1]
@@ -833,12 +839,18 @@ class DataSet(object):
         rag = self._rag(seg_id)
         n_edges = rag.edgeNum
         edge_indications = np.zeros(n_edges)
+        uv_ids = rag.uvIds()
         # TODO no loops, no no no loops
         for edge_id in range( n_edges ):
             edge_coords = rag.edgeCoordinates(edge_id)
             z_coords = edge_coords[:,2]
             z = np.unique(z_coords)
-            assert z.size == 1, "Edge indications can only be calculated for flat superpixel" + str(z)
+            if z.size != 1:
+                uv = uv_ids[edge_id]
+                if not 0 in uv:
+                    assert z.size == 1, "Edge indications can only be calculated for flat superpixel" + str(z)
+                else:
+                    continue
             # check whether we have a z or a xy edge
             if z - int(z) == 0.:
                 # xy-edge!
@@ -1116,7 +1128,7 @@ class DataSet(object):
         node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
         assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
         uv_ids = self._adjacent_segments(seg_id)
-        ignore_mask = np.ones( rag.edgeNum, dtype = bool)
+        ignore_mask = np.zeros( rag.edgeNum, dtype = bool)
         for edge_id in xrange(rag.edgeNum):
             n0 = uv_ids[edge_id][0]
             n1 = uv_ids[edge_id][1]
