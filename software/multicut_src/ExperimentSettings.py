@@ -44,7 +44,7 @@ class ExperimentSettings(object):
         self.beta_global   = 0.5
         # seed fraction for fusion moves
         # TODO find better options her
-        self.seed_fraction = 0.01
+        self.seed_fraction = 0.001
         # total number of iterations for fusion moves
         self.num_it = 3000
         # number of iterations without changes after which fusion moves stop
