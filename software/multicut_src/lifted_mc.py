@@ -580,46 +580,53 @@ def learn_and_predict_lifted(trainsets, dsTest,
     for dsTrain in trainsets:
 
         # get edge probabilities from random forest on training set cut out in the middle
-        pLocalTrain = learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
-            [dsTrain.get_cutout(0), dsTrain.get_cutout(2)], dsTrain.get_cutout(1) ,
-            segIdTrain, segIdTrain,
-            feature_list_local, pipelineParam)
+        pLocalTrain = learn_and_predict_rf_from_gt(
+            pipelineParam.rf_cache_folder,
+            [dsTrain.get_cutout(0), dsTrain.get_cutout(2)],
+            dsTrain.get_cutout(1) ,
+            segIdTrain,
+            segIdTrain,
+            feature_list_local,
+            pipelineParam)
 
-        uvIdsTrain = compute_and_save_lifted_nh(dsTrain.get_cutout(1), segIdTrain, pipelineParam.lifted_neighborhood)
+        uvIdsTrain = compute_and_save_lifted_nh(
+            dsTrain.get_cutout(1),
+            segIdTrain,
+            pipelineParam.lifted_neighborhood)
 
         nzTrain = node_z_coord(dsTrain.get_cutout(1), segIdTrain)
 
         # compute the features for the training set
-        fTrain = lifted_feature_aggregator(dsTrain.get_cutout(1),[dsTrain.get_cutout(0), dsTrain.get_cutout(2)],
-                feature_list_lifted, feature_list_local,
-                pLocalTrain, pipelineParam, uvIdsTrain, segIdTrain)
-
+        fTrain = lifted_feature_aggregator(
+            dsTrain.get_cutout(1),
+            [dsTrain.get_cutout(0), dsTrain.get_cutout(2)],
+            feature_list_lifted,
+            feature_list_local,
+            pLocalTrain,
+            pipelineParam,
+            uvIdsTrain,
+            segIdTrain)
 
         dsTrain = dsTrain.get_cutout(1)
 
         fuzzyLiftedGt = lifted_fuzzy_gt(dsTrain, segIdTrain, uvIdsTrain)
         hardLiftedGt,nodeGt = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
 
+        whereGtMask = dsTrain.lifted_ignore_mask(
+            segIdTrain,
+            pipelineParam.lifted_neighborhood,
+            uvIdsTrain)
 
         # check which of the edges is in plane
         zU = nzTrain[uvIdsTrain[:,0]]
         zV = nzTrain[uvIdsTrain[:,1]]
 
-
         #where in plane
         if pipelineParam.learn_2d:
             whereGtMaskA = (zU == zV)
-            whereGtMaskB = (nodeGt[uvIdsTrain[:,0]] != 0)
-            whereGtMaskC = (nodeGt[uvIdsTrain[:,1]] != 0)
-            whereGtMask = whereGtMaskA | whereGtMaskB
-            whereGtMask = whereGtMask | whereGtMaskC
-            #whereGtMask = (zU != 0 and  zV !=0 and whereGtMaskA==True)
-        else:
-            whereGtMaskA = (nodeGt[uvIdsTrain[:,0]] != 0)
-            whereGtMaskB = (nodeGt[uvIdsTrain[:,1]] != 0)
-            whereGtMask = whereGtMaskA | whereGtMaskB
-        whereGt = numpy.where(whereGtMask==True)[0]
+            whereGtMask = whereGtMask | whereGtMaskA
 
+        whereGt = numpy.where(whereGtMask==True)[0]
 
         YH = hardLiftedGt[whereGt]
         X =  fTrain[whereGt,:]

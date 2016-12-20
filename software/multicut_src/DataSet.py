@@ -407,7 +407,7 @@ class DataSet(object):
 
                         from concurrent import futures
 
-                        with futures.ThreadPoolExecutor(max_workers = 20) as executor:
+                        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
                             tasks = []
                             for z in xrange(inp.shape[2]):
                                 tasks.append( executor.submit(filter, inp[:,:,z], sig ) )
@@ -1132,6 +1132,36 @@ class DataSet(object):
         for edge_id in xrange(rag.edgeNum):
             n0 = uv_ids[edge_id][0]
             n1 = uv_ids[edge_id][1]
+            # if both superpixel have ignore label in the gt
+            # block them in our mask
+            if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
+                if node_gt[n0] != node_gt[n1]:
+                    ignore_mask[edge_id] = True
+            if node_gt[n0] in self.gt_false_merges and node_gt[n1] in self.gt_false_merges:
+                ignore_mask[edge_id] = True
+
+        print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
+        return ignore_mask
+
+
+    # return mask that hides edges that lie between 2 superpixel for lifted edges
+    # which are projected to an ignore label
+    # -> we don t want to learn on these!
+    @cacher_hdf5(ignoreNumpyArrays=True)
+    def lifted_ignore_mask(self, seg_id, liftedNh, liftedUvs):
+        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
+        assert self.has_gt
+        #need the node gt to determine the gt val of superpixel
+        rag = self._rag(seg_id)
+        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
+        assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
+
+        numEdges = liftedUvs.shape[0]
+
+        ignore_mask = np.zeros( numEdges, dtype = bool)
+        for edge_id in xrange(numEdges):
+            n0 = liftedUvs[edge_id][0]
+            n1 = liftedUvs[edge_id][1]
             # if both superpixel have ignore label in the gt
             # block them in our mask
             if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
