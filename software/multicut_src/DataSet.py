@@ -209,7 +209,8 @@ class DataSet(object):
             assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
             gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
-        gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
+        # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
+        #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         save_path = os.path.join(self.cache_folder,"gt.h5")
         vigra.writeHDF5(gt, save_path, "data", compression = self.compression)
         self.has_gt = True
@@ -940,8 +941,6 @@ class DataSet(object):
             shape_feats_u = sizes_u / len_bounds[uvIds[:,0]]
             shape_feats_v = sizes_v / len_bounds[uvIds[:,1]]
             # combine w/ min, max, absdiff
-            print shape_feats_u[z_mask].shape
-            print shape_feats_v[z_mask].shape
             topology_features[:,4][z_mask] = np.minimum(
                     shape_feats_u[z_mask], shape_feats_v[z_mask])
             topology_features[:,5][z_mask] = np.maximum(
@@ -1311,6 +1310,8 @@ class Cutout(DataSet):
         # i.e. of the top dataset that is not a cutout or tesselation
         # we need it for make_filters
         self.ancestor_folder = ancestor_folder
+
+        # we need to copy the ignore masks
 
 
     # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
