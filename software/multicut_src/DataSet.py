@@ -81,7 +81,7 @@ class DataSet(object):
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
-        raw = vigra.readHDF5(raw_path, raw_key).view(np.ndarray).astype(np.float32)
+        raw = vigra.readHDF5(raw_path, raw_key).view(np.ndarray)
         assert len(raw.shape) == 3, "Only 3d data supported"
         # for subvolume make sure that boundaries are included
         if self.is_subvolume:
@@ -90,7 +90,7 @@ class DataSet(object):
             raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         self.shape = raw.shape
         save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data", compression = self.compression)
+        vigra.writeHDF5(raw, save_path, "data")
         self.has_raw = True
         self.n_inp = 1
 
@@ -101,7 +101,6 @@ class DataSet(object):
             raise RuntimeError("Rawdata has already been added")
         assert isinstance(raw, np.ndarray)
         assert len(raw.shape) == 3, "Only 3d data supported"
-        raw = raw.astype(np.float32)
         # for subvolume make sure that boundaries are included
         if self.is_subvolume:
             p = self.block_coordinates
@@ -109,7 +108,7 @@ class DataSet(object):
             raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         self.shape = raw.shape
         save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data", compression = self.compression)
+        vigra.writeHDF5(raw, save_path, "data")
         self.has_raw = True
         self.n_inp = 1
 
@@ -119,14 +118,14 @@ class DataSet(object):
     def add_input(self, inp_path, inp_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        pixmap = vigra.readHDF5(inp_path, inp_key).view(np.ndarray).astype(np.float32)
+        pixmap = vigra.readHDF5(inp_path,inp_key)
         if self.is_subvolume:
             p = self.block_coordinates
             assert pixmap.shape[0] >= p[1] and pixmap.shape[1] >= p[3] and pixmap.shape[2] >= p[5]
             pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert pixmap.shape[:3] == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
         save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data", compression = self.compression)
+        vigra.writeHDF5(pixmap, save_path, "data")
         self.n_inp += 1
 
 
@@ -136,14 +135,13 @@ class DataSet(object):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
         assert isinstance(pixmap, np.ndarray)
-        pixmap = pixmap.astype(np.float32)
         if self.is_subvolume:
             p = self.block_coordinates
             assert pixmap.shape[0] >= p[1] and pixmap.shape[1] >= p[3] and pixmap.shape[2] >= p[5]
             pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert pixmap.shape == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
         save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data", compression = self.compression)
+        vigra.writeHDF5(pixmap, save_path, "data")
         self.n_inp += 1
 
 
@@ -152,7 +150,7 @@ class DataSet(object):
         if inp_id >= self.n_inp:
             raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
         inp_path = os.path.join(self.cache_folder,"inp" + str(inp_id) + ".h5")
-        return vigra.readHDF5(inp_path, "data")
+        return vigra.readHDF5(inp_path, "data").astype('float32')
 
 
     # add segmentation of the volume
