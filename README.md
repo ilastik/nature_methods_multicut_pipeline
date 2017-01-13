@@ -6,9 +6,12 @@ It is a snapshot of the state of the software we developed for this publication.
 Since then, we have reimplemented some functionality in an open-source C++ pipeline (https://github.com/DerThorsten/nifty) and reimplemented the pipeline code for processing large volumes (https://github.com/constantinpape/McLuigi).
 Also, there is a beta version of an interactive multicut workflow in the GUI-based ilastik program (http://ilastik.org/).
 
-While we might still develop in this repository, we do not guarantee for the functionality beyond the first release (git tag 1.0) that corresponds to the state of the software at the time of publication.
+This package (git tag 1.0) reflects the state of the software at the time of publication. Subsequent development happens mainly in the above repositories. 
+
 You can find jupyter notebooks with examples for the core functionality of the pipeline in the examples directory.
-If you are interested in using Multicut for your data and can't make it work with any of the options suggested here, please do not hesitate to contact us.
+
+If you are interested in using Multicut for your data and cannot make it work with any of the options suggested here, or to get a pointer to the latest post-publication implementation, please do not hesitate to contact us.
+
 
 ## Installation
 
