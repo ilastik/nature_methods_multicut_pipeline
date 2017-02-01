@@ -18,8 +18,9 @@ class MetaSet(object):
             pickle.dump(self.dset_dict,f)
 
     def load(self):
-        with open(self.dict_file, 'r') as f:
-            self.dset_dict = pickle.load(f)
+        if os.path.exists(self.dict_file):
+            with open(self.dict_file, 'r') as f:
+                self.dset_dict = pickle.load(f)
 
     def add_dataset(self, ds_name, ds):
         assert isinstance(ds_name, str)
