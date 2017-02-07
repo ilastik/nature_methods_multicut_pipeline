@@ -1,26 +1,27 @@
 import vigra
 import numpy as np
 from concurrent import futures
+from Tools import cacher_hdf5
 
 from DataSet import DataSet
 
-@cacher_hdf5
+#@cacher_hdf5
 def oversegmentation_statistics(ds, seg_id, n_bins):
     #seg = ds.seg(seg_id)
     pass
 
 
-@cacher_hdf5
+#@cacher_hdf5
 def defect_slice_detection(ds, seg_id, bin_threshold):
     pass
 
 
-@cacher_hdf5
-def defects_to_nods(ds, seg_id, n_bins, bin_threshold):
+#@cacher_hdf5
+def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
     pass
 
 
-@cacher_hdf5
+#@cacher_hdf5
 def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
     pass
 
@@ -55,12 +56,12 @@ def _get_replace_slices(slice_list):
     return replace_slice
 
 
-@cacher_hdf5
+#@cacher_hdf5
 def postprocess_segmentation(seg_result, slice_list):
     pass
 
 
-@cacher_hdf5
+#@cacher_hdf5
 def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
     replace_slices = _get_replace_slices(slice_list)
     total_insertions = 0

@@ -75,8 +75,8 @@ def wsdt(prob_map):
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
 
-        if not 0 in wsdt:
-            wsdt -= 1
+        # relabel consecutive
+        wsdt, _, _ = vigra.analysis.relabelConsecutive(wsdt, start_label = 0, keep_zeros = False)
 
         segmentation[:,:,z] = wsdt
         segmentation[:,:,z] += offset
@@ -130,7 +130,7 @@ def init(data_folder, cache_folder, snemi_mode ):
 
     if snemi_mode:
         print "Snemi Mode: Loading Corrected Segmentation from file"
-        seg_train = vol_to_vol( os.path.join(data_folder, "oversegmentation_train"))
+        seg_train = vol_to_vol( os.path.join(data_folder, "oversegmentation_train")).astype('uint32')
     else:
         seg_train = wsdt( probs_train )
     ds_train.add_seg_from_data(seg_train)

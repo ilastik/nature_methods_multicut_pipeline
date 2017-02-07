@@ -182,6 +182,7 @@ class DataSet(object):
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
+        seg = seg.astype('uint32')
         #seg = vigra.analysis.labelVolume(seg.astype(np.uint32)) - 1
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
