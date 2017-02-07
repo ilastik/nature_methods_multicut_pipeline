@@ -112,6 +112,18 @@ def normalize_if(probs):
     return probs
 
 
+# get consecutive 2.5d segmentation
+def make_consecutive(seg):
+    seg_new = np.zeros_like(seg, dtype = 'uint32')
+    offset = 0
+    for z in xrange(seg.shape[2]):
+        seg_z, _, _ = vigra.analysis.relabelConsecutive(seg[:,:,z], start_label = 0, keep_zeros = False)
+        seg_z += offset
+        offset = np.max(seg_z) + 1
+        seg_new[:,:,z] = seg_z
+    return seg_new
+
+
 def init(data_folder, cache_folder, snemi_mode ):
     meta = MetaSet(cache_folder)
 
@@ -131,6 +143,7 @@ def init(data_folder, cache_folder, snemi_mode ):
     if snemi_mode:
         print "Snemi Mode: Loading Corrected Segmentation from file"
         seg_train = vol_to_vol( os.path.join(data_folder, "oversegmentation_train")).astype('uint32')
+        seg_train = make_consecutive( seg_train )
     else:
         seg_train = wsdt( probs_train )
     ds_train.add_seg_from_data(seg_train)
@@ -161,7 +174,8 @@ def init(data_folder, cache_folder, snemi_mode ):
     ds_test.add_input_from_data(probs_test)
 
     if snemi_mode:
-        seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test"))
+        seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test")).astype('uint32')
+        seg_test = make_consecutive( seg_test )
     else:
         seg_test = wsdt( probs_test )
     ds_test.add_seg_from_data(seg_test)
