@@ -1,6 +1,6 @@
 # nature_methods_multicut_pipeline
 
-This repository contains the software used for the publication about the Multicut pipeline in Nature Methods (TODO exact reference here).
+This repository contains the software used for the publication about the Multicut pipeline in Nature Methods (http://www.nature.com/nmeth/journal/v14/n2/full/nmeth.4151.html).
 It is a snapshot of the state of the software we developed for this publication.
 
 Since then, we have reimplemented some functionality in an open-source C++ pipeline (https://github.com/DerThorsten/nifty) and reimplemented the pipeline code for processing large volumes (https://github.com/constantinpape/McLuigi).
