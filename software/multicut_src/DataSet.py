@@ -842,7 +842,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         rag = self._rag(seg_id)
         n_edges = rag.edgeNum
-        edge_indications = np.zeros(n_edges)
+        edge_indications = np.zeros(n_edges, dtype = 'uint8')
         uv_ids = rag.uvIds()
         # TODO no loops, no no no loops
         for edge_id in range( n_edges ):

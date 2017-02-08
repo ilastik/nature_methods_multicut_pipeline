@@ -91,11 +91,39 @@ class UnionFind(object):
 
         return merge_result
 
+def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
+    self = args[0]
+    arg_id = 1
+    for arg in args[1:]:
+        # for the edgefeats we have to clip the anisotropy
+        # factor if it is larger than max. aniso factor
+        if edge_feat_cache and arg_id == 3:
+            if arg >= self.aniso_max:
+                arg = self.aniso_max
+        if isinstance(arg, np.ndarray) and not ignoreNp:
+            fname += "_" + str(arg)
+        elif isinstance(arg, np.ndarray):
+            pass
+        # need to make tuples and lists cacheable
+        elif isinstance(arg, list) or isinstance(arg, tuple):
+            for elem in arg:
+                fname += "_" + str(elem) + "_"
+        else:
+            fname += "_" + str(arg)
+        arg_id += 1
+    fname += ".h5"
+    if folder_str == "dset_folder":
+        save_folder = self.cache_folder
+    elif folder_str == "feature_folder":
+        save_folder = os.path.join(self.cache_folder, "features")
+    if not os.path.exists(save_folder):
+        os.mkdir(save_folder)
+    return os.path.join(save_folder, fname)
 
 # TODO check for arguments too long for caching
 # TODO log instead of printing, because all these prints become super annoying
 # cache result as hdf5
-def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False,ignoreNumpyArrays=False):
+def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArrays=False):
     assert folder in ("dset_folder", "feature_folder")
     _folder = folder
     _cache_edgefeats = cache_edgefeats
@@ -103,55 +131,18 @@ def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False,ignoreNumpyArray
         @wraps(function)
         # for now, we dont support keyword arguments!
         def wrapper(*args):
-
-            self = args[0]
-
             fname = str(function.__name__)
-            arg_id = 1
-            for arg in args[1:]:
-                # for the edgefeats we have to clip the anisotropy
-                # factor if it is larger than max. aniso factor
-                if _cache_edgefeats and arg_id == 3:
-                    if arg >= self.aniso_max:
-                        arg = self.aniso_max
-                if isinstance(arg, np.ndarray) and not ignoreNumpyArrays:
-                    fname += "_" + str(arg)
-                elif isinstance(arg, np.ndarray):
-                    pass
-                # need to make tuples and lists cacheable
-                elif isinstance(arg, list) or isinstance(arg, tuple):
-                    for elem in arg:
-                        fname += "_" + str(elem) + "_"
-                else:
-                    fname += "_" + str(arg)
-                arg_id += 1
-            fname += ".h5"
-            if _folder == "dset_folder":
-                save_folder = self.cache_folder
-            elif _folder == "feature_folder":
-                save_folder = os.path.join(self.cache_folder, "features")
-            if not os.path.exists(save_folder):
-                os.mkdir(save_folder)
-
-            filepath = os.path.join(save_folder, fname)
+            self = args[0]
+            filepath = cache_name(fname, _folder, ignoreNumpyArrays, _cache_edgefeats, *args)
             fkey  = "data"
-
             if not os.path.isfile(filepath):
                 print "Computing: ", function.__name__, "with args:"
                 print args[1:]
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
-                #print "Writing result in ", filepath, fkey
                 vigra.writeHDF5(_res, filepath, fkey, compression = self.compression)
-
             else:
-                #print "Loading: ", function.__name__, "with args:"
-                #print args[1:]
-                #print "From:"
-                #print filepath
-                #print fkey
                 _res = vigra.readHDF5(filepath, fkey)
-
             return _res
         return wrapper
     return actualDecorator
