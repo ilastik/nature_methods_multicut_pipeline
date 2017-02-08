@@ -59,12 +59,42 @@ def defect_slice_detection(ds, seg_id, n_bins, bin_threshold):
 
     return out
 
-#@cacher_hdf5
+
+@cacher_hdf5()
 def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
-    pass
+    defects = defect_slice_detection(ds, seg_id, n_bins, bin_threshold)
+    seg = ds.seg(seg_id)
+    assert seg.shape == defects.shape
+
+    def defects_to_nodes_z(z):
+        defect_mask = defects[:,:,z]
+        if 1 in defect_mask:
+            seg_z = seg[:,:,z]
+            where_defect = defect_mask == 1
+            defect_nodes_slice = np.unique(seg_z[where_defect])
+            return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
+        else:
+            return [], []
+
+    with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+        tasks = []
+        for z in xrange(seg.shape[2]):
+            tasks.append(executor.submit(defects_to_nodes_z,z))
+        defect_nodes = []
+        nodes_z      = []
+        for fut in tasks:
+            nodes, zz = fut.result()
+            if nodes:
+                defect_nodes.extend(nodes)
+                nodes_z.extend(zz)
+
+    assert len(defect_nodes) == len(nodes_z)
+
+    # stupid caching... need to concatenate and later retrieve this...
+    return np.concatenate([np.array(defect_nodes,dtype='uint32'), np.array(nodes_z,dtype='uint32')])
 
 
-#@cacher_hdf5
+@cacher_hdf5()
 def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
     pass
 
