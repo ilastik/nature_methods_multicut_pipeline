@@ -75,9 +75,6 @@ def wsdt(prob_map):
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
 
-        # relabel consecutive
-        wsdt, _, _ = vigra.analysis.relabelConsecutive(wsdt, start_label = 0, keep_zeros = False)
-
         segmentation[:,:,z] = wsdt
         segmentation[:,:,z] += offset
         offset = np.max(segmentation) + 1
@@ -112,6 +109,7 @@ def normalize_if(probs):
     return probs
 
 
+# FIXME this does not work with the older vigra version we are using...
 # get consecutive 2.5d segmentation
 def make_consecutive(seg):
     seg_new = np.zeros_like(seg, dtype = 'uint32')
@@ -143,9 +141,10 @@ def init(data_folder, cache_folder, snemi_mode ):
     if snemi_mode:
         print "Snemi Mode: Loading Corrected Segmentation from file"
         seg_train = vol_to_vol( os.path.join(data_folder, "oversegmentation_train")).astype('uint32')
-        seg_train = make_consecutive( seg_train )
     else:
         seg_train = wsdt( probs_train )
+    seg_train = vigra.analysis.labelVolume(seg_train)
+    seg_train -= seg_train.min()
     ds_train.add_seg_from_data(seg_train)
 
     gt_train = vol_to_vol( os.path.join(data_folder, "groundtruth") )
@@ -175,9 +174,10 @@ def init(data_folder, cache_folder, snemi_mode ):
 
     if snemi_mode:
         seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test")).astype('uint32')
-        seg_test = make_consecutive( seg_test )
     else:
         seg_test = wsdt( probs_test )
+    seg_test = vigra.analysis.labelVolume(seg_test)
+    seg_test -= seg_test.min()
     ds_test.add_seg_from_data(seg_test)
 
     meta.add_dataset("ds_test", ds_test)
