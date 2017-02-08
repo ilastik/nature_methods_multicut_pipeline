@@ -24,8 +24,19 @@ The multicut software was packaged with [conda](http://conda.pydata.org/docs/). 
 or add the multicut software to an existing environment `my-env` using:
 
     $ conda install --name my-env --channel ilastik multicut_pipeline
+    
+To run the multicut solver you need to link against CPLEX:
+If you have CPLEX already installed on your machine, you can link to it to via calling the
+install-cplex-shared-libs.sh script:
+    
+    $ ./install-cplex-shared-libs.sh /path/to/cplex-dir /path/to/multicut-binaries
 
-In fact, the tarball of our binary distribution can be reproduced with the commands:
+If you don't have CPLEX installed yet, you must apply for an academic license, for
+details see the section Download IBM CPLEX under
+http://ilastik.org/documentation/basics/installation.html.
+Note that you need the academic version to solve any problem of reasonable size, the CPLEX community version is not sufficient.
+
+The tarball of our binary distribution can be reproduced with the commands:
 
     $ conda create --name multicut-software --channel ilastik multicut_pipeline
     $ tar -czf multicut-software.tar.gz $(conda info --root)/envs/multicut-software
