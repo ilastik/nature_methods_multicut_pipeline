@@ -33,7 +33,8 @@ install-cplex-shared-libs.sh script:
 
 If you don't have CPLEX installed yet, you must apply for an academic license, for
 details see the section Download IBM CPLEX under
-http://ilastik.org/documentation/basics/installation.html
+http://ilastik.org/documentation/basics/installation.html.
+Note that you need the academic version to solve any probloem of reasonable size, the CPLEX community version is not sufficient.
 
 The tarball of our binary distribution can be reproduced with the commands:
 
