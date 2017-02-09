@@ -116,7 +116,6 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is
         allFeat.append(feat[:,None])
 
     weights = numpy.concatenate(allFeat,axis=1)
-    print weights.shape
     mean = numpy.mean(weights,axis=1)[:,None]
     stddev = numpy.std(weights,axis=1)[:,None]
     allFeat = numpy.concatenate([weights,mean,stddev],axis=1)
@@ -509,8 +508,9 @@ def lifted_hard_gt(ds, segId, uvIds):
     rag = ds._rag(segId)
     gt = ds.gt()
     nodeGt,_ =  rag.projectBaseGraphGt(gt)
+    labels   = (nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]]).astype('float32')
 
-    return nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]],nodeGt
+    return labels, nodeGt
 
 
 # TODO we should cache this for rerunning experiments
@@ -549,6 +549,8 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
             rf = RandomForestClassifier(n_estimators = pipelineParam.n_trees,
                 n_jobs=pipelineParam.n_threads_lifted, oob_score=oob, verbose = verbose,
                 min_samples_leaf = 10, max_depth = 10 )
+            print "Label-shape:", Y.shape
+            print "Unique-labels:", np.unique(Y)
             rf.fit(X, Y.astype('uint32'))
             print "Trained RF on lifted edges:"
             if oob:
@@ -608,14 +610,14 @@ def learn_and_predict_lifted(trainsets, dsTest,
             segIdTrain)
 
         dsTrain = dsTrain.get_cutout(1)
+        labels, nodeGt = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
 
-        fuzzyLiftedGt = lifted_fuzzy_gt(dsTrain, segIdTrain, uvIdsTrain)
-        hardLiftedGt,nodeGt = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
-
-        whereGtMask = dsTrain.lifted_ignore_mask(
-            segIdTrain,
-            pipelineParam.lifted_neighborhood,
-            uvIdsTrain)
+        if pipelineParam.use_ignore_mask:
+            ignoreMask = dsTrain.lifted_ignore_mask(
+                segIdTrain,
+                pipelineParam.lifted_neighborhood,
+                uvIdsTrain)
+            labels[ignoreMask] = 0.5
 
         # check which of the edges is in plane
         zU = nzTrain[uvIdsTrain[:,0]]
@@ -623,16 +625,17 @@ def learn_and_predict_lifted(trainsets, dsTest,
 
         #where in plane
         if pipelineParam.learn_2d:
-            whereGtMaskA = (zU == zV)
-            whereGtMask = whereGtMask | whereGtMaskA
+            ignoreMask = (zU != zV)
+            labels[ignoreMask] = 0.5
 
-        whereGt = numpy.where(whereGtMask==True)[0]
+        labeled = labels != 0.5
 
-        YH = hardLiftedGt[whereGt]
-        X =  fTrain[whereGt,:]
+        X =  fTrain[labeled,:]
+        labels = labels[labeled].astype('uint8')
+        print np.unique(labels)
 
         featuresTrain.append(X)
-        labelsTrain.append(YH)
+        labelsTrain.append(labels)
 
         #YF = fuzzyLiftedGt[whereGt]
         #Y = numpy.zeros(YF.shape)

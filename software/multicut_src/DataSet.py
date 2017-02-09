@@ -58,7 +58,7 @@ class DataSet(object):
         # gt ids to be ignored for positive training examples
         self.gt_false_splits = set()
         # gt ids to be ignored for negative training examples
-        self.gt_false_merges = set([0])
+        self.gt_false_merges = set()
 
 
     def __str__(self):

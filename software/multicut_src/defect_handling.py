@@ -1,9 +1,10 @@
 import vigra
+import h5py
 import numpy as np
 from concurrent import futures
 from Tools import cacher_hdf5, cache_name
 
-from DataSet import DataSet
+from DataSet import DataSet, Cutout
 
 #
 # Defect detection
@@ -283,8 +284,88 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
 
 # TODO modified edge features from affinities
 
-def modified_edge_features():
-    pass
+def _get_skip_edge_features_for_slices(filter_paths, z_dn,
+        targets, seg,
+        skip_edge_pairs, skip_edge_indices,
+        skip_edge_features):
+
+    features = []
+    for z_up in targets:
+        seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
+        rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
+        target_features = []
+        for path in filter_paths:
+            with h5py.File(path) as f:
+                filt_ds = f['data']
+                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_dn][:,:,None]],axis=2)
+            if len(filt.shape) == 3:
+                gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag_local.baseGraph, filt)
+                edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
+                target_features.append(edgeFeats)
+            elif len(filt.shape) == 4:
+                for c in range(filt.shape[3]):
+                    gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(
+                            rag_local.baseGraph, filt[:,:,:,c] )
+                    edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
+                    target_features.append(edgeFeats)
+        target_features = np.concatenate(target_features, axis = 1)
+        # keep only the features corresponding to skip edges
+        uvs_local = np.sort(rag_local.uvIds(), axis = 1)
+        assert uvs_local.shape[0] == target_features.shape[0]
+        assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
+        # FIXME horrible loop....
+        keep_indices = []
+        for uv in uvs_local:
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
+            if where_uv[0].size:
+                assert where_uv[0].size == 1
+                keep_indices.append(where_uv[0][0])
+        keep_indices = np.sort(keep_indices)
+        print keep_indices.shape
+        features.append(target_features[keep_indices])
+    features = np.concatenate(target_features, axis = 0)
+    skip_edge_features[skip_edges_indices,:] = features
+
+
+@cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
+def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_threshold):
+    edge_feats = ds.edge_features(seg_id, inp_id, anisotropy_factor)
+
+    skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
+    skip_starts  = get_skip_starts(ds, seg_id, n_bins, bin_threshold)
+    skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
+    delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
+
+    # delete features for delete edges
+    modified_features = np.delete(edge_feats, delete_edges, axis = 0)
+
+    # get features for skip edges
+    seg = ds.seg(seg_id)
+    lower_slices  = np.unique(skip_starts)
+    skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
+    target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
+
+    # calculate the volume filters for the given input
+    if isinstance(ds, Cutout):
+        filter_paths = ds.make_filters(inp_id, anisotropy_factor, ds.ancestor_folder)
+    else:
+        filter_paths = ds.make_filters(inp_id, anisotropy_factor)
+
+    skip_edge_features = np.zeros( (skip_edges.shape[0], edge_feats.shape[0]) )
+    for z in lower_slices:
+        this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
+        this_skip_edge_indices = skip_edge_indices_to_slice[z]
+        target = target_slices[z]
+        _get_skip_edge_features_for_slices(filter_paths,
+                z, target,
+                seg, this_skip_edge_pairs,
+                this_skip_edge_indices, skip_edge_features)
+
+    skip_edge_features = np.nan_to_num(skip_edge_features)
+    assert skip_edge_features.shape[1] == modified_features.shape[1]
+    return np.concatenate([modified_features, skip_edge_features],axis = 0)
+
 
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_threshold):

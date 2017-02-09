@@ -78,7 +78,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         labeled = labels_cut != 0.5
 
         features_cut = features_cut[labeled]
-        labels_cut   = labels_cut[labeled]
+        labels_cut   = labels_cut[labeled].astype('uint8')
 
         features_train.append(features_cut)
         labels_train.append(labels_cut)
