@@ -549,8 +549,6 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
             rf = RandomForestClassifier(n_estimators = pipelineParam.n_trees,
                 n_jobs=pipelineParam.n_threads_lifted, oob_score=oob, verbose = verbose,
                 min_samples_leaf = 10, max_depth = 10 )
-            print "Label-shape:", Y.shape
-            print "Unique-labels:", np.unique(Y)
             rf.fit(X, Y.astype('uint32'))
             print "Trained RF on lifted edges:"
             if oob:
@@ -632,7 +630,6 @@ def learn_and_predict_lifted(trainsets, dsTest,
 
         X =  fTrain[labeled,:]
         labels = labels[labeled].astype('uint8')
-        print np.unique(labels)
 
         featuresTrain.append(X)
         labelsTrain.append(labels)

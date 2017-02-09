@@ -321,10 +321,9 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
                 assert where_uv[0].size == 1
                 keep_indices.append(where_uv[0][0])
         keep_indices = np.sort(keep_indices)
-        print keep_indices.shape
         features.append(target_features[keep_indices])
-    features = np.concatenate(target_features, axis = 0)
-    skip_edge_features[skip_edges_indices,:] = features
+    features = np.concatenate(features, axis = 0)
+    skip_edge_features[skip_edge_indices,:] = features
 
 
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
@@ -352,7 +351,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
     else:
         filter_paths = ds.make_filters(inp_id, anisotropy_factor)
 
-    skip_edge_features = np.zeros( (skip_edges.shape[0], edge_feats.shape[0]) )
+    skip_edge_features = np.zeros( (skip_edges.shape[0], edge_feats.shape[1]) )
     for z in lower_slices:
         this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
         this_skip_edge_indices = skip_edge_indices_to_slice[z]
