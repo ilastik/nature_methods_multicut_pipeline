@@ -158,16 +158,14 @@ class DataSet(object):
     def add_seg(self, seg_path, seg_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before adding a segmentation")
-        seg = vigra.readHDF5(seg_path, seg_key)
+        seg = vigra.readHDF5(seg_path, seg_key).astype('uint32')
         if self.is_subvolume:
             p = self.block_coordinates
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        seg = seg.astype('uint32')
-        # TODO we don't label here anymore due to the ignore ids,
-        # but we should check that the segmentation is continuous
-        #seg = vigra.analysis.labelVolume(seg) - 1
+        seg = vigra.analysis.labelVolume(seg)
+        seg -= seg.min()
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1
@@ -185,9 +183,8 @@ class DataSet(object):
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
         seg = seg.astype('uint32')
-        # TODO we don't label here anymore due to the ignore ids,
-        # but we should check that the segmentation is continuous
-        #seg = vigra.analysis.labelVolume(seg.astype(np.uint32)) - 1
+        seg = vigra.analysis.labelVolume(seg.astype(np.uint32))
+        seg -= seg.min()
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1

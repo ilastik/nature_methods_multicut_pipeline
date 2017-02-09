@@ -143,8 +143,6 @@ def init(data_folder, cache_folder, snemi_mode ):
         seg_train = vol_to_vol( os.path.join(data_folder, "oversegmentation_train")).astype('uint32')
     else:
         seg_train = wsdt( probs_train )
-    seg_train = vigra.analysis.labelVolume(seg_train)
-    seg_train -= seg_train.min()
     ds_train.add_seg_from_data(seg_train)
 
     gt_train = vol_to_vol( os.path.join(data_folder, "groundtruth") )
@@ -176,8 +174,6 @@ def init(data_folder, cache_folder, snemi_mode ):
         seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test")).astype('uint32')
     else:
         seg_test = wsdt( probs_test )
-    seg_test = vigra.analysis.labelVolume(seg_test)
-    seg_test -= seg_test.min()
     ds_test.add_seg_from_data(seg_test)
 
     meta.add_dataset("ds_test", ds_test)
