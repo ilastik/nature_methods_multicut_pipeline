@@ -4,7 +4,6 @@ import opengm
 import os
 import time
 from DataSet import DataSet, InverseCutout
-from EdgeRF import *
 from Tools import cacher_hdf5
 import sys
 
@@ -26,16 +25,20 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params):
     # probabilities to energies, second term is boundary bias
     edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - exp_params.beta_local) / exp_params.beta_local )
 
+    if exp_params.weighting_scheme in ("z", "xyz", "all"):
+        edge_areas       = ds._rag(seg_id).edgeLengths()
+        edge_indications = ds.edge_indications(seg_id)
+
     # weight edges
     if exp_params.weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(ds, edge_energies, seg_id, exp_params.weight)
+        edge_energies = weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(ds, edge_energies, seg_id, exp_params.weight)
+        edge_energies = weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(ds, edge_energies, seg_id, exp_params.weight)
+        edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
 
     return edge_energies
 
@@ -62,9 +65,7 @@ def lifted_probs_to_energies(ds, edge_probs, edgeZdistance,
 
 
 # weight z edges with their area
-def weight_z_edges(ds, edge_energies, seg_id, weight):
-    edge_areas       = ds._rag(seg_id).edgeLengths()
-    edge_indications = ds.edge_indications(seg_id)
+def weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0]
     assert edge_indications.shape[0] == edge_energies.shape[0]
 
@@ -82,9 +83,7 @@ def weight_z_edges(ds, edge_energies, seg_id, weight):
 
 # weight z edges with their area and xy edges with their length
 # this is (probably) better than treating xy and z edges the same
-def weight_xyz_edges(ds, edge_energies, seg_id, weight):
-    edge_areas       = ds._rag(seg_id).edgeLengths()
-    edge_indications = ds.edge_indications(seg_id)
+def weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0]
     assert edge_indications.shape[0] == edge_energies.shape[0]
 
@@ -106,8 +105,7 @@ def weight_xyz_edges(ds, edge_energies, seg_id, weight):
 
 # weight all edges with their length / area irrespective of them being xy or z
 # note that this is the only weighting we can do for 3d-superpixel !
-def weight_all_edges(ds, edge_energies, seg_id, weight):
-    edge_areas       = ds._rag(seg_id).edgeLengths()
+def weight_all_edges(ds, edge_energies, seg_id, edge_areas, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0]
 
     energies_return = np.zeros_like(edge_energies)

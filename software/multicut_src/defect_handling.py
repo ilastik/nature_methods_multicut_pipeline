@@ -5,6 +5,7 @@ from concurrent import futures
 from Tools import cacher_hdf5, cache_name
 
 from DataSet import DataSet, Cutout
+from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 
 #
 # Defect detection
@@ -191,7 +192,8 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
                 edge_id = rag.findEdge(rag_node, nn_node).id
                 if edge_indications[edge_id]: # we have a in-plane edge -> add this to the ignore edges, if the neighbouring node is also defected
                     if nn_node.id in defect_nodes_z:
-                        ignore_edges_z.append(edge_id)
+                        # we store the uv-ids for ignore edges, because the actual edge id will change due to skip and delete edges
+                        ignore_edges_z.append( (rag_node.id, nn_node.id) )
                 else: # we have a in-between-planes edge -> add this to the delete edges
                     delete_edges_z.append(edge_id)
 
@@ -247,7 +249,7 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
         skip_starts.extend(len(skip_edges_z) * [z-1])
 
     delete_edges = np.unique(delete_edges).astype('uint32')
-    ignore_edges = np.unique(ignore_edges).astype('uint32')
+    ignore_edges = np.array(ignore_edges).astype('uint32')
 
     skip_edges = np.array(skip_edges, dtype = np.uint32)
     # make the skip edges unique, keeping rows (see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array):
@@ -278,11 +280,34 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
     return []
 
 
+@cacher_hdf5()
+def modified_edge_indications(ds, seg_id, n_bins, bin_threshold):
+    modified_indications = ds.edge_indications(seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
+    delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
+    modified_indications = np.delete(modified_indications, delete_edges)
+    return np.concatenate( [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
+
+
+@cacher_hdf5()
+def modified_edge_gt(ds, seg_id, n_bins, bin_threshold):
+    modified_edge_gt = ds.edge_gt(seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
+    delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
+    modified_edge_gt = np.delete(modified_edge_gt, delete_edges)
+    rag = ds._rag(seg_id)
+    node_gt, _ = rag.projectBaseGraphGt( ds.gt().astype('uint32') )
+    skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('float32')
+    return np.concatenate([modified_edge_gt, skip_gt])
+
+
 #
 # Modified Features
 #
 
-# TODO modified edge features from affinities
+# TODO modified edge features from affinities -> implement!!!
+def modified_edge_features_from_affinity_maps(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_threshold):
+    pass
 
 def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         targets, seg,
@@ -328,7 +353,7 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
 
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_threshold):
-    edge_feats = ds.edge_features(seg_id, inp_id, anisotropy_factor)
+    modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_starts  = get_skip_starts(ds, seg_id, n_bins, bin_threshold)
@@ -336,7 +361,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
 
     # delete features for delete edges
-    modified_features = np.delete(edge_feats, delete_edges, axis = 0)
+    modified_features = np.delete(modified_features, delete_edges, axis = 0)
 
     # get features for skip edges
     seg = ds.seg(seg_id)
@@ -351,7 +376,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
     else:
         filter_paths = ds.make_filters(inp_id, anisotropy_factor)
 
-    skip_edge_features = np.zeros( (skip_edges.shape[0], edge_feats.shape[1]) )
+    skip_edge_features = np.zeros( (skip_edges.shape[0], modified_features.shape[1]) )
     for z in lower_slices:
         this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
         this_skip_edge_indices = skip_edge_indices_to_slice[z]
@@ -368,14 +393,14 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
 
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_threshold):
-    region_feats = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
+    modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
 
     # delete all features corresponding to delete - edges
-    modified_features = np.delete(region_feats, delete_edges, axis = 0)
+    modified_features = np.delete(modified_features, delete_edges, axis = 0)
     modified_features = np.c_[modified_features, np.ones(modified_features.shape[0])]
 
     # add features for the skip edges
@@ -416,8 +441,177 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_
     return np.concatenate( [modified_features, skip_features], axis = 0)
 
 
-def modified_topo_features():
-    pass
+def _get_skip_topo_features_for_slices(z_dn, targets,
+        seg, skip_edge_pairs,
+        skip_edge_indices, use_2d_edges,
+        skip_edge_features):
+
+    features = []
+    for z_up in targets:
+        seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
+        rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
+        target_features = []
+
+        # length / area of the edge
+        edge_lens = rag_local.edgeLengths()
+        target_features.append(edge_lens[:,None])
+
+        # extra feats for z-edges in 2,5 d
+        if use_2d_edges:
+            # edge indications -> these are 0 (=z-edge) for all skip edges
+            target_features.append(np.zeros(rag_local.edgeNum)[:,None])
+            # region sizes to build some features
+            statistics =  [ "Count", "RegionCenter" ]
+            extractor = vigra.analysis.extractRegionFeatures(
+                    np.zeros_like(seg, dtype = 'float32'),
+                    seg.astype(np.uint32),
+                    features = statistics )
+
+            sizes = extractor["Count"]
+            uvIds = rag_local.uvIds()
+            sizes_u = sizes[ uvIds[:,0] ]
+            sizes_v = sizes[ uvIds[:,1] ]
+
+            unions  = sizes_u + sizes_v - edge_lens
+            # Union features
+            target_features.append( unions[:,None] )
+            # IoU features
+            target_features.append( (edge_lens / unions)[:,None] )
+
+            # segment shape features
+            seg_coordinates = extractor["RegionCenter"]
+            len_bounds      = {n.id : 0. for n in rag_local.nodeIter()}
+            # TODO no loop ?! or CPP
+            # iterate over the nodes, to get the boundary length of each node
+            for n in rag_local.nodeIter():
+                node_z = seg_coordinates[n.id][2]
+                for arc in rag_local.incEdgeIter(n):
+                    edge = rag_local.edgeFromArc(arc)
+                    edge_c = rag_local.edgeCoordinates(edge)
+                    # only edges in the same slice!
+                    if edge_c[0,2] == node_z:
+                        len_bounds[n.id] += edge_lens[edge.id]
+            # shape feature = Area / Circumference
+            shape_feats_u = sizes_u / np.array( [ len_bounds[u] for u in uvIds[:,0] ] )
+            shape_feats_v = sizes_v / np.array( [ len_bounds[v] for v in uvIds[:,1] ] )
+            # combine w/ min, max, absdiff
+            target_features.append( np.minimum( shape_feats_u, shape_feats_v)[:,None] )
+            target_features.append( np.maximum( shape_feats_u, shape_feats_v)[:,None])
+            target_features.append( np.absolute(shape_feats_u - shape_feats_v)[:,None] )
+
+        target_features = np.concatenate(target_features, axis = 1)
+        # keep only the features corresponding to skip edges
+        uvs_local = np.sort(rag_local.uvIds(), axis = 1)
+        assert uvs_local.shape[0] == target_features.shape[0]
+        assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
+        # FIXME horrible loop....
+        keep_indices = []
+        for uv in uvs_local:
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
+            if where_uv[0].size:
+                assert where_uv[0].size == 1
+                keep_indices.append(where_uv[0][0])
+        keep_indices = np.sort(keep_indices)
+        features.append(target_features[keep_indices])
+    features = np.concatenate(features, axis = 0)
+    skip_edge_features[skip_edge_indices,:] = features
+
+
+
+@cacher_hdf5(folder="feature_folder")
+def modified_topology_features(ds, seg_id, use_2d_edges, n_bins, bin_threshold):
+    modified_features = ds.topology_features(seg_id, use_2d_edges)
+
+    skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
+    skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
+    skip_starts  = get_skip_starts(ds, seg_id, n_bins, bin_threshold)
+    delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
+
+    # delete all features corresponding to delete - edges
+    modified_features = np.delete(modified_features, delete_edges, axis = 0)
+
+    # get topo features for the new skip edges
+    seg = ds.seg(seg_id)
+    lower_slices  = np.unique(skip_starts)
+    skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
+    target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
+
+    n_feats = modified_features.shape[1]
+    skip_topo_features = np.zeros( (skip_edges.shape[0], n_feats) )
+
+    for z in lower_slices:
+        this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
+        this_skip_edge_indices = skip_edge_indices_to_slice[z]
+        target = target_slices[z]
+        _get_skip_topo_features_for_slices(z, target,
+                seg, this_skip_edge_pairs,
+                this_skip_edge_indices, use_2d_edges,
+                skip_topo_features)
+
+    skip_topo_features[np.isinf(skip_topo_features)] = 0.
+    skip_topo_features[np.isneginf(skip_topo_features)] = 0.
+    skip_topo_features = np.nan_to_num(skip_topo_features)
+    assert skip_topo_features.shape[1] == modified_features.shape[1]
+    return np.concatenate([modified_features, skip_topo_features],axis = 0)
+
+#
+# Modified Multicut Problem
+#
+
+def modified_mc_problem(ds, seg_id, n_bins, bin_threshold):
+    modified_uv_ids = ds._adjacent_segments(seg_id)
+    skip_edges   = np.sort( get_skip_edges(ds, seg_id, n_bins, bin_threshold), axis = 1)
+    delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
+    modified_uv_ids = np.delete(modified_uv_ids, delete_edges, axis = 0)
+    modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
+    assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
+    n_var = ds.seg(seg_id).max() + 1
+    return n_var, modified_uv_ids
+
+@cacher_hdf5(ignoreNumpyArrays=True)
+def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bins, bin_threshold):
+
+    # scale the probabilities
+    # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
+    p_min = 0.001
+    p_max = 1. - p_min
+    edge_probs = (p_max - p_min) * edge_probs + p_min
+
+    # probabilities to energies, second term is boundary bias
+    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - exp_params.beta_local) / exp_params.beta_local )
+
+    if exp_params.weighting_scheme in ("z", "xyz", "all"):
+        edge_areas       = modified_topology_features(ds, seg_id, False, n_bins, bin_threshold)[:,0]
+        edge_indications = modified_edge_indications(ds, seg_id, n_bins, bin_threshold)
+
+    # weight edges
+    if exp_params.weighting_scheme == "z":
+        print "Weighting Z edges"
+        edge_energies = weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+    elif exp_params.weighting_scheme == "xyz":
+        print "Weighting xyz edges"
+        edge_energies = weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+    elif exp_params.weighting_scheme == "all":
+        print "Weighting all edges"
+        edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
+
+    # set ignore edges to be maximally repulsive
+    ignore_edges = get_ignore_edges(ds, seg_id, n_bins, bin_threshold)
+    if ignore_edges.size:
+        assert uv_ids.shape[1] == ignore_edges.shape[1]
+        # FIXME horrible loop....
+        ignore_indices = []
+        for uv in uv_ids:
+            where_uv = np.where(np.all(uv == ignore_edges, axis = 1))
+            if where_uv[0].size:
+                assert where_uv[0].size == 1
+                ignore_indices.append(where_uv[0][0])
+        ignore_indices = np.sort(ignore_indices)
+        max_repulsive = 2 * edge_energies.min()
+        edge_energies[ignore_indices] = max_repulsive
+
+    return edge_energies
 
 #
 # Segmentation Postprocessing
@@ -453,12 +647,10 @@ def _get_replace_slices(slice_list):
     return replace_slice
 
 
-#@cacher_hdf5
 def postprocess_segmentation(seg_result, slice_list):
     pass
 
 
-#@cacher_hdf5
 def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
     replace_slices = _get_replace_slices(slice_list)
     total_insertions = 0

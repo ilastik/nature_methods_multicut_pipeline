@@ -10,14 +10,47 @@ from ExperimentSettings import ExperimentSettings
 from MCSolverImpl import *
 from EdgeRF import *
 from lifted_mc import *
+from defect_handling import modified_mc_problem, modified_probs_to_energies
 
 import graph as agraph
+
+def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
+    #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
+    # solve the multicut witht the given solver
+    if mc_params.solver == "opengm_exact":
+        (mc_node, mc_edges, mc_energy, t_inf) = multicut_exact(
+                n_var, uv_ids,
+                edge_energies, mc_params)
+    elif mc_params.solver == "opengm_fusionmoves":
+        (mc_node, mc_edges, mc_energy, t_inf) = multicut_fusionmoves(
+                n_var, uv_ids,
+                edge_energies, mc_params)
+    elif mc_params.solver == "nifty_exact":
+        (mc_node, mc_energy, t_inf) = nifty_exact(
+                n_var, uv_ids, edge_energies, mc_params)
+        ru = mc_node[uv_ids[:,0]]
+        rv = mc_node[uv_ids[:,1]]
+        mc_edges = ru!=rv
+    elif mc_params.solver == "nifty_fusionmoves":
+        (mc_node, mc_energy, t_inf) = nifty_fusionmoves(
+                n_var, uv_ids, edge_energies, mc_params)
+        ru = mc_node[uv_ids[:,0]]
+        rv = mc_node[uv_ids[:,1]]
+        mc_edges = ru!=rv
+    else:
+        raise RuntimeError("Something went wrong, sovler " + mc_params.solver + ", not in valid solver.")
+    # we dont want zero as a segmentation result
+    # because it is the ignore label in many settings
+    if 0 in mc_node:
+        mc_node += 1
+    return mc_node, mc_edges, mc_energy, t_inf
 
 
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow(ds_train, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, mc_params):
+        feature_list, mc_params,
+        use_2_rfs = False):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
@@ -30,24 +63,26 @@ def multicut_workflow(ds_train, ds_test,
     else:
         print "Weights learned on multiple Datasets"
     print "with solver", mc_params.solver
-    print "Learning random forest with", mc_params.n_trees, "trees"
 
     # get edge probabilities from random forest
-    edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
-            ds_train,
-            ds_test,
-            seg_id_train,
-            seg_id_test,
-            feature_list,
-            mc_params)
-
-    #edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
-    #        ds_train,
-    #        ds_test,
-    #        seg_id_train,
-    #        seg_id_test,
-    #        feature_list, feature_list,
-    #        mc_params)
+    if use_2_rfs:
+        print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
+        edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
+                ds_train,
+                ds_test,
+                seg_id_train,
+                seg_id_test,
+                feature_list, feature_list,
+                mc_params)
+    else:
+        print "Learning single random forest with", mc_params.n_trees, "trees"
+        edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
+                ds_train,
+                ds_test,
+                seg_id_train,
+                seg_id_test,
+                feature_list,
+                mc_params)
 
     # for an InverseCutout, make sure that the artificial edges will be cut
     if isinstance(ds_test, InverseCutout):
@@ -65,45 +100,57 @@ def multicut_workflow(ds_train, ds_test,
             edge_probs,
             seg_id_test,
             mc_params)
+    return run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
 
-    #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
 
-    # solve the multicut witht the given solver
-    if mc_params.solver == "opengm_exact":
-        (mc_node, mc_edges, mc_energy, t_inf) = multicut_exact(
-                n_var, uv_ids,
-                edge_energies, mc_params)
-
-    elif mc_params.solver == "opengm_fusionmoves":
-        (mc_node, mc_edges, mc_energy, t_inf) = multicut_fusionmoves(
-                n_var, uv_ids,
-                edge_energies, mc_params)
-
-    elif mc_params.solver == "nifty_exact":
-        (mc_node, mc_energy, t_inf) = nifty_exact(
-                n_var, uv_ids, edge_energies, mc_params)
-        ru = mc_node[uv_ids[:,0]]
-        rv = mc_node[uv_ids[:,1]]
-        mc_edges = ru!=rv
-
-    elif mc_params.solver == "nifty_fusionmoves":
-        (mc_node, mc_energy, t_inf) = nifty_fusionmoves(
-                n_var, uv_ids, edge_energies, mc_params)
-        ru = mc_node[uv_ids[:,0]]
-        rv = mc_node[uv_ids[:,1]]
-        mc_edges = ru!=rv
-
+# multicut on the test dataset, weights learned with a rf on the train dataset
+def multicut_workflow_with_defect_correction(ds_train, ds_test,
+        seg_id_train, seg_id_test,
+        feature_list, mc_params,
+        n_bins, bin_threshold,
+        use_2_rfs = False):
+    # this should also work for cutouts, because they inherit from dataset
+    assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
+    assert isinstance(ds_test, DataSet)
+    assert isinstance(mc_params, ExperimentSettings )
+    print "Running multicut with defect correction on", ds_test.ds_name
+    if isinstance(ds_train, DataSet):
+        print "Weights learned on", ds_train.ds_name
     else:
-        raise RuntimeError("Something went wrong, sovler " + mc_params.solver + ", not in valid solver.")
-
-    # we dont want zero as a segmentation result
-    # because it is the ignore label in many settings
-    if 0 in mc_node:
-        mc_node += 1
-
-    return mc_node, mc_edges, mc_energy, t_inf
-
-
+        print "Weights learned on multiple Datasets"
+    print "with solver", mc_params.solver
+    # get edge probabilities from random forest
+    # TODO defect features
+    if use_2_rfs:
+        print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
+        edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
+                ds_train,
+                ds_test,
+                seg_id_train,
+                seg_id_test,
+                feature_list, feature_list,
+                mc_params, True,
+                n_bins, bin_threshold)
+    else:
+        print "Learning single random forest with", mc_params.n_trees, "trees"
+        edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
+                ds_train,
+                ds_test,
+                seg_id_train,
+                seg_id_test,
+                feature_list,
+                mc_params, True,
+                n_bins, bin_threshold)
+    # for an InverseCutout, make sure that the artificial edges will be cut
+    if isinstance(ds_test, InverseCutout):
+        raise AttributeError("Not supported for defect correction workflow.")
+    # get all parameters for the multicut
+    n_var, uv_ids = modified_mc_problem(ds_test, seg_id_test, n_bins, bin_threshold)
+    # energies for the multicut
+    edge_energies = modified_probs_to_energies(ds_test,
+            edge_probs, seg_id_test, uv_ids,
+            mc_params, n_bins, bin_threshold)
+    return run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
 
 
 # multicut on the test dataset, weights learned with a rf on the train dataset

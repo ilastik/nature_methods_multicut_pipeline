@@ -2,20 +2,96 @@ import numpy as np
 import vigra
 import cPickle as pickle
 import os
+from functools import partial
 
 from DataSet import DataSet
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume
 
+# TODO use vigra rf3 due to lower mem consumption and better parallelisation
 from sklearn.ensemble import RandomForestClassifier
 
+# toplevel convenience function for features
+# aggregates all the features given in feature list:
+# possible valus: "raw" -> edge features from raw_data
+# "prob" -> edge features from probability maps
+# "reg"  -> features from region statistics
+# "topo" -> topological features
+def local_feature_aggregator(ds,
+        seg_id,
+        feature_list,
+        anisotropy_factor = 1.,
+        use_2d = False):
+
+    assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
+    assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
+    for feat in feature_list:
+        assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo"), feat
+    features = []
+    if "raw" in feature_list:
+        features.append(ds.edge_features(seg_id, 0, anisotropy_factor ))
+    if "prob" in feature_list:
+        features.append(ds.edge_features(seg_id, 1, anisotropy_factor ))
+    if "affinities" in feature_list:
+        features.append(ds.edge_features_from_affinity_maps(seg_id, 1, anisotropy_factor ))
+    if "extra_input" in feature_list:
+        features.append(ds.edge_features(seg_id, 2, anisotropy_factor ))
+    if "reg" in feature_list:
+        features.append(ds.region_features(seg_id, 0,
+            ds._adjacent_segments(seg_id), False ) )
+    if "topo" in feature_list:
+        features.append(ds.topology_features(seg_id, use_2d ))
+    #if "curve" in feature_list:
+    #    features.append(ds.curvature_features(seg_id))
+
+    return np.concatenate(features, axis = 1)
+
+# toplevel convenience function for features
+# aggregates all the features given in feature list:
+# possible valus: "raw" -> edge features from raw_data
+# "prob" -> edge features from probability maps
+# "reg"  -> features from region statistics
+# "topo" -> topological features
+def local_feature_aggregator_with_defects(ds,
+        seg_id,
+        feature_list,
+        n_bins,
+        bin_threshold,
+        anisotropy_factor = 1.,
+        use_2d = False):
+
+    assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
+    assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
+    for feat in feature_list:
+        assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo"), feat
+    features = []
+    if "raw" in feature_list:
+        features.append(modified_edge_features(ds, seg_id, 0, anisotropy_factor, n_bins, bin_threshold ))
+    if "prob" in feature_list:
+        features.append(modified_edge_features(ds, seg_id, 1, anisotropy_factor, n_bins, bin_threshold ))
+    if "affinities" in feature_list:
+        features.append(modified_edge_features_from_affinity_maps(ds, seg_id, 1, anisotropy_factor, n_bins, bin_threshold ))
+    if "extra_input" in feature_list:
+        features.append(modified_edge_features(ds, seg_id, 2, anisotropy_factor, n_bins, bin_threshold ))
+    if "reg" in feature_list:
+        features.append(modified_region_features(ds, seg_id, 0, ds._adjacent_segments(seg_id), False, n_bins, bin_threshold ) )
+    if "topo" in feature_list:
+        features.append(modified_topology_features(ds, seg_id, use_2d, n_bins, bin_threshold ))
+    #if "curve" in feature_list:
+    #    features.append(ds.curvature_features(seg_id))
+
+    return np.concatenate(features, axis = 1)
 
 
 # set cache folder to None if you dont want to cache the resulting rf
 def learn_and_predict_rf_from_gt(cache_folder,
         trainsets, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, exp_params):
+        feature_list, exp_params,
+        with_defects = False,
+        n_bins = 0,
+        bin_threshold = 0):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
@@ -27,6 +103,18 @@ def learn_and_predict_rf_from_gt(cache_folder,
     if isinstance(trainsets, DataSet):
         trainsets = [ trainsets, ]
 
+    if with_defects:
+        assert n_bins > 0
+        assert bin_threshold > 0
+        feature_aggregator = partial( local_feature_aggregator_with_defects,
+            feature_list = feature_list, n_bins = n_bins,
+            bin_threshold = bin_threshold, anisotropy_factor = exp_params.anisotropy_factor,
+            use_2d = exp_params.use_2d )
+    else:
+        feature_aggregator = partial( local_feature_aggregator,
+            feature_list = feature_list, anisotropy_factor = exp_params.anisotropy_factor,
+            use_2d = exp_params.use_2d )
+
     features_train = []
     labels_train   = []
     for cutout in trainsets:
@@ -34,28 +122,29 @@ def learn_and_predict_rf_from_gt(cache_folder,
         assert isinstance(cutout, DataSet)
         assert cutout.has_gt
 
-        features_cut = cutout.local_feature_aggregator(seg_id_train, feature_list,
-                exp_params.anisotropy_factor, exp_params.use_2d)
+        features_cut = feature_aggregator( cutout, seg_id_train )
 
         if exp_params.learn_fuzzy:
+            if with_defects:
+                raise AttributeError("Fuzzy learning not supported ford defect pipeline yet")
             labels_cut = cutout.edge_gt_fuzzy(seg_id_train,
                     exp_params.positive_threshold, exp_params.negative_threshold)
         else:
-            labels_cut = cutout.edge_gt(seg_id_train)
+            labels_cut = modified_edge_gt(cutout, seg_id_train, n_bins, bin_threshold) if with_defects else cutout.edge_gt(seg_id_train)
 
         assert labels_cut.shape[0] == features_cut.shape[0]
 
         # we set all labels that are going to be ignored to 0.5
 
         # set ignore mask to 0.5
-        if exp_params.use_ignore_mask:
+        if exp_params.use_ignore_mask and not with_defects: # ignore mask not yet supported for defect pipeline
             ignore_mask = cutout.ignore_mask(seg_id_train)
             assert ignore_mask.shape[0] == labels_cut.shape[0]
             labels_cut[ ignore_mask ] = 0.5
 
         # set z edges to 0.5
         if exp_params.learn_2d:
-            edge_indications = cutout.edge_indications(seg_id_train)
+            edge_indications = modified_edge_indications(cutout, seg_id_train) if with_defects else cutout.edge_indications(seg_id_train)
             labels_cut[edge_indications == 0] = 0.5
 
         # inspect edges for debugging
@@ -89,8 +178,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     assert features_train.shape[0] == labels_train.shape[0]
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))
 
-    features_test  = ds_test.local_feature_aggregator(seg_id_test, feature_list,
-            exp_params.anisotropy_factor, exp_params.use_2d)
+    features_test  = feature_aggregator( ds_test, seg_id_test )
     assert features_train.shape[1] == features_test.shape[1]
 
     # strings for caching
@@ -149,7 +237,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
 def learn_and_predict_anisotropic_rf(cache_folder,
         trainsets, ds_test,
         seg_id_train, seg_id_test,
-        feature_list_xy, feature_list_z, exp_params):
+        feature_list_xy, feature_list_z,
+        exp_params,
+        with_defects = False,
+        n_bins = 0,
+        bin_threshold = 0):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
@@ -167,32 +259,41 @@ def learn_and_predict_anisotropic_rf(cache_folder,
     labels_train_xy = []
     labels_train_z  = []
 
+    if with_defects:
+        assert n_bins > 0
+        assert bin_threshold > 0
+        feature_aggregator = partial( local_feature_aggregator_with_defects,
+            n_bins = n_bins, bin_threshold = bin_threshold,
+            anisotropy_factor = exp_params.anisotropy_factor)
+    else:
+        feature_aggregator = partial( local_feature_aggregator,
+            anisotropy_factor = exp_params.anisotropy_factor)
+
     for cut in trainsets:
 
         assert cut.has_gt
-        features_xy = cut.local_feature_aggregator(seg_id_train, feature_list_xy,
-                exp_params.anisotropy_factor, False)
-
-        features_z = cut.local_feature_aggregator(seg_id_train, feature_list_z,
-                exp_params.anisotropy_factor, exp_params.use_2d)
+        features_xy = feature_aggregator(cut, seg_id_train, feature_list = feature_list_xy, use_2d = False)
+        features_z = feature_aggregator(cut, seg_id_train, feature_list = feature_list_z, use_2d = exp_params.use_2d)
 
         if exp_params.learn_fuzzy:
-            labels = cut.edge_gt_fuzzy(seg_id_train,
+            if with_defects:
+                raise AttributeError("Fuzzy learning not supported ford defect pipeline yet")
+            labels_cut = cut.edge_gt_fuzzy(seg_id_train,
                     exp_params.positive_threshold, exp_params.negative_threshold)
         else:
-            labels = cut.edge_gt(seg_id_train)
+            labels_cut = modified_edge_gt(cut, seg_id_train, n_bins, bin_threshold) if with_defects else cut.edge_gt(seg_id_train)
 
         # we set all labels that are going to be ignored to 0.5
 
         # set ignore mask to 0.5
-        if exp_params.use_ignore_mask:
+        if exp_params.use_ignore_mask and not with_defects: # ignore mask not yet supported for defects
             ignore_mask = cut.ignore_mask(seg_id_train)
             assert ignore_mask.shape[0] == labels.shape[0]
             labels[ np.logical_not(ignore_mask) ] = 0.5
 
         labeled = labels != 0.5
 
-        edge_indications = cut.edge_indications(seg_id_train)[labeled]
+        edge_indications = modified_edge_indications(cut, seg_id_train)[labeled] if with_defects else cut.edge_indications(seg_id_train)[labeled]
         features_xy = features_xy[labeled][edge_indications==1]
         features_z = features_z[labeled][edge_indications==0]
         labels   = labels[labeled]
@@ -216,13 +317,13 @@ def learn_and_predict_anisotropic_rf(cache_folder,
     rf_z = RandomForestClassifier(n_estimators = exp_params.n_trees, n_jobs = -1)
     rf_z.fit( features_train_z, labels_train_z.astype(np.uint32) )#.ravel() )
 
-    edge_indications_test = ds_test.edge_indications(seg_id_test)
+    edge_indications_test = modified_edge_indications(ds_test, seg_id_test) if with_defects else ds_test.edge_indications(seg_id_test)
 
-    features_test_xy  = ds_test.local_feature_aggregator(seg_id_test, feature_list_xy,
-            exp_params.anisotropy_factor, False)[edge_indications_test == 1]
+    features_test_xy  = feature_aggregator(ds_test, seg_id_test,
+            feature_list = feature_list_xy, use_2d = False)[edge_indications_test == 1]
 
-    features_test_z  = ds_test.local_feature_aggregator(seg_id_test, feature_list_z,
-            exp_params.anisotropy_factor, exp_params.use_2d)[edge_indications_test == 0]
+    features_test_z  = feature_aggregator(ds_test, seg_id_test,
+            feature_list = feature_list_z, use_2d = exp_params.use_2d)[edge_indications_test == 0]
 
 
     pmem_xy = rf_xy.predict_proba( features_test_xy )[:,1]
@@ -254,7 +355,7 @@ def learn_rf(cache_folder, trainstr, paramstr, seg_id,
         if not os.path.exists(rf_path):
             rf = RandomForestClassifier(n_estimators = n_trees, n_jobs = n_threads,
                     oob_score = oob, verbose = verbose)
-            rf.fit( features, labels.astype(np.uint32).ravel() )
+            rf.fit( features.astype('float32'), labels.astype('uint32').ravel() )
             if oob:
                 oob_err = 1. - rf.oob_score_
                 print "Random Forest was trained with OOB Error:", oob_err

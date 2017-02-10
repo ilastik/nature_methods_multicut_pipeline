@@ -307,41 +307,6 @@ class DataSet(object):
     # however the way cutouts are implemented right now, we need to do it like this...
 
 
-    # toplevel convenience function for features
-    # aggregates all the features given in feature list:
-    # possible valus: "raw" -> edge features from raw_data
-    # "prob" -> edge features from probability maps
-    # "reg"  -> features from region statistics
-    # "topo" -> topological features
-    def local_feature_aggregator(self,
-            seg_id,
-            feature_list,
-            anisotropy_factor = 1.,
-            use_2d = False):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
-        for feat in feature_list:
-            assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo", "curve"), feat
-        features = []
-        if "raw" in feature_list:
-            features.append(self.edge_features(seg_id, 0, anisotropy_factor ))
-        if "prob" in feature_list:
-            features.append(self.edge_features(seg_id, 1, anisotropy_factor ))
-        if "affinities" in feature_list:
-            features.append(self.edge_features_from_affinity_maps(seg_id, 1, anisotropy_factor ))
-        if "extra_input" in feature_list:
-            features.append(self.edge_features(seg_id, 2, anisotropy_factor ))
-        if "reg" in feature_list:
-            features.append(self.region_features(seg_id, 0,
-                self._adjacent_segments(seg_id), False ) )
-        if "topo" in feature_list:
-            features.append(self.topology_features(seg_id, use_2d ))
-        if "curve" in feature_list:
-            features.append(self.curvature_features(seg_id))
-
-        return np.concatenate(features, axis = 1)
-
-
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
@@ -993,6 +958,8 @@ class DataSet(object):
         save_file = os.path.join(save_folder, save_name )
         vigra.writeHDF5(topology_features_names, save_file, "topology_features_names")
 
+        topology_features[np.isinf(topology_features)] = 0.
+        topology_features[np.isneginf(topology_features)] = 0.
         topology_features = np.nan_to_num(topology_features)
 
         return topology_features
