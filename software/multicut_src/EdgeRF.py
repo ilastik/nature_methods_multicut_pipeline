@@ -1,6 +1,5 @@
 import numpy as np
 import vigra
-import cPickle as pickle
 import os
 from functools import partial
 
@@ -9,8 +8,8 @@ from defect_handling import modified_edge_features, modified_region_features, mo
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume
 
-# TODO use vigra rf3 due to lower mem consumption and better parallelisation
-from sklearn.ensemble import RandomForestClassifier
+RandomForest = vigra.learning.RandomForest3
+
 
 # toplevel convenience function for features
 # aggregates all the features given in feature list:
@@ -189,15 +188,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     # str for all relevant params
     # TODO once we don't need caches any longer: str(arg) for arg in feature_list
-    paramstr = "_".join( [str(feature_list), str(exp_params.anisotropy_factor),
+    paramstr = "_".join( ["_".join(feature_list), str(exp_params.anisotropy_factor),
         str(exp_params.learn_2d), str(exp_params.learn_fuzzy),
         str(exp_params.n_trees), str(exp_params.negative_threshold),
         str(exp_params.positive_threshold), str(exp_params.use_2d),
         str(exp_params.use_ignore_mask)] )
-
-    rf_verbosity = 0
-    if exp_params.verbose:
-        rf_verbosity = 2
 
     # Only cache if we have a valid caching folder
     if cache_folder is not None:
@@ -216,9 +211,10 @@ def learn_and_predict_rf_from_gt(cache_folder,
         if not os.path.exists(pred_path):
             rf = learn_rf(cache_folder, trainstr, paramstr,
                     seg_id_train, features_train,
-                    labels_train, exp_params.n_trees, exp_params.n_threads, rf_verbosity)
+                    labels_train, exp_params.n_trees, exp_params.n_threads)
             # we only keep the second channel, because this corresponds to the probability for being a real membrane
-            pmem_test = rf.predict_proba( features_test )[:,1]
+            pmem_test = rf.predictProbabilities( features_test.astype('float32'),
+                n_threads = exp_params.n_threads)[:,1]
             vigra.writeHDF5(pmem_test, pred_path, "data")
         else:
             pmem_test = vigra.readHDF5(pred_path, "data")
@@ -226,9 +222,10 @@ def learn_and_predict_rf_from_gt(cache_folder,
     else:
         rf = learn_rf(cache_folder, trainstr, paramstr,
                 seg_id_train, features_train,
-                labels_train, exp_params.n_trees, exp_params.n_threads, rf_verbosity)
+                labels_train, exp_params.n_trees, exp_params.n_threads)
         # we only keep the second channel, because this corresponds to the probability for being a real membrane
-        pmem_test = rf.predict_proba( features_test )[:,1]
+        pmem_test = rf.predictProbabilities( features_test.astype('float32'),
+            n_threads = exp_params.n_threads)[:,1]
 
     return pmem_test
 
@@ -325,9 +322,10 @@ def learn_and_predict_anisotropic_rf(cache_folder,
     features_test_z  = feature_aggregator(ds_test, seg_id_test,
             feature_list = feature_list_z, use_2d = exp_params.use_2d)[edge_indications_test == 0]
 
-
-    pmem_xy = rf_xy.predict_proba( features_test_xy )[:,1]
-    pmem_z  = rf_z.predict_proba( features_test_z )[:,1]
+    pmem_xy = rf_xy.predictProbabilities( features_test_xy.astype('float32'),
+            n_threads = exp_params.n_threads)[:,1]
+    pmem_z  = rf_z.predictProbabilities( features_test_z.astype('float32'),
+            n_threads = exp_params.n_threads)[:,1]
 
     pmem_test = np.zeros_like( edge_indications_test)
     pmem_test[edge_indications_test == 1] = pmem_xy
@@ -343,34 +341,28 @@ def learn_rf(cache_folder, trainstr, paramstr, seg_id,
 
     # cache
     if cache_folder is not None:
-
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
-        rf_name = "rf_" + "_".join( [trainstr, paramstr] )
-
+        rf_name = "rf_" + "_".join( [trainstr, paramstr] ) + ".h5"
         if not os.path.exists(rf_folder):
             os.mkdir(rf_folder)
-
         rf_path   = os.path.join(rf_folder, rf_name)
-
         if not os.path.exists(rf_path):
-            rf = RandomForestClassifier(n_estimators = n_trees, n_jobs = n_threads,
-                    oob_score = oob, verbose = verbose)
-            rf.fit( features.astype('float32'), labels.astype('uint32').ravel() )
-            if oob:
-                oob_err = 1. - rf.oob_score_
-                print "Random Forest was trained with OOB Error:", oob_err
-            with open(rf_path, 'w') as f:
-                pickle.dump(rf, f)
+            rf = RandomForest(features.astype('float32'), labels.astype('uint32').ravel(),
+                treeCount = n_trees,
+                n_threads = n_threads)
+            # TODO expose OOB in vigra
+            #if oob:
+            #    oob_err = 1. - rf.oob_score_
+            #    print "Random Forest was trained with OOB Error:", oob_err
+            rf.writeHDF5(rf_path, 'data')
         else:
-            with open(rf_path, 'r') as f:
-                rf = pickle.load(f)
+            rf = RandomForest(rf_path, 'data')
     # no caching
     else:
-        rf = RandomForestClassifier(n_estimators = n_trees, n_jobs = n_threads,
-                oob_score = True, verbose = verbose)
-        rf.fit( features, labels.astype(np.uint32).ravel() )
-        oob = 1. - rf.oob_score_
-
-        print "Random Forest was trained with OOB Error:", oob
-
+        rf = RandomForest(features.astype('float32'), labels.astype('uint32').ravel(),
+            treeCount = n_trees,
+            n_threads = n_threads)
+        # TODO oob in vigra
+        #oob = 1. - rf.oob_score_
+        #print "Random Forest was trained with OOB Error:", oob
     return rf

@@ -1,6 +1,5 @@
 import vigra
 import os
-import cPickle as pickle
 
 import vigra.graphs as vgraph
 
@@ -10,9 +9,8 @@ import numpy
 #import scipy.ndimage
 from MCSolverImpl import *
 from Tools import *
-from sklearn.ensemble import RandomForestClassifier
 
-
+RandomForest = vigra.learning.RandomForest3
 
 def hessianEv(img, sigma):
     if img.squeeze().ndim  == 2:
@@ -518,17 +516,12 @@ def lifted_hard_gt(ds, segId, uvIds):
 #@cacher_hdf5(ignoreNumpyArrays=True)
 def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob = False):
 
-    if pipelineParam.verbose:
-        verbose = 2
-    else:
-        verbose = 0
-
     rf_save_folder = os.path.join(pipelineParam.rf_cache_folder,"lifted_rfs" )
     if not os.path.exists(rf_save_folder):
         os.mkdir(rf_save_folder)
 
     rf_save_path = os.path.join(rf_save_folder,
-            "rf_trainsets_" + "_".join([ds.ds_name for ds in trainSets]) + ".pkl")
+            "rf_trainsets_" + "_".join([ds.ds_name for ds in trainSets]) + ".h5")
 
     pred_save_folder = os.path.join(rf_save_folder, "predictions")
     if not os.path.exists(pred_save_folder):
@@ -542,24 +535,21 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
     else:
 
         if os.path.exists(rf_save_path):
-            with open(rf_save_path,'r') as f:
-                rf = pickle.load(f)
+            rf  = RandomForest(rf_save_path, 'data')
 
         else:
-            rf = RandomForestClassifier(n_estimators = pipelineParam.n_trees,
-                n_jobs=pipelineParam.n_threads_lifted, oob_score=oob, verbose = verbose,
-                min_samples_leaf = 10, max_depth = 10 )
-            rf.fit(X, Y.astype('uint32'))
-            print "Trained RF on lifted edges:"
-            if oob:
-                print "OOB-Error:", 1. - rf.oob_score_
-            with open(rf_save_path,'w') as f:
-                pickle.dump(rf,f)
+            rf = RandomForest(X, Y.astype('uint32'),
+                treeCount = pipelineParam.n_trees,
+                n_threads = pipelineParam.n_threads,
+                max_depth = 10 )
+            #print "Trained RF on lifted edges:" #TODO expose oob in vigra
+            #if oob:
+            #    print "OOB-Error:", 1. - rf.oob_score_
+            rf.writeHDF5(rf_save_path, 'data')
 
-        pTest = rf.predict_proba(F)[:,1]
+        pTest = rf.predictProbabilities(F.astype('float32'), n_threads = pipelineParam.n_threads)[:,1]
         vigra.writeHDF5(pTest,pred_save_path,'data')
         return pTest
-
 
 
 def learn_and_predict_lifted(trainsets, dsTest,
