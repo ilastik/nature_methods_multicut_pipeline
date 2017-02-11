@@ -12,28 +12,6 @@ from Tools import *
 
 RandomForest = vigra.learning.RandomForest3
 
-def hessianEv(img, sigma):
-    if img.squeeze().ndim  == 2:
-        return vigra.filters.hessianOfGaussianEigenvalues(img, sigma)[:,:,0]
-    else:
-        out = numpy.zeros(img.shape, dtype='float32')
-        for z in range(img.shape[2]):
-            out[:, :, z] = vigra.filters.hessianOfGaussianEigenvalues(img[:,:,z], sigma)[:,:,0]
-        return out
-
-
-
-def gaussianSmooth(img, sigma):
-    if img.squeeze().ndim  == 2:
-        return vigra.filters.gaussianSmoothing(img, sigma)
-    else:
-        out = numpy.zeros(img.shape, dtype='float32')
-        for z in range(img.shape[2]):
-            out[:, :, z] = vigra.filters.gaussianSmoothing(img[:,:,z], sigma)
-        return out
-
-
-
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is_perturb_and_map ):
@@ -120,6 +98,9 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is
 
     return numpy.nan_to_num(allFeat)
 
+#
+# Multicut features
+#
 
 # TODO we might even loop over different solver here ?! -> nifty greedy ?!
 @cacher_hdf5(ignoreNumpyArrays=True)
@@ -237,7 +218,6 @@ def compute_lifted_feature_multiple_segmentations(ds, trainsets, referenceSegId,
     mcStates = numpy.concatenate(allFeat, axis=1)
     stateSum = numpy.sum(mcStates,axis=1)
     return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
-
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)

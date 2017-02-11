@@ -153,7 +153,7 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
     return run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
 
 
-# multicut on the test dataset, weights learned with a rf on the train dataset
+# lifted multicut on the test dataset, weights learned with a rf on the train dataset
 def lifted_multicut_workflow(ds_train, ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, feature_list_lifted,
@@ -172,7 +172,6 @@ def lifted_multicut_workflow(ds_train, ds_test,
     #) step one, train a random forest
     print "Start learning"
 
-
     pTestLifted, uvIds, nzTest = learn_and_predict_lifted(
             ds_train, ds_test,
             seg_id_train, seg_id_test,
@@ -190,7 +189,6 @@ def lifted_multicut_workflow(ds_train, ds_test,
             pTestLocal, seg_id_test, mc_params)
 
     # lifted energies
-
     if weight_z_lifted:
         # node z to edge z distance
         edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )
@@ -228,7 +226,13 @@ def lifted_multicut_workflow(ds_train, ds_test,
 
     print "optimize"
     nodeLabels = optimizeLifted(ds_test, model, rag, starting_point)
-
     edgeLabels = nodeLabels[rag.uvIds()[:,0]]!=nodeLabels[rag.uvIds()[:,1]]
-
     return nodeLabels, edgeLabels, -14, 100
+
+
+# lifted multicut on the test dataset, weights learned with a rf on the train dataset
+def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
+        seg_id_train, seg_id_test,
+        feature_list_local, feature_list_lifted,
+        mc_params, gamma = 1., warmstart = False, weight_z_lifted = True):
+    pass

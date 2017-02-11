@@ -618,9 +618,9 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bin
 #
 
 # TODO modified features, need to figure out how to do this exactly ...
-def _get_replace_slices(slice_list):
+def _get_replace_slices(defected_slices, shape):
     # find consecutive slices with defects
-    consecutive_defects = np.split(slice_list, np.where(np.diff(defected_slices) != 1)[0] + 1)
+    consecutive_defects = np.split(defected_slices, np.where(np.diff(defected_slices) != 1)[0] + 1)
     # find the replace slices for defected slices
     replace_slice = {}
     for consec in consecutive_defects:
@@ -647,9 +647,15 @@ def _get_replace_slices(slice_list):
     return replace_slice
 
 
-def postprocess_segmentation(seg_result, slice_list):
-    pass
-
+def postprocess_segmentation(ds, seg_id, seg_result, n_bins, bin_threshold):
+    defect_nodes = defects_to_nodes(ds, seg_id, n_bins, bin_threshold)
+    mid = defect_nodes.shape[0] / 2
+    defect_slices = np.unique(defect_nodes[mid:])
+    replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
+    for defect_slice in defect_slices:
+        replace = replace_slices[defect_slice]
+        seg_result[:,:,defect_slice] = seg_result[:,:,replace]
+    return seg_result
 
 def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
     replace_slices = _get_replace_slices(slice_list)
