@@ -528,7 +528,10 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
             rf.writeHDF5(rf_save_path, 'data')
 
         pTest = rf.predictProbabilities(F.astype('float32'), n_threads = pipelineParam.n_threads)[:,1]
+        pTest /= rf.treeCount()
         vigra.writeHDF5(pTest,pred_save_path,'data')
+        # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
+        pTest[np.isnan(pTest)] = .5
         return pTest
 
 

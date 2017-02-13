@@ -120,7 +120,6 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
         print "Weights learned on multiple Datasets"
     print "with solver", mc_params.solver
     # get edge probabilities from random forest
-    # TODO defect features
     if use_2_rfs:
         print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
         edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,

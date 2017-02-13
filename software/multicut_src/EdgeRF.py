@@ -198,7 +198,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     if cache_folder is not None:
 
         pred_folder = os.path.join(cache_folder, "pred_" + trainstr)
-        pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr])
+        pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
 
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)
@@ -215,7 +215,14 @@ def learn_and_predict_rf_from_gt(cache_folder,
             # we only keep the second channel, because this corresponds to the probability for being a real membrane
             pmem_test = rf.predictProbabilities( features_test.astype('float32'),
                 n_threads = exp_params.n_threads)[:,1]
+            pmem_test /= rf.treeCount()
             vigra.writeHDF5(pmem_test, pred_path, "data")
+            # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
+            pmem_test[np.isnan(pmem_test)] = .5
+            #assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
+            #if np.isnan(pmem_test).any():
+            #    import ipdb
+            #    ipdb.set_trace()
         else:
             pmem_test = vigra.readHDF5(pred_path, "data")
 
@@ -230,6 +237,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     return pmem_test
 
 
+# TODO implement caching
 # set cache folder to None if you dont want to cache the result
 def learn_and_predict_anisotropic_rf(cache_folder,
         trainsets, ds_test,
@@ -330,6 +338,9 @@ def learn_and_predict_anisotropic_rf(cache_folder,
     pmem_test = np.zeros_like( edge_indications_test)
     pmem_test[edge_indications_test == 1] = pmem_xy
     pmem_test[edge_indications_test == 0] = pmem_z
+    pmem_test /= rf_xy.treeCount()
+    # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
+    pmem_test[np.isnan(pmem_test)] = .5
 
     return pmem_test
 
