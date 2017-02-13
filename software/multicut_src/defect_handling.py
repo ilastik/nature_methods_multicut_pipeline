@@ -322,7 +322,7 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         for path in filter_paths:
             with h5py.File(path) as f:
                 filt_ds = f['data']
-                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_dn][:,:,None]],axis=2)
+                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_up][:,:,None]],axis=2)
             if len(filt.shape) == 3:
                 gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag_local.baseGraph, filt)
                 edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
@@ -427,12 +427,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_
     region_centers = node_features[:,n_stat_feats:]
     sU = region_centers[skip_edges[:,0],:]
     sV = region_centers[skip_edges[:,1],:]
-    print sU.shape, sV.shape
-
     skip_center_feats = np.c_[(sU - sV)**2, skip_ranges]
-
-    print skip_stat_feats.shape
-    print skip_center_feats.shape
 
     assert skip_center_feats.shape[0] == skip_stat_feats.shape[0]
     skip_features = np.concatenate([skip_stat_feats, skip_center_feats], axis = 1)

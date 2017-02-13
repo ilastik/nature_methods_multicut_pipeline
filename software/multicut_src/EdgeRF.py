@@ -219,7 +219,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
             vigra.writeHDF5(pmem_test, pred_path, "data")
             # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
             pmem_test[np.isnan(pmem_test)] = .5
-            #assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
+            assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
             #if np.isnan(pmem_test).any():
             #    import ipdb
             #    ipdb.set_trace()
