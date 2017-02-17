@@ -4,7 +4,7 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume
 
@@ -116,6 +116,12 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
     features_train = []
     labels_train   = []
+
+    if with_defects:
+        features_skip = []
+        labels_skip   = []
+
+    # TODO different classifier for
     for cutout in trainsets:
 
         assert isinstance(cutout, DataSet)
@@ -123,9 +129,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         features_cut = feature_aggregator( cutout, seg_id_train )
 
+        n_edges = features_cut.shape[0]
         if exp_params.learn_fuzzy:
+            print "Nooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
             if with_defects:
-                raise AttributeError("Fuzzy learning not supported ford defect pipeline yet")
+                raise AttributeError("Fuzzy learning not supported for defect pipeline yet")
             labels_cut = cutout.edge_gt_fuzzy(seg_id_train,
                     exp_params.positive_threshold, exp_params.negative_threshold)
         else:
@@ -136,13 +144,15 @@ def learn_and_predict_rf_from_gt(cache_folder,
         # we set all labels that are going to be ignored to 0.5
 
         # set ignore mask to 0.5
-        if exp_params.use_ignore_mask and not with_defects: # ignore mask not yet supported for defect pipeline
+        if exp_params.use_ignore_mask: # ignore mask not yet supported for defect pipeline
+            raise AttributeError("Ignore mask not supported for defect pipeline yet")
             ignore_mask = cutout.ignore_mask(seg_id_train)
             assert ignore_mask.shape[0] == labels_cut.shape[0]
             labels_cut[ ignore_mask ] = 0.5
 
         # set z edges to 0.5
         if exp_params.learn_2d:
+            raise AttributeError("2d learning not supported for defect pipeline yet")
             edge_indications = modified_edge_indications(cutout, seg_id_train) if with_defects else cutout.edge_indications(seg_id_train)
             labels_cut[edge_indications == 0] = 0.5
 
@@ -168,17 +178,34 @@ def learn_and_predict_rf_from_gt(cache_folder,
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint8')
 
+        # FIXME this won't work if we have any of the masking things activated
+        if with_defects:
+            skip_transition = n_edges - get_skip_edges(cutout, seg_id_train, n_bins, bin_threshold).shape[0]
+            features_skip.append(features_cut[skip_transition:])
+            labels_skip.append(labels_cut[skip_transition:])
+            features_cut = features_cut[:skip_transition]
+            labels_cut = labels_cut[:skip_transition]
+
         features_train.append(features_cut)
         labels_train.append(labels_cut)
 
     features_train = np.concatenate(features_train)
     labels_train = np.concatenate(labels_train)
 
+    if with_defects:
+        features_skip = np.concatenate(features_skip)
+        labels_skip = np.concatenate(labels_skip)
+
     assert features_train.shape[0] == labels_train.shape[0]
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))
 
     features_test  = feature_aggregator( ds_test, seg_id_test )
     assert features_train.shape[1] == features_test.shape[1]
+
+    if with_defects:
+        skip_transition = features_test.shape[0] - get_skip_edges(ds_test, seg_id_test, n_bins, bin_threshold).shape[0]
+        features_test_skip = features_test[skip_transition:]
+        features_test = features_test[:skip_transition]
 
     # strings for caching
 
@@ -199,6 +226,8 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         pred_folder = os.path.join(cache_folder, "pred_" + trainstr)
         pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
+        if with_defects:
+            pred_name =  pred_name[:-3] + "_with_defects.h5"
 
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)
@@ -212,27 +241,52 @@ def learn_and_predict_rf_from_gt(cache_folder,
             rf = learn_rf(cache_folder, trainstr, paramstr,
                     seg_id_train, features_train,
                     labels_train, exp_params.n_trees, exp_params.n_threads)
-            # we only keep the second channel, because this corresponds to the probability for being a real membrane
+            if with_defects:
+                rf_skip = learn_rf(cache_folder, trainstr + "_defects", paramstr,
+                    seg_id_train, features_skip, labels_skip,
+                    exp_params.n_trees, exp_params.n_threads)
+
+                # we only keep the second channel, because this corresponds to the probability for being a real membrane
             pmem_test = rf.predictProbabilities( features_test.astype('float32'),
                 n_threads = exp_params.n_threads)[:,1]
+
+            if with_defects:
+                pmem_skip = rf_skip.predictProbabilities( features_test_skip.astype('float32'),
+                    n_threads = exp_params.n_threads)[:,1]
+                assert rf_skip.treeCount() == rf.treeCount()
+                pmem_test = np.concatenate([pmem_test, pmem_skip])
             pmem_test /= rf.treeCount()
+
             vigra.writeHDF5(pmem_test, pred_path, "data")
             # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
             pmem_test[np.isnan(pmem_test)] = .5
             assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
-            #if np.isnan(pmem_test).any():
-            #    import ipdb
-            #    ipdb.set_trace()
+            assert not np.isinf(pmem_test).any(), str(np.isinf(pmem_test).sum())
         else:
             pmem_test = vigra.readHDF5(pred_path, "data")
+            assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
 
     else:
         rf = learn_rf(cache_folder, trainstr, paramstr,
                 seg_id_train, features_train,
                 labels_train, exp_params.n_trees, exp_params.n_threads)
+        if with_defects:
+            rf_skip = learn_rf(cache_folder, trainstr + "_defects", paramstr,
+                seg_id_train, features_skip, labels_skip,
+                exp_params.n_trees, exp_params.n_threads)
         # we only keep the second channel, because this corresponds to the probability for being a real membrane
         pmem_test = rf.predictProbabilities( features_test.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
+
+        if with_defects:
+            pmem_skip = rf_skip.predictProbabilities( features_test_skip.astype('float32'),
+                n_threads = exp_params.n_threads)[:,1]
+            assert rf_skip.treeCount() == rf.treeCount()
+            pmem_test = np.concatenate([pmem_test, pmem_skip])
+        pmem_test /= rf.treeCount()
+        # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
+        pmem_test[np.isnan(pmem_test)] = .5
+        assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
 
     return pmem_test
 

@@ -535,15 +535,20 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
         return pTest
 
 
+# TODO integrate defect correction
 def learn_and_predict_lifted(trainsets, dsTest,
         segIdTrain, segIdTest,
         feature_list_lifted, feature_list_local,
-        pipelineParam ):
+        pipelineParam, with_defects = False,
+        n_bins = 0, bin_threshold = 0):
 
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list), type(trainsets)
 
     if not isinstance(trainsets, list):
         trainsets = [trainsets,]
+    if with_defects:
+        assert n_bins > 0
+        assert bin_threshold > 0
 
     featuresTrain = []
     labelsTrain   = []
@@ -637,7 +642,7 @@ def learn_and_predict_lifted(trainsets, dsTest,
 
 
 
-def optimizeLifted(dsTest, model, rag, starting_point = None):
+def optimizeLifted(dsTest, model, starting_point = None):
     print "Optimizing lifted model"
 
     # if no starting point is given, start with ehc solver

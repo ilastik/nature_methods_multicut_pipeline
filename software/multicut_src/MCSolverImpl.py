@@ -13,8 +13,9 @@ import sys
 ###
 
 # calculate the energies for the multicut from membrane probabilities
+# the last argument is only for caching correctly with different feature combinations
 @cacher_hdf5(ignoreNumpyArrays=True)
-def probs_to_energies(ds, edge_probs, seg_id, exp_params):
+def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
@@ -66,7 +67,7 @@ def lifted_probs_to_energies(ds, edge_probs, edgeZdistance,
 
 # weight z edges with their area
 def weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):
-    assert edge_areas.shape[0] == edge_energies.shape[0]
+    assert edge_areas.shape[0] == edge_energies.shape[0], "%s, %s" % (str(edge_areas.shape), str(edge_energies.shape))
     assert edge_indications.shape[0] == edge_energies.shape[0]
 
     energies_return = np.zeros_like(edge_energies)

@@ -130,6 +130,7 @@ def get_skip_starts(ds, seg_id, n_bins, bin_threshold):
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id, n_bins, bin_threshold)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
+# TODO TODO TODO debug
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
     node_res = defects_to_nodes(ds, seg_id, n_bins, bin_threshold)
@@ -340,13 +341,18 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
         # FIXME horrible loop....
         keep_indices = []
-        for uv in uvs_local:
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
-            if where_uv[0].size:
+        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
+        found = 0
+        for i, uv in enumerate(uvs_local):
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
+            if where_uv.size:
                 assert where_uv[0].size == 1
-                keep_indices.append(where_uv[0][0])
-        keep_indices = np.sort(keep_indices)
-        features.append(target_features[keep_indices])
+                keep_indices.append(i)
+                to_skip_edges[where_uv[0]] = found
+                found += 1
+        assert len(keep_indices) == skip_edge_pairs.shape[0]
+        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
+        features.append(target_features[keep_indices][to_skip_edges])
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
 
@@ -367,7 +373,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
     seg = ds.seg(seg_id)
     lower_slices  = np.unique(skip_starts)
     skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
-    skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
     target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
 
     # calculate the volume filters for the given input
@@ -501,16 +507,20 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
         # FIXME horrible loop....
         keep_indices = []
-        for uv in uvs_local:
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
-            if where_uv[0].size:
+        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
+        found = 0
+        for i, uv in enumerate(uvs_local):
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
+            if where_uv.size:
                 assert where_uv[0].size == 1
-                keep_indices.append(where_uv[0][0])
-        keep_indices = np.sort(keep_indices)
-        features.append(target_features[keep_indices])
+                keep_indices.append(i)
+                to_skip_edges[where_uv[0]] = found
+                found += 1
+        assert len(keep_indices) == skip_edge_pairs.shape[0]
+        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
+        features.append(target_features[keep_indices][to_skip_edges])
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
-
 
 
 @cacher_hdf5(folder="feature_folder")
@@ -564,8 +574,10 @@ def modified_mc_problem(ds, seg_id, n_bins, bin_threshold):
     n_var = ds.seg(seg_id).max() + 1
     return n_var, modified_uv_ids
 
+
+# the last argument is only for caching results with different features correctly
 @cacher_hdf5(ignoreNumpyArrays=True)
-def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bins, bin_threshold):
+def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bins, bin_threshold, feat_cache):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
