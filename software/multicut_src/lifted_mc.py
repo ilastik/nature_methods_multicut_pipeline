@@ -8,13 +8,17 @@ import graph as agraph
 import numpy
 #import scipy.ndimage
 from MCSolverImpl import *
-from Tools import *
+from Tools import cacher_hdf5
+from EdgeRF import learn_and_predict_rf_from_gt
+
+from defect_handling import modified_mc_problem
 
 RandomForest = vigra.learning.RandomForest3
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is_perturb_and_map ):
+def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
+        is_perturb_and_map = False, with_defects = False, n_bins = 0, bin_threshold = 0 ):
 
     print "Computing clustering features for lifted neighborhood", liftedNeighborhood
     if is_perturb_and_map:
@@ -22,7 +26,12 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood, is
     else:
         print "For normal clustering"
 
-    originalGraph =  ds._rag(segId)
+    if with_defects:
+        n_nodes, uvs_local = modified_mc_problem(ds, seg_id, n_bins, bin_threshold)
+        originalGraph = vgraph.listGraph(n_nodes)
+        originalGraph.addEdges(uvs_local)
+    else:
+        originalGraph = ds._rag(segId)
     extraUV = numpy.require(extraUV,dtype='uint32')
     uvOriginal = originalGraph.uvIds()
     liftedGraph =  vgraph.listGraph(originalGraph.nodeNum)
@@ -407,25 +416,27 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
 
 
 def lifted_feature_aggregator(ds, trainsets, featureList, featureListLocal,
-        pLocal, pipelineParam, uvIds, segId ):
+        pLocal, pipelineParam, uvIds, segId,
+        with_defects, n_bins, bin_threshold):
 
     assert len(featureList) > 0
     for feat in featureList:
         assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
 
     features = []
-    if "mc" in featureList:
+    if "mc" in featureList: # TODO make defect proof
         features.append( compute_lifted_feature_multicut(ds, segId,
             pLocal, pipelineParam, uvIds, pipelineParam.lifted_neighborhood) )
-    if "perturb" in featureList:
+    if "perturb" in featureList:# TODO make defect proof
         features.append( compute_lifted_feature_pmap_multicut(ds, segId,
             pLocal, pipelineParam, uvIds, pipelineParam.lifted_neighborhood) )
     if "cluster" in featureList:
         features.append( clusteringFeatures(ds, segId,
-            uvIds, pLocal, pipelineParam.lifted_neighborhood, False ) )
-    if "reg" in featureList:
+            uvIds, pLocal, pipelineParam.lifted_neighborhood, False,
+            with_defects, n_bins, bin_threshold) )
+    if "reg" in featureList: # this should be defect proof without any adjustments!
         features.append( ds.region_features(segId, 0, uvIds, pipelineParam.lifted_neighborhood) )
-    if "multiseg" in featureList:
+    if "multiseg" in featureList:# TODO make defect proof
         features.append( compute_lifted_feature_multiple_segmentations(ds, trainsets, segId, featureListLocal, uvIds, pipelineParam) )
 
     for feat in features:
@@ -436,11 +447,19 @@ def lifted_feature_aggregator(ds, trainsets, featureList, featureListLocal,
 
 
 @cacher_hdf5()
-def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood):
+def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = False, n_bins = 0, bin_threshold = 0):
 
-    rag = ds._rag(segId)
-    originalGraph = agraph.Graph(rag.nodeNum)
-    originalGraph.insertEdges(rag.uvIds())
+    if with_defects:
+        assert n_bins > 0
+        assert bin_threshold > 0
+        n_nodes, uvs_local = modified_mc_problem(ds, segId, n_bins, bin_threshold)
+    else:
+        rag = ds._rag(segId)
+        n_nodes = rag.nodeNum
+        uvs_local = rag.uvIds()
+
+    originalGraph = agraph.Graph(n_nodes)
+    originalGraph.insertEdges(uvs_local)
 
     print ds.ds_name
     print "Computing lifted neighbors for range:", liftedNeighborhood
@@ -518,7 +537,7 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
             rf  = RandomForest(rf_save_path, 'data')
 
         else:
-            rf = RandomForest(X, Y.astype('uint32'),
+            rf = RandomForest(X.astype('float32'), Y.astype('uint32'),
                 treeCount = pipelineParam.n_trees,
                 n_threads = pipelineParam.n_threads,
                 max_depth = 10 )
@@ -529,13 +548,13 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
 
         pTest = rf.predictProbabilities(F.astype('float32'), n_threads = pipelineParam.n_threads)[:,1]
         pTest /= rf.treeCount()
-        vigra.writeHDF5(pTest,pred_save_path,'data')
         # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
         pTest[np.isnan(pTest)] = .5
+        assert not np.isnan(pTest).any(), str(np.isnan(pTest).sum())
+        vigra.writeHDF5(pTest,pred_save_path,'data')
         return pTest
 
 
-# TODO integrate defect correction
 def learn_and_predict_lifted(trainsets, dsTest,
         segIdTrain, segIdTest,
         feature_list_lifted, feature_list_local,
@@ -553,7 +572,8 @@ def learn_and_predict_lifted(trainsets, dsTest,
     featuresTrain = []
     labelsTrain   = []
 
-    uvIdsTest = compute_and_save_lifted_nh(dsTest, segIdTest, pipelineParam.lifted_neighborhood)
+    uvIdsTest = compute_and_save_lifted_nh(dsTest, segIdTest, pipelineParam.lifted_neighborhood,
+        with_defects, n_bins, bin_threshold)
     nzTest  = node_z_coord(dsTest, segIdTest)
     for dsTrain in trainsets:
 
@@ -565,12 +585,18 @@ def learn_and_predict_lifted(trainsets, dsTest,
             segIdTrain,
             segIdTrain,
             feature_list_local,
-            pipelineParam)
+            pipelineParam,
+            with_defects,
+            n_bins,
+            bin_threshold)
 
         uvIdsTrain = compute_and_save_lifted_nh(
             dsTrain.get_cutout(1),
             segIdTrain,
-            pipelineParam.lifted_neighborhood)
+            pipelineParam.lifted_neighborhood,
+            with_defects,
+            n_bins,
+            bin_threshold)
 
         nzTrain = node_z_coord(dsTrain.get_cutout(1), segIdTrain)
 
@@ -583,12 +609,17 @@ def learn_and_predict_lifted(trainsets, dsTest,
             pLocalTrain,
             pipelineParam,
             uvIdsTrain,
-            segIdTrain)
+            segIdTrain,
+            with_defects,
+            n_bins,
+            bin_threshold)
 
         dsTrain = dsTrain.get_cutout(1)
         labels, nodeGt = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
 
         if pipelineParam.use_ignore_mask:
+            if with_defects:
+                raise AttributeError("Ignore mask not supported for pipeline with defect correction, yet")
             ignoreMask = dsTrain.lifted_ignore_mask(
                 segIdTrain,
                 pipelineParam.lifted_neighborhood,
@@ -601,6 +632,8 @@ def learn_and_predict_lifted(trainsets, dsTest,
 
         #where in plane
         if pipelineParam.learn_2d:
+            if with_defects:
+                raise AttributeError("2d learning not supported for pipeline with defect correction, yet")
             ignoreMask = (zU != zV)
             labels[ignoreMask] = 0.5
 
@@ -623,23 +656,17 @@ def learn_and_predict_lifted(trainsets, dsTest,
     pLocalTest = learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
         [dsTrain.get_cutout(i) for i in (0,2) for dsTrain in trainsets], dsTest,
         segIdTrain, segIdTest,
-        feature_list_local, pipelineParam)
+        feature_list_local, pipelineParam,
+        with_defects, n_bins, bin_threshold)
 
     fTest = lifted_feature_aggregator(dsTest,
             [dsTrain.get_cutout(i) for i in (0,2) for dsTrain in trainsets],
                 feature_list_lifted, feature_list_local,
-                pLocalTest, pipelineParam, uvIdsTest, segIdTest)
+                pLocalTest, pipelineParam, uvIdsTest, segIdTest,
+                with_defects, n_bins, bin_threshold)
 
     pTest = doActualTrainingAndPrediction(trainsets, dsTest, featuresTrain, labelsTrain, fTest, pipelineParam)
-
-    #featuresTrain = np.zeros(10)
-    #labelsTrain = np.zeros(10)
-    #fTest = np.zeros(10)
-    #pTest = doActualTrainingAndPrediction(dsTest, featuresTrain, labelsTrain, fTest, pipelineParam)
-
     return pTest, uvIdsTest, nzTest
-
-
 
 
 def optimizeLifted(dsTest, model, starting_point = None):

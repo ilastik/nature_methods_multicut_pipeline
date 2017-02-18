@@ -417,7 +417,6 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_
 
     #del extracted_features
 
-    print node_features.shape
     n_stat_feats = 17 # magic_nu...
     region_stats = node_features[:,:n_stat_feats]
 

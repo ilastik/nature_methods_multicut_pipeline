@@ -60,6 +60,9 @@ def local_feature_aggregator_with_defects(ds,
         anisotropy_factor = 1.,
         use_2d = False):
 
+    if ds.ignore_defects:
+        return local_feature_aggregator(seg_id, feature_list, anisotropy_factor, use_2d)
+
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
     assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
     for feat in feature_list:
@@ -124,6 +127,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
     # TODO different classifier for
     for cutout in trainsets:
 
+        changed_defect_status = False
+        if with_defects and cutout.ignore_defects:
+            with_defects = False
+            changed_defect_status = True
+
         assert isinstance(cutout, DataSet)
         assert cutout.has_gt
 
@@ -131,7 +139,6 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         n_edges = features_cut.shape[0]
         if exp_params.learn_fuzzy:
-            print "Nooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
             if with_defects:
                 raise AttributeError("Fuzzy learning not supported for defect pipeline yet")
             labels_cut = cutout.edge_gt_fuzzy(seg_id_train,
@@ -188,6 +195,9 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         features_train.append(features_cut)
         labels_train.append(labels_cut)
+
+        if changed_defect_status:
+            with_defects = True
 
     features_train = np.concatenate(features_train)
     labels_train = np.concatenate(labels_train)
@@ -260,11 +270,9 @@ def learn_and_predict_rf_from_gt(cache_folder,
             vigra.writeHDF5(pmem_test, pred_path, "data")
             # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
             pmem_test[np.isnan(pmem_test)] = .5
-            assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
-            assert not np.isinf(pmem_test).any(), str(np.isinf(pmem_test).sum())
         else:
             pmem_test = vigra.readHDF5(pred_path, "data")
-            assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
+            pmem_test[np.isnan(pmem_test)] = .5
 
     else:
         rf = learn_rf(cache_folder, trainstr, paramstr,
@@ -286,8 +294,10 @@ def learn_and_predict_rf_from_gt(cache_folder,
         pmem_test /= rf.treeCount()
         # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
         pmem_test[np.isnan(pmem_test)] = .5
-        assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
 
+    assert pmem_test.max() <= 1.
+    assert not np.isnan(pmem_test).any(), str(np.isnan(pmem_test).sum())
+    assert not np.isinf(pmem_test).any(), str(np.isinf(pmem_test).sum())
     return pmem_test
 
 

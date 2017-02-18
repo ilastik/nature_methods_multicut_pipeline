@@ -249,8 +249,8 @@ def lifted_multicut_workflow(ds_train, ds_test,
 def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, feature_list_lifted,
-        n_bins, bin_threshold,
-        mc_params, gamma = 1., warmstart = False, weight_z_lifted = True):
+        mc_params, n_bins, bin_threshold,
+        gamma = 1., warmstart = False, weight_z_lifted = True):
 
     assert isinstance(ds_test, DataSet)
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
@@ -278,14 +278,14 @@ def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
         feature_list_local, mc_params,
         True, n_bins, bin_threshold)
 
-    feat_str = _get_feat_str(feature_list_local)
     # energies for the multicut
     n_var_mc, uv_ids_local = modified_mc_problem(ds_test, seg_id_test, n_bins, bin_threshold)
     # energies for the multicut
     edge_energies_local = modified_probs_to_energies(ds_test,
-            edge_probs, seg_id_test, uv_ids,
+            pTestLocal, seg_id_test, uv_ids_local,
             mc_params, n_bins, bin_threshold,
-            _get_feat_str(feature_list))
+            _get_feat_str(feature_list_local))
+    assert not np.isnan(edge_energies_local).any()
 
     # lifted energies
     # TODO defect correction
@@ -297,6 +297,7 @@ def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
     else:
         edge_energies_lifted = lifted_probs_to_energies(ds_test,
             pTestLifted, None, gamma = gamma, betaGlobal = mc_params.beta_global)
+    assert not np.isnan(edge_energies_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
