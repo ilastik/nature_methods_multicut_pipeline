@@ -130,9 +130,11 @@ def get_skip_starts(ds, seg_id, n_bins, bin_threshold):
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id, n_bins, bin_threshold)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
-# TODO TODO TODO debug
+
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
+    if ds.ignore_defects:
+        return np.array([0])
     node_res = defects_to_nodes(ds, seg_id, n_bins, bin_threshold)
     # need to split into defect nodes and node_z
     mid = node_res.shape[0] / 2
@@ -284,6 +286,8 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
 @cacher_hdf5()
 def modified_edge_indications(ds, seg_id, n_bins, bin_threshold):
     modified_indications = ds.edge_indications(seg_id)
+    if ds.ignore_defects:
+        return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
     modified_indications = np.delete(modified_indications, delete_edges)
@@ -293,6 +297,8 @@ def modified_edge_indications(ds, seg_id, n_bins, bin_threshold):
 @cacher_hdf5()
 def modified_edge_gt(ds, seg_id, n_bins, bin_threshold):
     modified_edge_gt = ds.edge_gt(seg_id)
+    if ds.ignore_defects:
+        return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
     modified_edge_gt = np.delete(modified_edge_gt, delete_edges)
@@ -360,6 +366,8 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_threshold):
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
+    if ds.ignore_defects:
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_starts  = get_skip_starts(ds, seg_id, n_bins, bin_threshold)
@@ -400,6 +408,10 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_threshold):
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
+    if ds.ignore_defects:
+        modified_features = np.c_[modified_features,
+                np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
@@ -525,6 +537,8 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges, n_bins, bin_threshold):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
+    if ds.ignore_defects:
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
@@ -564,6 +578,11 @@ def modified_topology_features(ds, seg_id, use_2d_edges, n_bins, bin_threshold):
 #
 
 def modified_mc_problem(ds, seg_id, n_bins, bin_threshold):
+    if ds.ignore_defects:
+        uvs = ds._adjacent_segments(seg_id)
+        nvar= np.max(uvs)+1
+        return nvar, uvs
+
     modified_uv_ids = ds._adjacent_segments(seg_id)
     skip_edges   = np.sort( get_skip_edges(ds, seg_id, n_bins, bin_threshold), axis = 1)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)

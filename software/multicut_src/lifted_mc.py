@@ -27,7 +27,7 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
         print "For normal clustering"
 
     if with_defects:
-        n_nodes, uvs_local = modified_mc_problem(ds, seg_id, n_bins, bin_threshold)
+        n_nodes, uvs_local = modified_mc_problem(ds, segId, n_bins, bin_threshold)
         originalGraph = vgraph.listGraph(n_nodes)
         originalGraph.addEdges(uvs_local)
     else:
@@ -463,11 +463,11 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = Fal
 
     print ds.ds_name
     print "Computing lifted neighbors for range:", liftedNeighborhood
-    lm= agraph.liftedMcModel(originalGraph)
+    lm = agraph.liftedMcModel(originalGraph)
     agraph.addLongRangeNH(lm , liftedNeighborhood)
     uvIds = lm.liftedGraph().uvIds()
 
-    return uvIds[rag.edgeNum:,:]
+    return uvIds[uvs_local.shape[0]:,:]
 
 
 @cacher_hdf5()
@@ -499,7 +499,8 @@ def lifted_fuzzy_gt(ds, segId, uvIds):
 
     return fuzzyLiftedGt
 
-#@cacher_hdf5(ignoreNumpyArrays=True)
+
+@cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, segId, uvIds):
 
     rag = ds._rag(segId)
@@ -507,7 +508,7 @@ def lifted_hard_gt(ds, segId, uvIds):
     nodeGt,_ =  rag.projectBaseGraphGt(gt)
     labels   = (nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]]).astype('float32')
 
-    return labels, nodeGt
+    return labels
 
 
 # TODO we should cache this for rerunning experiments
@@ -615,11 +616,9 @@ def learn_and_predict_lifted(trainsets, dsTest,
             bin_threshold)
 
         dsTrain = dsTrain.get_cutout(1)
-        labels, nodeGt = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
+        labels = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
 
         if pipelineParam.use_ignore_mask:
-            if with_defects:
-                raise AttributeError("Ignore mask not supported for pipeline with defect correction, yet")
             ignoreMask = dsTrain.lifted_ignore_mask(
                 segIdTrain,
                 pipelineParam.lifted_neighborhood,

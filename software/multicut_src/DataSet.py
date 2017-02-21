@@ -232,7 +232,7 @@ class DataSet(object):
             assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
             gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
-        gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
+        #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         save_path = os.path.join(self.cache_folder,"gt.h5")
         vigra.writeHDF5(gt, save_path, "data", compression = self.compression)
         self.has_gt = True
@@ -1086,19 +1086,17 @@ class DataSet(object):
 
         return edge_overlaps
 
-
     # return mask that hides edges that lie between 2 superpixel
     # which are projected to an ignore label
     # -> we don t want to learn on these!
-    @cacher_hdf5()
-    def ignore_mask(self, seg_id):
+    @cacher_hdf5(ignoreNumpyArrays=True)
+    def ignore_mask(self, seg_id, uv_ids):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         #need the node gt to determine the gt val of superpixel
         rag = self._rag(seg_id)
         node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
         assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
-        uv_ids = self._adjacent_segments(seg_id)
         ignore_mask = np.zeros( rag.edgeNum, dtype = bool)
         for edge_id in xrange(rag.edgeNum):
             n0 = uv_ids[edge_id][0]

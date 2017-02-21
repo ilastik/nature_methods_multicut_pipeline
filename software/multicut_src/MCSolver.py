@@ -269,7 +269,7 @@ def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
             ds_train, ds_test,
             seg_id_train, seg_id_test,
             feature_list_lifted, feature_list_local,
-            mc_params)
+            mc_params, True, n_bins, bin_threshold)
 
     # get edge probabilities from random forest on the complete training set
     pTestLocal = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
@@ -288,7 +288,6 @@ def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
     assert not np.isnan(edge_energies_local).any()
 
     # lifted energies
-    # TODO defect correction
     if weight_z_lifted:
         # node z to edge z distance
         edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )

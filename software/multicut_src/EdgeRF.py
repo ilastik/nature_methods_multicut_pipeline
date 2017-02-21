@@ -4,7 +4,7 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume
 
@@ -59,9 +59,6 @@ def local_feature_aggregator_with_defects(ds,
         bin_threshold,
         anisotropy_factor = 1.,
         use_2d = False):
-
-    if ds.ignore_defects:
-        return local_feature_aggregator(seg_id, feature_list, anisotropy_factor, use_2d)
 
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
     assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -127,11 +124,6 @@ def learn_and_predict_rf_from_gt(cache_folder,
     # TODO different classifier for
     for cutout in trainsets:
 
-        changed_defect_status = False
-        if with_defects and cutout.ignore_defects:
-            with_defects = False
-            changed_defect_status = True
-
         assert isinstance(cutout, DataSet)
         assert cutout.has_gt
 
@@ -152,8 +144,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         # set ignore mask to 0.5
         if exp_params.use_ignore_mask: # ignore mask not yet supported for defect pipeline
-            raise AttributeError("Ignore mask not supported for defect pipeline yet")
-            ignore_mask = cutout.ignore_mask(seg_id_train)
+            if with_defects:
+                uv_ids, _ = modified_mc_problem(cutout, seg_id_train, n_bins, bin_threshold)
+            else:
+                uv_ids = cutout._adjacent_segments(seg_id_train)
+            ignore_mask = cutout.ignore_mask(seg_id_train, uv_ids)
             assert ignore_mask.shape[0] == labels_cut.shape[0]
             labels_cut[ ignore_mask ] = 0.5
 
@@ -186,7 +181,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         labels_cut   = labels_cut[labeled].astype('uint8')
 
         # FIXME this won't work if we have any of the masking things activated
-        if with_defects:
+        if with_defects and not cutout.ignore_defects:
             skip_transition = n_edges - get_skip_edges(cutout, seg_id_train, n_bins, bin_threshold).shape[0]
             features_skip.append(features_cut[skip_transition:])
             labels_skip.append(labels_cut[skip_transition:])
@@ -195,9 +190,6 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         features_train.append(features_cut)
         labels_train.append(labels_cut)
-
-        if changed_defect_status:
-            with_defects = True
 
     features_train = np.concatenate(features_train)
     labels_train = np.concatenate(labels_train)
@@ -355,8 +347,12 @@ def learn_and_predict_anisotropic_rf(cache_folder,
         # we set all labels that are going to be ignored to 0.5
 
         # set ignore mask to 0.5
-        if exp_params.use_ignore_mask and not with_defects: # ignore mask not yet supported for defects
-            ignore_mask = cut.ignore_mask(seg_id_train)
+        if exp_params.use_ignore_mask: # ignore mask not yet supported for defects
+            if with_defects:
+                uv_ids, _ = modified_mc_problem(cutout, seg_id_train, n_bins, bin_threshold)
+            else:
+                uv_ids = cutout._adjacent_segments(seg_id_train)
+            ignore_mask = cutout.ignore_mask(seg_id_train, uv_ids)
             assert ignore_mask.shape[0] == labels.shape[0]
             labels[ np.logical_not(ignore_mask) ] = 0.5
 
