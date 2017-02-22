@@ -168,8 +168,7 @@ class DataSet(object):
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        #seg = vigra.analysis.labelVolume(seg)
-        seg -= seg.min()
+        seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1
@@ -186,9 +185,7 @@ class DataSet(object):
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        seg = seg.astype('uint32')
-        seg = vigra.analysis.labelVolume(seg.astype(np.uint32))
-        seg -= seg.min()
+        seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1
@@ -214,6 +211,7 @@ class DataSet(object):
             gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
+        # also messes up defects in cremi...
         #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         #gt -= gt.min()
         save_path = os.path.join(self.cache_folder,"gt.h5")

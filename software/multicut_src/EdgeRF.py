@@ -195,8 +195,11 @@ def learn_and_predict_rf_from_gt(cache_folder,
     labels_train = np.concatenate(labels_train)
 
     if with_defects:
-        features_skip = np.concatenate(features_skip)
-        labels_skip = np.concatenate(labels_skip)
+        if features_skip:
+            features_skip = np.concatenate(features_skip)
+            labels_skip = np.concatenate(labels_skip)
+        else:
+            with_defects = False
 
     assert features_train.shape[0] == labels_train.shape[0]
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))

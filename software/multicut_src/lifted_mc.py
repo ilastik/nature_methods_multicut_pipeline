@@ -48,7 +48,6 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
     assert len(whereLifted) == nAdditionalEdges
     assert foundEdges.sum() == nAdditionalEdges
 
-
     allFeat = []
     eLen = vgraph.getEdgeLengths(originalGraph)
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
