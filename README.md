@@ -15,16 +15,8 @@ If you are interested in using Multicut for your data and cannot make it work wi
 
 ## Installation
 
-We provide precompiled binaries at http://files.ilastik.org/multicut/. Just unpack the appropriate file for your operating system (Linux, Windows, or Mac), and you are ready to go. The file [README.txt](https://github.com/ilastik/nature_methods_multicut_pipeline/blob/1.0/build/multicut_pipeline/TARBALL_README.txt) in the root directory of the unpacked binaries provides detailed usage instructions. 
+We provide precompiled binaries at http://files.ilastik.org/multicut/. Just unpack the appropriate file for your operating system (Linux, Windows, or Mac), link against CPLEX and you are ready to go.
 
-The multicut software was packaged with [conda](http://conda.pydata.org/docs/). If you are on Linux or Mac and want to modify the code, you can easily setup your own conda-based development environment (including dependencies) using:
-
-    $ conda create --name multicut-software --channel ilastik multicut_pipeline
-
-or add the multicut software to an existing environment `my-env` using:
-
-    $ conda install --name my-env --channel ilastik multicut_pipeline
-    
 To run the multicut solver you need to link against CPLEX:
 If you have CPLEX already installed on your machine, you can link to it to via calling the
 install-cplex-shared-libs.sh script:
@@ -34,7 +26,19 @@ install-cplex-shared-libs.sh script:
 If you don't have CPLEX installed yet, you must apply for an academic license, for
 details see the section Download IBM CPLEX under
 http://ilastik.org/documentation/basics/installation.html.
+
 Note that you need the academic version to solve any problem of reasonable size, the CPLEX community version is not sufficient.
+The file [README.txt](https://github.com/ilastik/nature_methods_multicut_pipeline/blob/1.0/build/multicut_pipeline/TARBALL_README.txt) in the root directory of the unpacked binaries provides detailed usage instructions. 
+
+The multicut software was packaged with [conda](http://conda.pydata.org/docs/). If you are on Linux or Mac and want to modify the code (and have CPLEX installed), you can easily setup your own conda-based development environment (including dependencies) using:
+
+    $ export CPLEX_ROOT_DIR=/path/to/cplex_dir
+    $ conda create --name multicut-software --channel ilastik multicut_pipeline
+
+or add the multicut software to an existing environment `my-env` using:
+
+    $ export CPLEX_ROOT_DIR=/path/to/cplex_dir
+    $ conda install --name my-env --channel ilastik multicut_pipeline
 
 The tarball of our binary distribution can be reproduced with the commands:
 
