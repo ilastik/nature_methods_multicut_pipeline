@@ -456,7 +456,6 @@ def lifted_feature_aggregator(ds, trainsets, featureList, featureListLocal,
     return numpy.concatenate( features, axis=1 )
 
 
-
 @cacher_hdf5()
 def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood):
 
@@ -471,6 +470,27 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood):
     uvIds = lm.liftedGraph().uvIds()
 
     return uvIds[rag.edgeNum:,:]
+
+
+# we assume that uv is consecutive
+#@cacher_hdf5()
+def compute_and_save_long_range_nh(uvIds, min_range):
+
+    originalGraph = agraph.Graph(uvIds.max()+1)
+    originalGraph.insertEdges(uvIds)
+
+    import itertools
+    uv_long_range = np.array(list(itertools.combinations(
+        np.arange(originalGraph.numberOfVertices()), 2)))
+
+    lm_short = agraph.liftedMcModel(originalGraph)
+    agraph.addLongRangeNH(lm_short , min_range)
+    uvs_short = lm_short.liftedGraph().uvIds()
+
+    # remove uvs_short from uv_long_range
+    # TODO
+
+    return uv_long_range
 
 
 @cacher_hdf5()
