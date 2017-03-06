@@ -165,7 +165,7 @@ def resolve_merges_with_lifted_edges(
         uv_ids_lifted_min_nh = []
 
         # TODO: Playground
-        feature_images[0].compute_children(path_to_parent='', n_threads=10)
+        feature_images[0].compute_children(path_to_parent='', n_threads=3)
 
         # TODO: Compute the paths from the centers of mass of the pairs list
         # -------------------------------------------------------------

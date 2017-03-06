@@ -370,10 +370,21 @@ class FeatureImages(FeatureFunctions):
         #         # Or maybe it was not yet computed
         #         return self.compute_feature(path_to_feature)
 
-    def compute_children(self, path_to_parent='', n_threads=10):
+    def compute_children(self, path_to_parent='', n_threads=10, parallelize=True):
+        """
+        Caches all child features of the specified parent
+        To cache all feature images set path_to_parent='' (default)
+        :param path_to_parent:
+        :param n_threads:
+        :param parallelize:
+        :return:
+        """
+
+        import time
 
         # This is used to organize the threads
-        available_threads=n_threads
+        self._available_threads = n_threads
+
         def parallelizing_wrapper(path_to_feature):
 
             # Get the children of the current parent
@@ -381,32 +392,63 @@ class FeatureImages(FeatureFunctions):
 
             # This ensures that the respective feature is computed if it is not already chached
             self.get_feature(path_to_feature, return_nothing=True)
+            # Once the calculation and caching is done the thread can be made available for other tasks
+            self._available_threads += 1
 
             if not children:
                 return
 
-            # # Non-parallelized version
-            # for child in children:
-            #
-            #     if path_to_feature != '':
-            #         child = path_to_feature + '/' + child
-            #
-            #     parallelizing_wrapper(child)
-
-            # Parallelized version
-            with futures.ThreadPoolExecutor(len(children)) as do_stuff:
-                tasks = []
+            if not parallelize:
+                # Non-parallelized version
                 for child in children:
+
                     if path_to_feature != '':
                         child = path_to_feature + '/' + child
-                    tasks.append(
-                        do_stuff.submit(
-                            parallelizing_wrapper, child
-                        )
-                    )
+
+                    parallelizing_wrapper(child)
+
+            else:
+
+                while children:
+
+                    # Parallelized version
+                    # --------------------
+
+                    # Check how many children still need to be computed and how many threads are still
+                    #   available
+                    # Only open as many threads as necessary and submit only as many children as threads
+                    #   are available
+                    if len(children) > self._available_threads:
+                        start_threads = self._available_threads
+                        working_children = children[:start_threads]
+                        children = children[start_threads:]
+                    else:
+                        start_threads = len(children)
+                        working_children = children
+                        children = []
+                    # Block the threads by reducing the remaining available thread count
+                    self._available_threads -= start_threads
+                    print 'available_threads = {}'.format(self._available_threads)
+
+                    if start_threads > 0:
+                        with futures.ThreadPoolExecutor(start_threads) as do_stuff:
+                            tasks = []
+                            for child in working_children:
+                                if path_to_feature != '':
+                                    child = path_to_feature + '/' + child
+                                tasks.append(
+                                    do_stuff.submit(
+                                        parallelizing_wrapper, child
+                                    )
+                                )
+                        print 'available_threads = {}'.format(self._available_threads)
+                    else:
+                        print 'No threads available: Sleeping for 1 second and checking again'
+                        time.sleep(1)
 
         self._f = h5py.File(self._filepath, mode='a')
 
+        self._available_threads -= 1
         # tasks = create_task_list(path_to_feature)
         parallelizing_wrapper(path_to_parent)
 
