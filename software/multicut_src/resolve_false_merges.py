@@ -3,6 +3,7 @@ from detect_false_merges import RemoveSmallObjectsParams, pipeline_remove_small_
 from find_false_merges_src import shortest_paths
 from multicut_src import probs_to_energies
 from lifted_mc import compute_and_save_lifted_nh
+from lifted_mc import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
 
 import numpy as np
@@ -81,10 +82,10 @@ def resolve_merges_with_lifted_edges(
         mc_weights = probs_to_weights(ds, seg_id)
         mc_weights = mc_weights[edge_ids]
 
-
         # now we extracted the sub-graph multicut problem
         # next we want to introduce the lifted edges
         # sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
+
         # compute path features for the pairs (implemented)
         # classify the pathes (implemented)
         # transform probs to weights
@@ -103,7 +104,7 @@ def resolve_merges_with_lifted_edges(
 
     for merge_id in false_merge_ids:
 
-        # get the over-segmentatin and get fragmets corresponding to merge_id
+        # get the over-segmentation and get fragments corresponding to merge_id
         seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
         mask = mc_segmentation == merge_id
         seg_ids = np.unique(seg[mask])
@@ -131,47 +132,41 @@ def resolve_merges_with_lifted_edges(
         compare = np.in1d(uv_ids, seg_ids)
         compare = np.swapaxes(np.reshape(compare, uv_ids.shape), 0, 1)
         compare = np.logical_and(compare[0], compare[1])
-        # compare2 = np.swapaxes(np.array((compare, compare)), 0, 1)
         mc_weights = mc_weights_all[compare]
 
         # ... now we extracted the sub-graph multicut problem!
         # Next we want to introduce the lifted edges
 
-        # # sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
-        print 'Computing uv pairs for lifted nh ...'
-        # This produces all possible combinations
+        # Sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
+        # ------------------------------------------------------------------------
+        import itertools
+        compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
+        uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
 
-        # ... but no minimum distance
+        # local graph (consecutive in obj)
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0)
+        # mapping = old to new,
+        # reverse = new to old
+        # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+        # edge dict
+        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_seg])
 
-        # # TODO: Exclude all pairs which are computed by compute_and_save_lifted_nh
-        # # Use uv_ids[compare] as input
-        #
-        # # uv_ids_in_seg = uv_ids[compare2]
-        # import itertools
-        # compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
-        # uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
-        #
-        # # local graph (consecutive in obj)
-        # seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
-        # # mapping = old to new,
-        # # reverse = new to old
-        # reverse_mapping = {val : key for key, val in mapping}
-        # # edge dict
-        # #...
-        # #uv_local = [uv_ids_in_seg[]]
-        #
-        # min_range = 3
-        # uv_ids_lifted_min_nh = compute_and_save_long_range_nh(uv_local, min_range)
-        uv_ids_lifted_min_nh = []
-
-        # TODO: Playground
-        feature_images[0].compute_children(path_to_parent='', n_threads=3)
+        # TODO: This as parameter
+        min_range = 3
+        uv_ids_lifted_min_nh = compute_and_save_long_range_nh(uv_local, min_range)
 
         # TODO: Compute the paths from the centers of mass of the pairs list
         # -------------------------------------------------------------
-        # First get the distance transform of the current object
+        # Get the distance transform of the current object
         disttransf = feature_images[seg_id_in_feature_images].get_feature('disttransf')
         disttransf[np.logical_not(mask)] = 0
+
+        # Create pairs list of start coordinates
+        # INPUTs:
+        #  - uv_ids_lifted_min_nh: ID pairs of the oversegmentation supervoxels
+        #  - seg[mask]: oversegmented supervoxels
+        # TODO: Use this function:
+        vigra.filters.eccentricityCenters()
 
         # Compute the shortest paths according to the pairs list
         bounds=None
@@ -186,9 +181,11 @@ def resolve_merges_with_lifted_edges(
         # TODO: Compute path features for the pairs (implemented)
         # -------------------------------------------------
         # Load the feature images from cache or calculate them
-        feature_image = feature_images['Somepath']
-
         # TODO: Do some parallelization here
+        for feature_image in feature_images:
+            feature_image.compute_children(path_to_parent='', parallelize=True)
+
+
 
         # TODO: extract the region features along the paths
         # TODO: Create some working image with a path in it

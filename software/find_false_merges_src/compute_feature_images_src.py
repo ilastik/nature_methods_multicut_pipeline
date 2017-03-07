@@ -27,12 +27,10 @@ class FeatureImageParams:
                      'structen_10_20': {'params': [10, 20], 'func': 'structure_tensor_eigenvalues'}
                  },
                  anisotropy=[1, 1, 10],
-                 max_threads_sources=2,
                  max_threads_features=5
                  ):
         self.feature_list=feature_list
         self.anisotropy=anisotropy
-        self.max_threads_sources=max_threads_sources
         self.max_threads_features=max_threads_features
 
     def get_feature_specs(self, feature_path, return_children=False):
@@ -103,11 +101,9 @@ class SegFeatureImageParams(FeatureImageParams):
                      }
                  },
                  anisotropy=[1, 1, 10],
-                 max_threads_sources=2,
                  max_threads_features=5
                  ):
-        FeatureImageParams.__init__(self, feature_list, anisotropy, max_threads_sources,
-                                    max_threads_features)
+        FeatureImageParams.__init__(self, feature_list, anisotropy, max_threads_features)
 
 
 class FeatureFunctions:
@@ -370,20 +366,22 @@ class FeatureImages(FeatureFunctions):
         #         # Or maybe it was not yet computed
         #         return self.compute_feature(path_to_feature)
 
-    def compute_children(self, path_to_parent='', n_threads=10, parallelize=True):
+    def compute_children(self, path_to_parent='', parallelize=True):
         """
         Caches all child features of the specified parent
         To cache all feature images set path_to_parent='' (default)
         :param path_to_parent:
-        :param n_threads:
         :param parallelize:
         :return:
         """
 
         import time
 
+        if self._params.max_threads_features == 1:
+            parallelize = False
+
         # This is used to organize the threads
-        self._available_threads = n_threads
+        self._available_threads = self._params.max_threads_features
 
         def parallelizing_wrapper(path_to_feature):
 
@@ -454,5 +452,6 @@ class FeatureImages(FeatureFunctions):
 
         self._f.close()
         self._f = None
+
 
 

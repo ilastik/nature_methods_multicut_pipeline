@@ -480,15 +480,27 @@ def compute_and_save_long_range_nh(uvIds, min_range):
     originalGraph.insertEdges(uvIds)
 
     import itertools
-    uv_long_range = np.array(list(itertools.combinations(
-        np.arange(originalGraph.numberOfVertices()), 2)))
+    uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
 
     lm_short = agraph.liftedMcModel(originalGraph)
-    agraph.addLongRangeNH(lm_short , min_range)
+    agraph.addLongRangeNH(lm_short, min_range)
     uvs_short = lm_short.liftedGraph().uvIds()
 
-    # remove uvs_short from uv_long_range
-    # TODO
+    # Remove uvs_short from uv_long_range
+    # -----------------------------------
+
+    # Concatenate both lists
+    concatenated = np.concatenate((uvs_short, uv_long_range), axis=0)
+
+    # Find unique rows according to
+    # http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
+    b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
+    uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
+    # uniques = concatenated[idx]
+
+    # Extract those that have count == 1
+    uv_long_range = uniques[counts == 1].view(concatenated.dtype)
+    uv_long_range = uv_long_range.reshape((uv_long_range.shape[0]/2, 2))
 
     return uv_long_range
 
