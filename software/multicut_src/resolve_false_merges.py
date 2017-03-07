@@ -153,7 +153,10 @@ def resolve_merges_with_lifted_edges(
 
         # TODO: This as parameter
         min_range = 3
-        uv_ids_lifted_min_nh = compute_and_save_long_range_nh(uv_local, min_range)
+        max_sample_size = 3
+        uv_ids_lifted_min_nh, all_uv_ids = compute_and_save_long_range_nh(
+            uv_local, min_range, max_sample_size=max_sample_size, return_non_sampled=True
+        )
 
         # TODO: Compute the paths from the centers of mass of the pairs list
         # -------------------------------------------------------------
@@ -166,7 +169,10 @@ def resolve_merges_with_lifted_edges(
         #  - uv_ids_lifted_min_nh: ID pairs of the oversegmentation supervoxels
         #  - seg[mask]: oversegmented supervoxels
         # TODO: Use this function:
-        vigra.filters.eccentricityCenters()
+        import copy
+        masked_seg = copy.deepcopy(seg)
+        masked_seg[np.logical_not(mask)] = 0
+        ecc_centers_seg = vigra.filters.eccentricityCenters(masked_seg)
 
         # Compute the shortest paths according to the pairs list
         bounds=None
