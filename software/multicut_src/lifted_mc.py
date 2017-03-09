@@ -507,6 +507,8 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=None, retur
             import random
             all_uv_long_range = uv_long_range
             uv_long_range = np.array(random.sample(uv_long_range, max_sample_size))
+        else:
+            all_uv_long_range = uv_long_range
 
     # Transfer back to the original shape
     uv_long_range = uv_long_range.view(concatenated.dtype)

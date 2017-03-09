@@ -5,6 +5,7 @@ from multicut_src import probs_to_energies
 from lifted_mc import compute_and_save_lifted_nh
 from lifted_mc import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
+from find_false_merges_src import path_features_from_feature_images
 
 import numpy as np
 import vigra
@@ -56,8 +57,8 @@ def compute_false_merges(
 
 def resolve_merges_with_lifted_edges(
         ds, false_merge_ids, false_paths, path_classifier,
-        feature_images, seg_id_in_feature_images, mc_segmentation, edge_probs,
-        exp_params
+        feature_images, mc_segmentation, edge_probs,
+        exp_params, pf_params, path_params
 ):
 
     """
@@ -102,10 +103,34 @@ def resolve_merges_with_lifted_edges(
     # TODO: use learn_and_predict_rf_from_gt for edge_probs
     seg_id = 0
 
+
+    # TODO: Compute path features for the pairs (implemented)
+    # -------------------------------------------------
+    # Caluculate and cache the feature images if they are not cached
+    # This is parallelized
+    for _, feature_image in feature_images.iteritems():
+        feature_image.compute_children(path_to_parent='', parallelize=True)
+
+    disttransf = feature_images['segmentation'].get_feature('disttransf')
+    # Pre-processing of the distance transform
+    # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
+    #    detection) should be at the center of the current process
+    disttransf = np.amax(disttransf) - disttransf
+    #
+    # c) Increase the value difference between pixels near the boundaries and pixels
+    #    central within the processes. This increases the likelihood of the paths to
+    #    follow the center of processes, thus avoiding short-cuts
+    disttransf = np.power(disttransf, path_params.penalty_power)
+
+    # get the over-segmentation and get fragments corresponding to merge_id
+    seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
+    print 'Computing eccentricity centers...'
+    ecc_centers_seg = vigra.filters.eccentricityCenters(seg)
+    ecc_centers_seg_dict = dict(zip(np.unique(seg), ecc_centers_seg))
+    print ' ... done computing eccentricity centers.'
+
     for merge_id in false_merge_ids:
 
-        # get the over-segmentation and get fragments corresponding to merge_id
-        seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
         mask = mc_segmentation == merge_id
         seg_ids = np.unique(seg[mask])
         # get the region adjacency graph
@@ -147,32 +172,47 @@ def resolve_merges_with_lifted_edges(
         seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0)
         # mapping = old to new,
         # reverse = new to old
-        # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+        reverse_mapping = {val: key for key, val in mapping.iteritems()}
         # edge dict
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_seg])
 
         # TODO: This as parameter
         min_range = 3
-        max_sample_size = 3
-        uv_ids_lifted_min_nh, all_uv_ids = compute_and_save_long_range_nh(
+        max_sample_size = 10
+        uv_ids_lifted_min_nh_local, all_uv_ids = compute_and_save_long_range_nh(
             uv_local, min_range, max_sample_size=max_sample_size, return_non_sampled=True
         )
 
         # TODO: Compute the paths from the centers of mass of the pairs list
         # -------------------------------------------------------------
         # Get the distance transform of the current object
-        disttransf = feature_images[seg_id_in_feature_images].get_feature('disttransf')
-        disttransf[np.logical_not(mask)] = 0
+
+        import copy
+        masked_disttransf = copy.deepcopy(disttransf)
+        masked_disttransf[np.logical_not(mask)] = np.inf
 
         # Create pairs list of start coordinates
         # INPUTs:
         #  - uv_ids_lifted_min_nh: ID pairs of the oversegmentation supervoxels
         #  - seg[mask]: oversegmented supervoxels
+        #  - mapping
         # TODO: Use this function:
-        import copy
-        masked_seg = copy.deepcopy(seg)
-        masked_seg[np.logical_not(mask)] = 0
-        ecc_centers_seg = vigra.filters.eccentricityCenters(masked_seg)
+        # import copy
+        # masked_seg = copy.deepcopy(seg)
+        # masked_seg[np.logical_not(mask)] = 0
+        # ecc_centers_seg = vigra.filters.eccentricityCenters(masked_seg)
+
+        # Get the new labels which are in the lifted neighborhood
+        # --> uv_ids_lifted_min_nh_local
+
+        # Turn them to the original labels
+        uv_ids_lifted_min_nh = np.array([[reverse_mapping[u] for u in uv] for uv in uv_ids_lifted_min_nh_local])
+
+        # Find out at which position they are in the np.unique(seg) list
+        # --> ecc_centers_seg_dict
+
+        # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
+        uv_ids_lifted_min_nh_coords = [[ecc_centers_seg_dict[u] for u in uv] for uv in uv_ids_lifted_min_nh]
 
         # Compute the shortest paths according to the pairs list
         bounds=None
@@ -180,32 +220,19 @@ def resolve_merges_with_lifted_edges(
         yield_in_bounds=False
         return_pathim=False
         ps_computed = shortest_paths(
-            disttransf, uv_ids_lifted_min_nh, bounds=bounds, logger=logger,
+            masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
             return_pathim=return_pathim, yield_in_bounds=yield_in_bounds
         )
 
-        # TODO: Compute path features for the pairs (implemented)
-        # -------------------------------------------------
-        # Load the feature images from cache or calculate them
-        # TODO: Do some parallelization here
-        for feature_image in feature_images:
-            feature_image.compute_children(path_to_parent='', parallelize=True)
-
-
-
-        # TODO: extract the region features along the paths
-        # TODO: Create some working image with a path in it
-        path_image = np.array()
-        # TODO: For each feature image extract the region features
-        featurelist = ['Sum', 'Skewness', '...']
-        vigra.analysis.extractRegionFeatures(
-                            np.array(feature_image).astype(np.float32),
-                            path_image, ignoreLabel=0,
-                            features=featurelist
-                        )
+        # Compute the path features
+        # TODO: Cache the path features?
+        features = path_features_from_feature_images(ps_computed, feature_images, pf_params)
 
         pass
         # # classify the paths (implemented)
+        # I will need:
+        #   - The random forest
+        #   - The features
 
         # # transform probs to weights
 

@@ -23,11 +23,11 @@ class FeatureImageParams:
                      'lapl_5': {'params': [5], 'func': 'laplacian_of_gaussian'},
                      'lapl_10': {'params': [10], 'func': 'laplacian_of_gaussian'},
                      'structen_1_2': {'params': [1, 2], 'func': 'structure_tensor_eigenvalues'},
-                     'structen_5_10': {'params': [5, 10], 'func': 'structure_tensor_eigenvalues'},
-                     'structen_10_20': {'params': [10, 20], 'func': 'structure_tensor_eigenvalues'}
+                     'structen_4_8': {'params': [4, 8], 'func': 'structure_tensor_eigenvalues'},
+                     'structen_8_16': {'params': [8, 16], 'func': 'structure_tensor_eigenvalues'}
                  },
                  anisotropy=[1, 1, 10],
-                 max_threads_features=5
+                 max_threads_features=10
                  ):
         self.feature_list=feature_list
         self.anisotropy=anisotropy
@@ -96,12 +96,12 @@ class SegFeatureImageParams(FeatureImageParams):
                          'lapl_5': {'params': [5], 'func': 'laplacian_of_gaussian'},
                          'lapl_10': {'params': [10], 'func': 'laplacian_of_gaussian'},
                          'structen_1_2': {'params': [1, 2], 'func': 'structure_tensor_eigenvalues'},
-                         'structen_5_10': {'params': [5, 10], 'func': 'structure_tensor_eigenvalues'},
-                         'structen_10_20': {'params': [10, 20], 'func': 'structure_tensor_eigenvalues'}
+                         'structen_4_8': {'params': [4, 8], 'func': 'structure_tensor_eigenvalues'},
+                         'structen_8_16': {'params': [8, 16], 'func': 'structure_tensor_eigenvalues'}
                      }
                  },
                  anisotropy=[1, 1, 10],
-                 max_threads_features=5
+                 max_threads_features=10
                  ):
         FeatureImageParams.__init__(self, feature_list, anisotropy, max_threads_features)
 
@@ -231,6 +231,8 @@ class FeatureImages(FeatureFunctions):
                  filepath=None, internal_path='', params=FeatureImageParams()):
 
         FeatureFunctions.__init__(self)
+
+        self.shape = vigra.readHDF5(source_filepath, source_internal_path).shape
 
         self._source_filepath = source_filepath
         self._source_internal_path = source_internal_path
@@ -452,6 +454,4 @@ class FeatureImages(FeatureFunctions):
 
         self._f.close()
         self._f = None
-
-
 
