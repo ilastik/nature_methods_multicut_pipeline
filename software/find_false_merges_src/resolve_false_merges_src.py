@@ -2,7 +2,8 @@
 import vigra.graphs as graphs
 import numpy as np
 import vigra
-
+from concurrent import futures
+import h5py
 
 def load_false_merges():
     return [], [], []
@@ -137,8 +138,6 @@ def path_features_from_feature_images(paths, feature_images, params):
 
     for p_id, path in enumerate(paths):
 
-        region_features = dict()
-
         new_feats_array = np.array([])
 
         print 'Working on path {} of {}'.format(p_id + 1, len(paths))
@@ -148,15 +147,50 @@ def path_features_from_feature_images(paths, feature_images, params):
         path_sa = np.swapaxes(path, 0, 1)
         path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
 
-        # TODO: Pre-compute the region features and then sort them
+        # TODO: Pre-compute the region features and then sort them into the array
+        # The parallelized way
+        with futures.ThreadPoolExecutor(params.max_threads) as do_stuff:
 
+            print 'Starting thread pool with {} threads'.format(params.max_threads)
+
+            tasks = {}
+            done_list = []
+
+            def extract_region_features_wrapper(source_feature, id, path_image):
+                featim = feature_images[source_feature].get_feature(id)
+                return vigra.analysis.extractRegionFeatures(
+                    featim.astype(np.float32),
+                    path_image, ignoreLabel=0,
+                    features=params.features
+                )
+
+            for feat in feat_list:
+
+                if feat[0] == 'Pathlength': continue
+
+                if str.join('/', feat[:-1]) not in done_list:
+
+                    done_list.append(str.join('/', feat[:-1]))
+                    print 'Computing {}'.format(str.join('/', feat[:-1]))
+
+                    tasks[str.join('/', feat[:-1])] = (
+                        do_stuff.submit(
+                            extract_region_features_wrapper,
+                            feat[0], str.join('/', feat[1:-1]), path_image
+                        )
+                    )
+
+            # for k, v in tasks:
+            #     region_features[k] = v.result()
+
+            region_features = {k: v.result() for k, v in tasks.iteritems()}
 
         # TODO: For each feature image extract the region features
         # TODO: Use featlist.pkl to determine the order and directly create a feature array for the path
         # Loop over featlist (featlist.pkl) and get the respective feature image by
         for feat in feat_list:
 
-            print '    Working on feat = {}'.format(feat)
+            # print '    Working on feat = {}'.format(feat)
 
             if feat[0] == 'Pathlength':
 
@@ -175,20 +209,21 @@ def path_features_from_feature_images(paths, feature_images, params):
 
             else:
 
-                source_feature = feat[0]
-
-                if str.join('/', feat[:-1]) not in region_features.keys():
-
-                    # Compute the region features of the corresponding path and image here
-
-                    featim = feature_images[source_feature].get_feature(str.join('/', feat[1:-1]))
-
-                    # Extract the region features of the working image
-                    region_features[str.join('/', feat[:-1])] = vigra.analysis.extractRegionFeatures(
-                        featim.astype(np.float32),
-                        path_image, ignoreLabel=0,
-                        features=params.features
-                    )
+                # source_feature = feat[0]
+                #
+                # # The non-parallel way
+                # if str.join('/', feat[:-1]) not in region_features.keys():
+                #
+                #     # Compute the region features of the corresponding path and image here
+                #
+                #     featim = feature_images[source_feature].get_feature(str.join('/', feat[1:-1]))
+                #
+                #     # Extract the region features of the working image
+                #     region_features[str.join('/', feat[:-1])] = vigra.analysis.extractRegionFeatures(
+                #         featim.astype(np.float32),
+                #         path_image, ignoreLabel=0,
+                #         features=params.features
+                #     )
 
                 # Append the current feature to the list
                 if region_features[str.join('/', feat[:-1])][str(feat[-1])][1:].ndim > 1:
@@ -213,13 +248,3 @@ def path_features_from_feature_images(paths, feature_images, params):
 
 
     return feats_array
-
-        # for feature_image in feature_images:
-        #
-        #     for child in feature_image:
-        #
-        #         vigra.analysis.extractRegionFeatures(
-        #             np.array(child).astype(np.float32),
-        #             path_image, ignoreLabel=0,
-        #             features=params.features
-        #         )
