@@ -6,6 +6,7 @@ from lifted_mc import compute_and_save_lifted_nh
 from lifted_mc import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
 from find_false_merges_src import path_features_from_feature_images
+from find_false_merges_src import path_classification
 
 import numpy as np
 import vigra
@@ -58,7 +59,7 @@ def compute_false_merges(
 def resolve_merges_with_lifted_edges(
         ds, false_merge_ids, false_paths, path_classifier,
         feature_images, mc_segmentation, edge_probs,
-        exp_params, pf_params, path_params
+        exp_params, pf_params, path_params, rf_params
 ):
 
     """
@@ -94,18 +95,8 @@ def resolve_merges_with_lifted_edges(
 
     """
 
-    # TODO: Things I will need
-    # TODO: 1. ds including oversegmentation, raw data, and probabilities
-    # TODO: 2. false_merge_ids and respective false_paths
-    # TODO: 3. Random forest classifier for paths to classify intermediate paths
-    # TODO: 4. multi cut segmentation
-
-    # TODO: use learn_and_predict_rf_from_gt for edge_probs
     seg_id = 0
 
-
-    # TODO: Compute path features for the pairs (implemented)
-    # -------------------------------------------------
     # Caluculate and cache the feature images if they are not cached
     # This is parallelized
     for _, feature_image in feature_images.iteritems():
@@ -129,30 +120,19 @@ def resolve_merges_with_lifted_edges(
     ecc_centers_seg_dict = dict(zip(np.unique(seg), ecc_centers_seg))
     print ' ... done computing eccentricity centers.'
 
+    # get the region adjacency graph
+    rag = ds._rag(seg_id)
+
+    mc_weights_all = probs_to_energies(ds, edge_probs, seg_id, exp_params)
+    # mc_weights = mc_weights_all[edge_ids]
+
+    # get the multicut weights
+    uv_ids = rag.uvIds()
+
     for merge_id in false_merge_ids:
 
         mask = mc_segmentation == merge_id
         seg_ids = np.unique(seg[mask])
-        # get the region adjacency graph
-        rag = ds._rag(seg_id)
-
-        # get the multicut weights
-        uv_ids = rag.uvIds()
-
-        # # DONT IMPLEMENT THIS WAY
-        # edge_ids = []
-        # for e_id, uv in enumerate(uv_ids):
-        #     if uv[0] in seg_ids and uv[1] in seg_ids:
-        #         edge_ids.append(e_id)
-        # # This is used for probs extraction of
-        # #   edge_probs
-        #
-        # # # TODO beware of sorting
-        # # edge_probs = learn_and_predict_rf_from_gt
-        #
-
-        mc_weights_all = probs_to_energies(ds, edge_probs, seg_id, exp_params)
-        # mc_weights = mc_weights_all[edge_ids]
 
         compare = np.in1d(uv_ids, seg_ids)
         compare = np.swapaxes(np.reshape(compare, uv_ids.shape), 0, 1)
@@ -177,6 +157,8 @@ def resolve_merges_with_lifted_edges(
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_seg])
 
         # TODO: This as parameter
+        # TODO: Move sampling here
+        # TODO: Sample until enough false merges are found
         min_range = 3
         max_sample_size = 10
         uv_ids_lifted_min_nh_local, all_uv_ids = compute_and_save_long_range_nh(
@@ -191,25 +173,8 @@ def resolve_merges_with_lifted_edges(
         masked_disttransf = copy.deepcopy(disttransf)
         masked_disttransf[np.logical_not(mask)] = np.inf
 
-        # Create pairs list of start coordinates
-        # INPUTs:
-        #  - uv_ids_lifted_min_nh: ID pairs of the oversegmentation supervoxels
-        #  - seg[mask]: oversegmented supervoxels
-        #  - mapping
-        # TODO: Use this function:
-        # import copy
-        # masked_seg = copy.deepcopy(seg)
-        # masked_seg[np.logical_not(mask)] = 0
-        # ecc_centers_seg = vigra.filters.eccentricityCenters(masked_seg)
-
-        # Get the new labels which are in the lifted neighborhood
-        # --> uv_ids_lifted_min_nh_local
-
         # Turn them to the original labels
         uv_ids_lifted_min_nh = np.array([[reverse_mapping[u] for u in uv] for uv in uv_ids_lifted_min_nh_local])
-
-        # Find out at which position they are in the np.unique(seg) list
-        # --> ecc_centers_seg_dict
 
         # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
         uv_ids_lifted_min_nh_coords = [[ecc_centers_seg_dict[u] for u in uv] for uv in uv_ids_lifted_min_nh]
@@ -228,16 +193,44 @@ def resolve_merges_with_lifted_edges(
         # TODO: Cache the path features?
         features = path_features_from_feature_images(ps_computed, feature_images, pf_params)
 
-        pass
         # # classify the paths (implemented)
         # I will need:
         #   - The random forest
         #   - The features
+        path_probs = path_classification(features, rf_params)
 
-        # # transform probs to weights
+        # Class 0: 'false paths', i.e. containing a merge
+        # Class 1: 'true paths' , i.e. not containing a merge
+
+        # TODO: Do this:
+        # # This is from probs_to_energies():
+        # # ---------------------------------
+        #
+        # # scale the probabilities
+        # # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
+        # p_min = 0.001
+        # p_max = 1. - p_min
+        # edge_probs = (p_max - p_min) * edge_probs + p_min
+
+        # Transform probs to weights
+        # TODO: proper function?
+        lifted_weights = np.log((1 - path_probs[:, 0]) / path_probs[:, 0])
+
+
+        #
+        # # probabilities to energies, second term is boundary bias
+        # edge_energies = np.log((1. - edge_probs) / edge_probs) + np.log(
+        #     (1. - exp_params.beta_local) / exp_params.beta_local)
 
         # # add lifted_edges and solve lmc
+        # I will need:
+        #   - mc_weights, edges
+        #   - lifted_weights, edges
+
+        # run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
 
 
-
+        # TODO : DEBUGGING!!!
+        # TODO: Debug images
+        # TODO: Look at paths
 

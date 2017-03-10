@@ -475,7 +475,7 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood):
 # we assume that uv is consecutive
 #@cacher_hdf5()
 def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=None, return_non_sampled=False):
-
+    import random
     originalGraph = agraph.Graph(uvIds.max()+1)
     originalGraph.insertEdges(uvIds)
 
@@ -504,7 +504,7 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=None, retur
     # Extract random sample
     if max_sample_size is not None:
         if uv_long_range.shape[0] > max_sample_size:
-            import random
+
             all_uv_long_range = uv_long_range
             uv_long_range = np.array(random.sample(uv_long_range, max_sample_size))
         else:
