@@ -306,6 +306,31 @@ class DataSet(object):
     # becomes pretty ineffective, because writing and loading the files becomes the bottleneck
     # however the way cutouts are implemented right now, we need to do it like this...
 
+    # this will be ignorant of using a different segmentation
+    @cacher_hdf5(ignoreNumpyArrays=True)
+    def distance_transform(self, segmentation, anisotropy = [1.,1.,1.]):
+
+        # if that does what I think it does (segmentation to edge image), we can use vigra...
+        #def pixels_at_boundary(image, axes=[1, 1, 1]):
+        #    return axes[0] * ((np.concatenate((image[(0,), :, :], image[:-1, :, :]))
+        #                       - np.concatenate((image[1:, :, :], image[(-1,), :, :]))) != 0) \
+        #           + axes[1] * ((np.concatenate((image[:, (0,), :], image[:, :-1, :]), 1)
+        #                         - np.concatenate((image[:, 1:, :], image[:, (-1,), :]), 1)) != 0) \
+        #           + axes[2] * ((np.concatenate((image[:, :, (0,)], image[:, :, :-1]), 2)
+        #                         - np.concatenate((image[:, :, 1:], image[:, :, (-1,)]), 2)) != 0)
+
+        #anisotropy = np.array(anisotropy).astype(np.float32)
+        #image = image.astype(np.float32)
+        ## Compute boundaries
+        ## FIXME why ?!
+        #axes = (anisotropy ** -1).astype(np.uint8)
+        #image = pixels_at_boundary(image, axes)
+
+        edge_volume = np.concatenate(
+                vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2]),
+                axis = 2)
+        return vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
+
 
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
@@ -313,8 +338,18 @@ class DataSet(object):
     # if it is higher, the features are calculated purely in 2d
     # TODO make sigmas accessible in a clever way
     def make_filters(self, inp_id, anisotropy_factor):
-        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
+
+        # FIXME dirty hack to calculate features on the ditance trafo
+        # FIXME the dt must be pre-computed for this to work
+        if inp_id == 'distance_transform':
+            fake_seg = np.zeros((10,10))
+            self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
+            input_name = 'distance_transform'
+        else:
+            assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
+            inp = self.inp(inp_id)
+            input_name = "inp_" + str(inp_id)
 
         top_folder = os.path.join(self.cache_folder, "filters")
         if not os.path.exists(top_folder):
@@ -337,18 +372,17 @@ class DataSet(object):
 
         sigmas = [1.6, 4.2, 8.3]
 
-        filter_names = [ "vigra.filters.gaussianSmoothing",
-                         "vigra.filters.hessianOfGaussianEigenvalues",
-                         "vigra.filters.laplacianOfGaussian"]
+        #filter_names = [ "vigra.filters.gaussianSmoothing",
+        #                 "vigra.filters.hessianOfGaussianEigenvalues",
+        #                 "vigra.filters.laplacianOfGaussian"]
 
-        #import fastfilters
-        #filter_names = [ "fastfilters.gaussianSmoothing",
-        #                 "fastfilters.hessianOfGaussianEigenvalues",
-        #                 "fastfilters.laplacianOfGaussian"]
+        import fastfilters
+        filter_names = [ "fastfilters.gaussianSmoothing",
+                         "fastfilters.hessianOfGaussianEigenvalues",
+                         "fastfilters.laplacianOfGaussian"]
 
-        inp = self.inp(inp_id)
         # update the filter folder to the input
-        filter_folder = os.path.join( filter_folder, "inp_" + str(inp_id) )
+        filter_folder = os.path.join( filter_folder, input_name )
         if not os.path.exists(filter_folder):
             os.mkdir(filter_folder)
         filter_key    = "data"
