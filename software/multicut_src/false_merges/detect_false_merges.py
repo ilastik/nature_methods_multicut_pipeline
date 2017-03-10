@@ -1,8 +1,6 @@
-
 import vigra
 import numpy as np
 from concurrent import futures
-from find_false_merges_src import FeatureImageParams
 
 
 class RemoveSmallObjectsParams:
