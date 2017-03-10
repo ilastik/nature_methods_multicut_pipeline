@@ -206,29 +206,23 @@ def lifted_multicut_workflow(ds_train, ds_test,
 
     print "build lifted model"
     # remove me in functions
-    rag = ds_test._rag(seg_id_test)
-    originalGraph = agraph.Graph(rag.nodeNum)
-    originalGraph.insertEdges(rag.uvIds())
-    model = agraph.liftedMcModel(originalGraph)
-
-    # set cost for local edges
-    model.setCosts(rag.uvIds(),edge_energies_local)
-    # set cost for lifted edges
-    model.setCosts(uvIds, edge_energies_lifted)
+    uvs_local = ds._adjacent_segments(seg_id)
 
     # warmstart with multicut result
     if warmstart:
-        n_var_mc = ds_test.seg(seg_id_test).max() + 1
+        n_var_mc = uvs_local.max() + 1
         mc_nodes, mc_edges, mc_energy, _ = multicut_fusionmoves(
-            n_var_mc, ds_test._adjacent_segments(seg_id_test), edge_energies_local, mc_params)
-        uvTotal = model.liftedGraph().uvIds()
-        starting_point = mc_nodes[uvTotal[:,0]] != mc_nodes[uvTotal[:,1]]
+            n_var_mc, uvs_local,
+            edge_energies_local, mc_params)
+        starting_point = mc_nodes[uvIds[:,0]] != mc_nodes[uvIds[:,1]]
     else:
         starting_point = None
 
     print "optimize"
-    nodeLabels = optimizeLifted(ds_test, model, rag, starting_point)
+    nodeLabels = optimizeLifted(uvs_local, uvIds,
+            edge_energies_local, edge_energies_lifted,
+            starting_point)
 
-    edgeLabels = nodeLabels[rag.uvIds()[:,0]]!=nodeLabels[rag.uvIds()[:,1]]
+    edgeLabels = nodeLabels[uvs_local[:,0]] != nodeLabels[uvs_local[:,1]]
 
     return nodeLabels, edgeLabels, -14, 100

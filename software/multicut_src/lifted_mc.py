@@ -714,8 +714,27 @@ def learn_and_predict_lifted(trainsets, dsTest,
 
 
 
-def optimizeLifted(dsTest, model, rag, starting_point = None):
+def optimizeLifted(uvs_local,
+        uvs_lifted,
+        costs_local,
+        costs_lifted,
+        starting_point = None):
     print "Optimizing lifted model"
+
+    assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
+    assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
+    n_nodes = uvs_local.max() + 1
+    assert n_nodes == uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
+
+    # build the lifted model
+    graph = agraph.Graph(n_nodes)
+    graph.insertEdges(uvs_local)
+    model = agraph.liftedMcModel(graph)
+
+    # set cost for local edges
+    model.setCosts(uvs_local, costs_local)
+    # set cost for lifted edges
+    model.setCosts(uvs_lifted, costs_lifted)
 
     # if no starting point is given, start with ehc solver
     if starting_point is None:
