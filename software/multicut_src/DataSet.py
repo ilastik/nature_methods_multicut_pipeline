@@ -3,6 +3,7 @@ import vigra
 import vigra.graphs as graphs
 import os
 import h5py
+from concurrent import futures
 
 import graph as agraph
 
@@ -337,7 +338,16 @@ class DataSet(object):
     # max. anisotropy factor is 20.
     # if it is higher, the features are calculated purely in 2d
     # TODO make sigmas accessible in a clever way
-    def make_filters(self, inp_id, anisotropy_factor):
+    def make_filters(self,
+            inp_id,
+            anisotropy_factor,
+            filter_names = [ "gaussianSmoothing",
+                             "hessianOfGaussianEigenvalues",
+                             "laplacianOfGaussian"],
+            sigmas = [1.6, 4.2, 8.3],
+            use_fastfilters = False
+            ):
+
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
 
         # FIXME dirty hack to calculate features on the ditance trafo
@@ -370,16 +380,11 @@ class DataSet(object):
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
 
-        sigmas = [1.6, 4.2, 8.3]
-
-        #filter_names = [ "vigra.filters.gaussianSmoothing",
-        #                 "vigra.filters.hessianOfGaussianEigenvalues",
-        #                 "vigra.filters.laplacianOfGaussian"]
-
-        import fastfilters
-        filter_names = [ "fastfilters.gaussianSmoothing",
-                         "fastfilters.hessianOfGaussianEigenvalues",
-                         "fastfilters.laplacianOfGaussian"]
+        if use_fastfilters:
+            import fastfilters
+            filter_names = [".".join("fastfilters", filtname) for filtname in filter_names]
+        else:
+            filter_names = [".".join("vigra.filters", filtname) for filtname in filter_names]
 
         # update the filter folder to the input
         filter_folder = os.path.join( filter_folder, input_name )
@@ -403,10 +408,8 @@ class DataSet(object):
                     return_paths.append(filt_path)
 
                     if not os.path.exists(filt_path):
-                        # code parallelized
 
-                        from concurrent import futures
-
+                        # TODO set max_workers with ppl param value!
                         with futures.ThreadPoolExecutor(max_workers = 8) as executor:
                             tasks = []
                             for z in xrange(inp.shape[2]):
@@ -414,18 +417,15 @@ class DataSet(object):
 
                         res = [task.result() for task in tasks]
 
-                        # TODO this is not really efficient !
-
                         if res[0].ndim == 2:
                             res = [re[:,:,None] for re in res]
                         elif res[0].ndim == 3:
                             res = [re[:,:,None,:] for re in res]
-
                         res = np.concatenate( res, axis = 2)
-
                         assert res.shape[0:2] == self.shape[0:2]
                         vigra.writeHDF5(res, filt_path, filter_key)
 
+        # TODO we should parallelize over the filters here!
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
             for filt_name in filter_names:

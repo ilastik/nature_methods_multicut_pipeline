@@ -14,8 +14,6 @@ def shortest_paths(indicator,
     :param indicator:
     :param pairs:
     :param bounds:
-    :param logger:
-    :param return_pathim:
     :param yield_in_bounds:
     :return:
     """
@@ -60,6 +58,12 @@ def shortest_paths(indicator,
         return paths
 
 
+# TODO
+def path_feature_agglomerator(ds, paths):
+    pass
+
+
+# TODO this could be parallelized over the paths
 # compute the path lens for all paths
 def compute_path_lengths(paths, anisotropy):
     """
@@ -72,7 +76,7 @@ def compute_path_lengths(paths, anisotropy):
     :return: path lengtht list(float)
     """
     def compute_path_length(path, aniso_temp):
-        pathlen = 0.
+        #pathlen = 0.
         #for i in xrange(1, len(path)):
         #    add2pathlen = 0.
         #    for j in xrange(0, len(path[0, :])):
@@ -80,40 +84,70 @@ def compute_path_lengths(paths, anisotropy):
 
         #    pathlen += add2pathlen ** (1. / 2)
         # TODO check that this actually agrees
-        paths_euclidean_diffs = np.prod( aniso_temp, np.diff(path) ) )
-        paths_euclidean_diffs = np.sqrt(
-                np.square( np.sum(paths_euclidean_diffs,axis=) ) )
-        return np.sum(paths_euclidean_diffs, axis=0)
+        path_euclidean_diff = np.prod( aniso_temp, np.diff(path) ) )
+        path_euclidean_diff = np.sqrt(
+                np.sum( np.square(path_euclidean_diff), axis=1 ) )
+        return np.sum(path_euclidean_diff, axis=0)
     aniso_temp = np.array(anisotropy)[None,:] # TODO is this the correct brodcasting?
     return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])
 
 
 # don't cache for now
-# TODO enable bounded paths
 def path_features_from_feature_images(
         ds,
         inp_id,
         paths,
-        params,
-        anisotropy_factor):
+        anisotropy_factor,
+        params):
 
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
     # TODO sort the feat_path correctly
-    # load the feature images -> FIXME this might be to memory hungry
-    # TODO for bounded path, only load the subblock with h5py
-    feature_volumes = [ vigra.readHDF5(pp, 'data') for pp in feat_paths ]
+    # load the feature images ->
+    # FIXME this might be too memory hungry if we have a large global bounding box
+
+    # compute the global bounding box
+    min_coords = np.min(
+            np.concatenate([np.min(path, axis = 1) for path in paths],axis=1),
+            axis = 0
+            )
+    max_coords = np.max(
+            np.concatenate([np.max(path, axis = 1) for path in paths],axis=1),
+            axis = 0
+            )
+    max_coords += 1
+    roi = np.s_[min_x:max_x, min_y:max_y, min_z:max_z]
+    # substract min coords from all paths to bring them to new coordinates
+    paths = [path - min_coords for path in paths]
+
+    # load features in global boundng box
+    feature_volumes = []
+    import h5py
+    for path in feats_paths
+        with h5py.File(path) as f:
+        feature_volumes.append(f['data'][roi])
     stats = params.features
 
     def extract_features_for_path(path):
 
+        # calculate the local path bounding box
+        min_coors  = np.min(path, axis = 1)
+        max_coords = np.max(path, axis = 1)
+        max_coords += 1
+        shape = tuple( max_coords - min_coords)
         path_image = np.zeros(shape, dtype='uint32')
+        path -= min_coords
+        # TODO FIXME why swap axes ????
         path_sa = np.swapaxes(path, 0, 1)
         path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
+
+        path_roi = np.s_[min_coords[0]:max_coords[0],
+                min_coords[1]:max_coords[1],
+                min_coords[2]:max_coords[2]]
 
         path_features = []
         for feature_volume in feature_volumes:
             extractor = vigra.analysis.extractRegionFeatures(
-                    feature_volume,
+                    feature_volume[path_roi],
                     path_image,
                     ignoreLabel = 0,
                     features = stats)
