@@ -302,11 +302,7 @@ class DataSet(object):
     # Feature Calculation
     #
 
-    # TODO for large datasets, the way we calculate features
-    # (i.e. first calculate all filters, cache them and then reload them for the accumulation )
-    # becomes pretty ineffective, because writing and loading the files becomes the bottleneck
-    # however the way cutouts are implemented right now, we need to do it like this...
-
+    # TODO integrate julian's to the power of 10 ?!
     # this will be ignorant of using a different segmentation
     @cacher_hdf5(ignoreNumpyArrays=True)
     def distance_transform(self, segmentation, anisotropy = [1.,1.,1.]):
@@ -345,7 +341,7 @@ class DataSet(object):
                              "hessianOfGaussianEigenvalues",
                              "laplacianOfGaussian"],
             sigmas = [1.6, 4.2, 8.3],
-            use_fastfilters = False
+            use_fastfilters = True
             ):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -354,7 +350,7 @@ class DataSet(object):
         # FIXME the dt must be pre-computed for this to work
         if inp_id == 'distance_transform':
             fake_seg = np.zeros((10,10))
-            self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
+            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
             input_name = 'distance_transform'
         else:
             assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
@@ -380,11 +376,16 @@ class DataSet(object):
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
 
+        if not calculation_2d and anisotropy_factor > 1. and use_fastfilters:
+            print "WARNING: Anisotropic feature calculation not supported in fastfilters yet."
+            print "Using vigra filters instead."
+            use_fastfilters = False
+
         if use_fastfilters:
             import fastfilters
-            filter_names = [".".join("fastfilters", filtname) for filtname in filter_names]
+            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
         else:
-            filter_names = [".".join("vigra.filters", filtname) for filtname in filter_names]
+            filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
 
         # update the filter folder to the input
         filter_folder = os.path.join( filter_folder, input_name )
