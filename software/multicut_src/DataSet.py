@@ -328,7 +328,7 @@ class DataSet(object):
         #image = pixels_at_boundary(image, axes)
 
         edge_volume = np.concatenate(
-                vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2]),
+                [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
                 axis = 2)
         return vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
 
