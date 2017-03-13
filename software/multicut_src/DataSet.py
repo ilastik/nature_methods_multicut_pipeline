@@ -305,29 +305,31 @@ class DataSet(object):
     # TODO integrate julian's to the power of 10 ?!
     # this will be ignorant of using a different segmentation
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def distance_transform(self, segmentation, anisotropy = [1.,1.,1.]):
+    def distance_transform(self, segmentation, penalty_power = 0, anisotropy = [1.,1.,1.]):
 
-        # if that does what I think it does (segmentation to edge image), we can use vigra...
-        #def pixels_at_boundary(image, axes=[1, 1, 1]):
+        # # if that does what I think it does (segmentation to edge image), we can use vigra...
+        # def pixels_at_boundary(image, axes=[1, 1, 1]):
         #    return axes[0] * ((np.concatenate((image[(0,), :, :], image[:-1, :, :]))
         #                       - np.concatenate((image[1:, :, :], image[(-1,), :, :]))) != 0) \
         #           + axes[1] * ((np.concatenate((image[:, (0,), :], image[:, :-1, :]), 1)
         #                         - np.concatenate((image[:, 1:, :], image[:, (-1,), :]), 1)) != 0) \
         #           + axes[2] * ((np.concatenate((image[:, :, (0,)], image[:, :, :-1]), 2)
         #                         - np.concatenate((image[:, :, 1:], image[:, :, (-1,)]), 2)) != 0)
-
-        #anisotropy = np.array(anisotropy).astype(np.float32)
-        #image = image.astype(np.float32)
-        ## Compute boundaries
-        ## FIXME why ?!
-        #axes = (anisotropy ** -1).astype(np.uint8)
-        #image = pixels_at_boundary(image, axes)
+        #
+        # anisotropy = np.array(anisotropy).astype(np.float32)
+        # image = image.astype(np.float32)
+        # # Compute boundaries
+        # # FIXME why ?!
+        # axes = (anisotropy ** -1).astype(np.uint8)
+        # image = pixels_at_boundary(image, axes)
 
         edge_volume = np.concatenate(
                 [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
                 axis = 2)
-        return vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
-
+        dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
+        if penalty_power > 0:
+            dt = np.power(dt, penalty_power)
+        return dt
 
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
