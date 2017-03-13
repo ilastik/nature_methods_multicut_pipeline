@@ -1,6 +1,6 @@
 from MetaSet import MetaSet
 from DataSet import DataSet
-from MCSolver import multicut_workflow, lifted_multicut_workflow, multicut_workflow_with_defect_correction
+from MCSolver import multicut_workflow, lifted_multicut_workflow, multicut_workflow_with_defect_correction, optimizeLifted
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_binary
 from Postprocessing import merge_small_segments

@@ -7,6 +7,7 @@ from lifted_mc import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
 from find_false_merges_src import path_features_from_feature_images
 from find_false_merges_src import path_classification
+from multicut_src import optimizeLifted
 
 import numpy as np
 import vigra
@@ -228,9 +229,10 @@ def resolve_merges_with_lifted_edges(
         #   - lifted_weights, edges
 
         # run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
+        result = optimizeLifted(uv_local, uv_ids_lifted_min_nh_local, mc_weights, lifted_weights)
 
 
-        # TODO : DEBUGGING!!!
+        # TODO: DEBUGGING!!!
         # TODO: Debug images
         # TODO: Look at paths
 
