@@ -233,6 +233,8 @@ def learn_and_predict_rf_from_gt(cache_folder,
         pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
         if with_defects:
             pred_name =  pred_name[:-3] + "_with_defects.h5"
+        if len(pred_name) >= 256:
+            pred_name = str(hash(pred_name[:-3])) + ".h5"
 
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)
