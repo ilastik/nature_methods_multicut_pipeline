@@ -302,10 +302,10 @@ class DataSet(object):
     # Feature Calculation
     #
 
-    # TODO integrate julian's to the power of 10 ?!
+    # FIXME: Apperently the cacher does not accept keyword arguments
     # this will be ignorant of using a different segmentation
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def distance_transform(self, segmentation, penalty_power = 0, anisotropy = [1.,1.,1.]):
+    def distance_transform(self, segmentation, penalty_power, anisotropy):
 
         # # if that does what I think it does (segmentation to edge image), we can use vigra...
         # def pixels_at_boundary(image, axes=[1, 1, 1]):
@@ -352,7 +352,7 @@ class DataSet(object):
         # FIXME the dt must be pre-computed for this to work
         if inp_id == 'distance_transform':
             fake_seg = np.zeros((10,10))
-            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
+            inp = self.distance_transform(fake_seg, 0, [1.,1.,anisotropy_factor])
             input_name = 'distance_transform'
         else:
             assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)

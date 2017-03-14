@@ -1,30 +1,58 @@
 
-from detect_false_merges import RemoveSmallObjectsParams, pipeline_remove_small_objects
-from find_false_merges_src import shortest_paths
+from remove_small_objects import RemoveSmallObjectsParams, remove_small_objects
+from compute_paths_and_features import shortest_paths
 from multicut_src import probs_to_energies
 from lifted_mc import compute_and_save_lifted_nh
 from lifted_mc import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
-from find_false_merges_src import path_features_from_feature_images
-from find_false_merges_src import path_classification
+# from find_false_merges_src import path_features_from_feature_images
+# from find_false_merges_src import path_classification
+from false_merges import path_feature_aggregator
+from compute_paths_and_features import FeatureImageParams
 
 import numpy as np
 import vigra
 
 
-class PipelineParameters:
+class ComputeFalseMergesParams:
 
-    def __init__(self,
-                 remove_small_objects=RemoveSmallObjectsParams()):
+    def __init__(
+            self,
+            remove_small_objects=RemoveSmallObjectsParams(),
+            feature_images=FeatureImageParams(),
+            anisotropy_factor=10
+    ):
 
         self.remove_small_objects = remove_small_objects
+        self.feature_images=feature_images
+        self.anisotropy_factor=anisotropy_factor
 
 
 def compute_false_merges(
         ds_train, ds_test,
-        mc_seg_train, mc_seg_test,
-        params
+        mc_segs_train, mc_seg_test, betas,
+        params=ComputeFalseMergesParams()
 ):
+    """
+    Computes and returns false merge candidates
+
+    :param ds_train: Array of datasets representing multiple source images; [N x 1]
+        Has to contain:
+        ds_train.inp(0) := raw image
+        ds_train.inp(1) := probs image
+
+    :param ds_test:
+        Has to contain:
+        ds_train.inp(0) := raw image
+        ds_train.inp(1) := probs image
+
+    :param mc_segs_train: Multiple multicut segmentations on ds_train
+        Different betas for each ds_train; [N x len(betas)]
+    :param mc_seg_test: Multicut segmentation on ds_test (usually beta=0.5)
+    :param betas: e.g., [0.3, 0.35, ..., 0.7]
+    :param params:
+    :return:
+    """
 
     # TODO: Store results of each step???
     # TODO: What are the images I can extract from ds_*???
@@ -32,27 +60,90 @@ def compute_false_merges(
     # The pipeline
     # ------------
 
-    # 1. Remove small objects
-    mc_seg_train = pipeline_remove_small_objects(
-        image=mc_seg_train, params=params.remove_small_objects
-    )
-    mc_seg_test = pipeline_remove_small_objects(
+    from concurrent import futures
+    # Remove small objects from the mc segmentation (from training and testing dataset)
+    for seg_id, mc_seg_train in enumerate(mc_segs_train):
+
+        if params.remove_small_objects.max_threads == 1:
+            for beta_id, beta in enumerate(mc_seg_train):
+                mc_segs_train[seg_id][beta_id] = remove_small_objects(
+                    image=beta, params=params.remove_small_objects
+                )
+        else:
+
+            with futures.ThreadPoolExecutor(params.remove_small_objects.max_threads) as do_stuff:
+
+                tasks = []
+
+                for beta_id, beta in enumerate(mc_seg_train):
+                    tasks.append(do_stuff.submit(
+                        remove_small_objects,
+                        image=beta, params=params.remove_small_objects
+                    ))
+
+            for beta_id, beta in enumerate(mc_seg_train):
+                mc_segs_train[seg_id][beta_id] = tasks[beta_id].result()
+
+
+    mc_seg_test = remove_small_objects(
         image=mc_seg_test, params=params.remove_small_objects
     )
 
-    # 2. Calculate feature images (including distance transform)
-    # TODO: How do I implement the different betas???
-    # compute_feature_images([], [], mc_seg_test)
+    # FIXME: Like this?
+    features = np.array([])
+    for ds_id, betas in enumerate(mc_segs_train):
+        current_ds = ds_train[ds_id]
 
-    # 3. Compute border contacts
+        # TODO: Calculate feature images for raw data and probabilities
+        raw_feature_image_paths = current_ds.make_filters(
+            0, params.anisotropy_factor, filter_names=params.feature_images.filter_names,
+            sigmas=params.feature_images.sigmas, use_fastfilters=False
+        )
+        probs_feature_image_paths = current_ds.make_filters(
+            1, params.anisotropy_factor, filter_names=params.feature_images.filter_names,
+            sigmas=params.feature_images.sigmas, use_fastfilters=False
+        )
 
-    # 4. Compute paths
+        for beta in betas:
 
-    # 5. Extract features from paths
+            # TODO: Delete distance transform and filters from cache
+            # Generate file name according to how the cacher generated it (append parameters)
+            # Find and delete the file if it is there
 
-    # 6. Random forest classification
+            # Compute distance transform on beta
+            # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
+            dt = current_ds.distance_transform(beta,
+                                               0,
+                                               [1., 1., params.anisotropy_factor])
+            # Calculate feature images on distance transform
+            dt_feature_image_path = current_ds.make_filters(
+                'distance_transform', params.anisotropy_factor, filter_names=params.feature_images.filter_names,
+                sigmas=params.feature_images.sigmas, use_fastfilters=False
+            )
 
-    # Return the labels of potential merges and associated paths
+            # TODO: Compute border contacts
+
+            # TODO: Compute paths
+            for obj in seg:
+                paths = shortest_paths(
+                    masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
+                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds
+                )
+
+            # TODO: Extract features from paths
+            features = np.concatenate((
+                features,
+                path_feature_aggregator(current_ds, paths, params.anisotropy_factor)
+            ), axis=0)
+            pass
+
+    # TODO: Do the same things as for each beta for the test data
+
+    # TODO: Random forest classification
+    # Train on the betas
+    # Get merge candidates on the test data
+
+    # TODO: Return the labels of potential merges and associated paths
     return [], []
 
 

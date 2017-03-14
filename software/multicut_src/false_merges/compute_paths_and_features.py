@@ -3,8 +3,20 @@ import vigra.graphs as graphs
 import numpy as np
 from concurrent import futures
 
-from .. import DataSet
+# from .. import DataSet
 #from .. import cacher_hdf5
+
+class FeatureImageParams:
+
+    def __init__(self,
+                 filter_names=["gaussianSmoothing",
+                               "hessianOfGaussianEigenvalues",
+                               "laplacianOfGaussian"],
+                 sigmas=[1.6, 4.2, 8.3]
+                 ):
+        self.filter_names = filter_names
+        self.sigmas=sigmas
+
 
 def shortest_paths(indicator,
         pairs,
