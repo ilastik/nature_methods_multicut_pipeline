@@ -37,14 +37,7 @@ def shortest_paths(indicator,
     gridgr_edgeind = graphs.edgeFeaturesFromImage(gridgr, indicator)
     instance = graphs.ShortestPathPathDijkstra(gridgr)
 
-    # Initialize list of path coordinates
-    paths = []
-    if yield_in_bounds:
-        paths_in_bounds = []
-
-    # TODO this could probably be parallelized
-    for pair in pairs:
-
+    def compute_path_for_pair(pair):
         source = pair[0]
         target = pair[1]
         print 'Calculating path from {} to {}'.format(source, target)
@@ -57,20 +50,31 @@ def shortest_paths(indicator,
         if path.any():
             # Do not forget to correct for the offset caused by cropping!
             if bounds is not None:
-                paths.append(path + [bounds[0].start, bounds[1].start, bounds[2].start])
+                path = path + [bounds[0].start, bounds[1].start, bounds[2].start]
                 if yield_in_bounds:
-                    paths_in_bounds.append(path)
+                    return path, paths_in_bounds
             else:
-                paths.append(path)
+                return path
+
+    # TODO this will not parallelize properly until the gil is lifted for ShortestPathPathDijkstra.run !
+    n_threads = 1
+    with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+        tasks = []
+        for pair in pairs:
+            tasks.append( executor.submit(compute_path_for_pair, pair) )
 
     if yield_in_bounds:
+        results = [t.result() for t in tasks]
+        paths = [res[0] for res in results]
+        paths_in_bounds = [res[1] for res in results]
         return paths, paths_in_bounds
     else:
-        return paths
+        return [t.result() for t in tasks]
 
 
 # convenience function to combine path features
 # TODO code different features with some keys
+# TODO expose the filters and sigmas for experimentation
 def path_feature_aggregator(ds, paths, anisotropy_factor):
     # TODO move all params to exp_params
     class Params:

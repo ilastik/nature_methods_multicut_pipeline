@@ -29,10 +29,28 @@ class ComputeFalseMergesParams:
         self.feature_images=feature_images
         self.anisotropy_factor=anisotropy_factor
 
+# TODO move all training related stuff here
+# cache the random forest here
+def train_random_forest_for_merges():
+    pass
+
+# TODO predict for test dataset
+def predict_false_merge_paths():
+    pass
+
+"""
+compute_false_merges(...):
+    rf = train_random_forest_for_merges(...)
+    false_merges = predict_false_merge_paths(rf, ...)
+"""
 
 def compute_false_merges(
-        ds_train, ds_test,
-        mc_segs_train, mc_seg_test, betas,
+        trainsets, # list of datasets with training data
+        ds_test, # one dataset -> predict the false merged objects
+        mc_segs_train, # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
+        mc_segs_train_keys,
+        mc_seg_test,
+        mc_seg_test_key,
         params=ComputeFalseMergesParams()
 ):
     """
@@ -51,10 +69,12 @@ def compute_false_merges(
     :param mc_segs_train: Multiple multicut segmentations on ds_train
         Different betas for each ds_train; [N x len(betas)]
     :param mc_seg_test: Multicut segmentation on ds_test (usually beta=0.5)
-    :param betas: e.g., [0.3, 0.35, ..., 0.7]
     :param params:
     :return:
     """
+
+    assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
+    assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
 
     # TODO: Store results of each step???
     # TODO: What are the images I can extract from ds_*???
@@ -63,51 +83,30 @@ def compute_false_merges(
     # ------------
 
     from concurrent import futures
-    # Remove small objects from the mc segmentation (from training and testing dataset)
-    for seg_id, mc_seg_train in enumerate(mc_segs_train):
+    import shutil
 
-        if params.remove_small_objects.max_threads == 1:
-            for beta_id, beta in enumerate(mc_seg_train):
-                mc_segs_train[seg_id][beta_id] = remove_small_objects(
-                    image=beta, params=params.remove_small_objects
-                )
-        else:
-
-            with futures.ThreadPoolExecutor(params.remove_small_objects.max_threads) as do_stuff:
-
-                tasks = []
-
-                for beta_id, beta in enumerate(mc_seg_train):
-                    tasks.append(do_stuff.submit(
-                        remove_small_objects,
-                        image=beta, params=params.remove_small_objects
-                    ))
-
-            for beta_id, beta in enumerate(mc_seg_train):
-                mc_segs_train[seg_id][beta_id] = tasks[beta_id].result()
-
-
+    # TODO load all test stuff
+    seg_test = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     mc_seg_test = remove_small_objects(
         image=mc_seg_test, params=params.remove_small_objects
     )
 
-    import shutil
-    # FIXME: Like this?
-    features = np.array([])
-    for ds_id, betas in enumerate(mc_segs_train):
-        current_ds = ds_train[ds_id]
+    train_features = []
+    train_labels   = []
+    # loop over the training datasets
+    for ds_id, paths_to_betas in enumerate(mc_segs_train):
+        current_ds = trainsets[ds_id]
+        keys_to_betas = mc_segs_train_keys[ds_id]
+        assert len(keys_to_betas) == len(paths_to_betas)
 
-        # TODO: Calculate feature images for raw data and probabilities
-        raw_feature_image_paths = current_ds.make_filters(
-            0, params.anisotropy_factor, filter_names=params.feature_images.filter_names,
-            sigmas=params.feature_images.sigmas, use_fastfilters=False
-        )
-        probs_feature_image_paths = current_ds.make_filters(
-            1, params.anisotropy_factor, filter_names=params.feature_images.filter_names,
-            sigmas=params.feature_images.sigmas, use_fastfilters=False
-        )
+        # loop over the different beta segmentations per train set
+        for seg_id, seg_path in enumerate(paths_to_betas):
 
-        for beta in betas:
+            # load the segmentation
+            key = keys_to_betas[seg_id]
+            seg = vigra.readHD5(seg_path, key)
+            # TODO refactor params, parallelize internally if this becomes bottleneck
+            seg = remove_small_objects(seg, params = params.remove_small_objects)
 
             # Delete distance transform and filters from cache
             # Generate file name according to how the cacher generated it (append parameters)
@@ -124,31 +123,36 @@ def compute_false_merges(
 
             # Compute distance transform on beta
             # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
-            dt = current_ds.distance_transform(beta, *dt_args[1:])
-
-            # Calculate feature images on distance transform
-            dt_feature_image_path = current_ds.make_filters(
-                'distance_transform', params.anisotropy_factor, filter_names=params.feature_images.filter_names,
-                sigmas=params.feature_images.sigmas, use_fastfilters=False
-            )
+            dt = current_ds.distance_transform(seg, *dt_args[1:])
 
             # TODO: Compute border contacts
 
-            # TODO: Compute paths
-            for obj in seg:
-                paths = shortest_paths(
+            # TODO: Compute paths , TODO parallelize, internally
+            all_paths = []
+            paths_to_objs = []
+            paths_labels = []
+            for obj in np.unique(seg):
+                # TODO implement shortest paths with labels
+                # TODO clean paths for duplicate paths in this function
+                paths, paths_labels = shortest_paths_with_labels(
                     masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
-                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds
-                )
+                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds)
+                all_paths.extend(paths)
+                paths_to_objs.extend( len(paths) * [obj] )
+                all_paths_labels.extend(paths_labels)
+
 
             # TODO: Extract features from paths
-            features = np.concatenate((
-                features,
-                path_feature_aggregator(current_ds, paths, params.anisotropy_factor)
-            ), axis=0)
-            pass
+            # TODO: decide which filters and sigmas to use here (needs to be exposed first)
+            features_train.append(
+                path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
+            )
+            labels_train.append( paths_labels )
 
-    # TODO: Do the same things as for each beta for the test data
+    features_train = np.concatenate( features_train, axis = 0) # TODO correct axis ?
+    labels_train = np.concatenate( labels_train, axis = 0) # TODO correct axis ?
+
+    # TODO: Do the same things for the test data
 
     # TODO: Random forest classification
     # Train on the betas
