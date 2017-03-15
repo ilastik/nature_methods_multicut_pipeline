@@ -396,8 +396,9 @@ class DataSet(object):
         filter_key    = "data"
 
         # list of paths to the filters, that will be calculated
-
         return_paths = []
+        # TODO set max_workers with ppl param value!
+        n_workers = 8
 
         # for pure 2d calculation, we only take into account the slices individually
         if calculation_2d:
@@ -412,8 +413,7 @@ class DataSet(object):
 
                     if not os.path.exists(filt_path):
 
-                        # TODO set max_workers with ppl param value!
-                        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+                        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                             tasks = []
                             for z in xrange(inp.shape[2]):
                                 tasks.append( executor.submit(filter, inp[:,:,z], sig ) )
@@ -428,25 +428,32 @@ class DataSet(object):
                         assert res.shape[0:2] == self.shape[0:2]
                         vigra.writeHDF5(res, filt_path, filter_key)
 
-        # TODO we should parallelize over the filters here!
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
-            for filt_name in filter_names:
-                filter = eval(filt_name)
-                for sig in sigmas:
+            if anisotropy_factor != 1.:
+                sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
 
-                    if anisotropy_factor != 1.:
-                        sig = (sig, sig, sig / anisotropy_factor)
-                    # check whether this is already there
-                    filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                    return_paths.append(filt_path)
+            def _calc_and_write_filter(filter_function, sigma, filt_path):
+                if not os.path.exists(filt_path):
+                    filter_res = filter_function( inp, sig )
+                    assert filter_res.shape[0:2] == self.shape[0:2]
+                    vigra.writeHDF5(filter_res,
+                            filt_path,
+                            filter_key)
+                    return True
+                else:
+                    return False
 
-                    if not os.path.exists(filt_path):
-                        filter_res = filter( inp, sig )
-                        assert filter_res.shape[0:2] == self.shape[0:2]
-                        vigra.writeHDF5(filter_res,
-                                filt_path,
-                                filter_key)
+            # FIXME this could be too memory hungry for a lot of threads
+            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+                tasks = []
+                for filt_name in filter_names:
+                    filter = eval(filt_name)
+                    for sig in sigmas:
+                        filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
+                        tasks.append( executor.submit(_calc_and_write_filter, filter, sig, filt_path) )
+                        return_paths.append(filt_path)
+                _ = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
