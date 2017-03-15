@@ -56,20 +56,24 @@ def shortest_paths(indicator,
             else:
                 return path
 
-    # TODO this will not parallelize properly until the gil is lifted for ShortestPathPathDijkstra.run !
+    # TODO FIXME Lifting the GIL for dijkstra.run() produces a deadlock for multiple threads
+    # -> need to discuss this with Thorsten
     n_threads = 1
-    with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
-        tasks = []
-        for pair in pairs:
-            tasks.append( executor.submit(compute_path_for_pair, pair) )
+    if n_threads > 1:
+        with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+            tasks = []
+            for pair in pairs:
+                tasks.append( executor.submit(compute_path_for_pair, pair) )
+            result = [t.result() for t in tasks]
+    else:
+        result = [compute_path_for_pair(pair) for pair in pairs]
 
     if yield_in_bounds:
-        results = [t.result() for t in tasks]
         paths = [res[0] for res in results]
         paths_in_bounds = [res[1] for res in results]
         return paths, paths_in_bounds
     else:
-        return [t.result() for t in tasks]
+        return result
 
 
 # convenience function to combine path features
