@@ -9,9 +9,11 @@ from multicut_src import learn_and_predict_rf_from_gt
 # from find_false_merges_src import path_classification
 from false_merges import path_feature_aggregator
 from compute_paths_and_features import FeatureImageParams
+from multicut_src.Tools import cache_name
 
 import numpy as np
 import vigra
+import os
 
 
 class ComputeFalseMergesParams:
@@ -89,6 +91,7 @@ def compute_false_merges(
         image=mc_seg_test, params=params.remove_small_objects
     )
 
+    import shutil
     # FIXME: Like this?
     features = np.array([])
     for ds_id, betas in enumerate(mc_segs_train):
@@ -106,15 +109,23 @@ def compute_false_merges(
 
         for beta in betas:
 
-            # TODO: Delete distance transform and filters from cache
+            # Delete distance transform and filters from cache
             # Generate file name according to how the cacher generated it (append parameters)
             # Find and delete the file if it is there
+            dt_args = (current_ds, 0, [1., 1., params.anisotropy_factor])
+            filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+
+            # Clear filter cache
+            filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
+            if os.path.isdir(filters_filepath):
+                shutil.rmtree(filters_filepath)
 
             # Compute distance transform on beta
             # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
-            dt = current_ds.distance_transform(beta,
-                                               0,
-                                               [1., 1., params.anisotropy_factor])
+            dt = current_ds.distance_transform(beta, *dt_args[1:])
+
             # Calculate feature images on distance transform
             dt_feature_image_path = current_ds.make_filters(
                 'distance_transform', params.anisotropy_factor, filter_names=params.feature_images.filter_names,
