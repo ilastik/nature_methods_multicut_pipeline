@@ -219,3 +219,4 @@ def path_features_from_feature_images(
     # TODO checkfor correct number of features
 
     return out
+

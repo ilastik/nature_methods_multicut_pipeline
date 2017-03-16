@@ -10,6 +10,7 @@ from multicut_src import learn_and_predict_rf_from_gt
 from false_merges import path_feature_aggregator
 from compute_paths_and_features import FeatureImageParams
 from multicut_src.Tools import cache_name
+from compute_border_contacts import compute_path_end_pairs, compute_border_contacts
 
 import numpy as np
 import vigra
@@ -89,7 +90,9 @@ def train_random_forest_for_merges(
             # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
             dt = current_ds.distance_transform(seg, *dt_args[1:])
 
-            # TODO: Compute border contacts
+            # TODO: Compute path end pairs
+            border_contacts = compute_border_contacts(seg, dt)
+            path_end_pairs = compute_path_end_pairs(border_contacts, params)
 
             # TODO: Compute paths , TODO parallelize, internally
             all_paths = []
