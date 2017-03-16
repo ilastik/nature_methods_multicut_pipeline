@@ -29,14 +29,105 @@ class ComputeFalseMergesParams:
         self.feature_images=feature_images
         self.anisotropy_factor=anisotropy_factor
 
-# TODO move all training related stuff here
-# cache the random forest here
-def train_random_forest_for_merges():
+
+def accumulate_paths_and_features():
     pass
 
+
+# TODO move all training related stuff here
+# cache the random forest here
+def train_random_forest_for_merges(
+        trainsets, # list of datasets with training data
+        mc_segs_train, # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
+        mc_segs_train_keys,
+        params
+):
+
+    import shutil
+
+    features_train = []
+    labels_train = []
+    # loop over the training datasets
+    for ds_id, paths_to_betas in enumerate(mc_segs_train):
+        current_ds = trainsets[ds_id]
+        keys_to_betas = mc_segs_train_keys[ds_id]
+        assert len(keys_to_betas) == len(paths_to_betas)
+
+        # loop over the different beta segmentations per train set
+        for seg_id, seg_path in enumerate(paths_to_betas):
+
+            # TODO: Put the inside of this loop into accumulate_paths_and_features()
+            """ INPUTS NEEDED IN THIS LOOP
+
+            seg_path: path to mc segmentation (-> beta...)
+            key: internal key to mc segmentation
+            params: some parameter class (still needs implementation)
+            current_ds: the current dataset of the sample (A_0, ...)
+
+            """
+
+            # load the segmentation
+            key = keys_to_betas[seg_id]
+            seg = vigra.readHDF5(seg_path, key)
+            # TODO refactor params, parallelize internally if this becomes bottleneck
+            seg = remove_small_objects(seg, params=params.remove_small_objects)
+
+            # Delete distance transform and filters from cache
+            # Generate file name according to how the cacher generated it (append parameters)
+            # Find and delete the file if it is there
+            dt_args = (current_ds, 0, [1., 1., params.anisotropy_factor])
+            filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+
+            # Clear filter cache
+            filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
+            if os.path.isdir(filters_filepath):
+                shutil.rmtree(filters_filepath)
+
+            # Compute distance transform on beta
+            # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
+            dt = current_ds.distance_transform(seg, *dt_args[1:])
+
+            # TODO: Compute border contacts
+
+            # TODO: Compute paths , TODO parallelize, internally
+            all_paths = []
+            paths_to_objs = []
+            paths_labels = []
+            for obj in np.unique(seg):
+                # TODO implement shortest paths with labels
+                # TODO clean paths for duplicate paths in this function
+                paths, paths_labels = shortest_paths_with_labels(
+                    masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
+                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds)
+                all_paths.extend(paths)
+                paths_to_objs.extend(len(paths) * [obj])
+                all_paths_labels.extend(paths_labels)
+
+            # TODO: Extract features from paths
+            # TODO: decide which filters and sigmas to use here (needs to be exposed first)
+            features_train.append(
+                path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
+            )
+            labels_train.append(paths_labels)
+
+    features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
+    labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
+
+    return []
+
+
 # TODO predict for test dataset
-def predict_false_merge_paths():
-    pass
+def predict_false_merge_paths(rf, mc_seg_test, mc_seg_test_key, params):
+
+    # TODO load all test stuff
+    seg_test = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
+    seg_test = remove_small_objects(
+        image=seg_test, params=params.remove_small_objects
+    )
+
+    return []
 
 """
 compute_false_merges(...):
@@ -82,77 +173,17 @@ def compute_false_merges(
     # The pipeline
     # ------------
 
-    from concurrent import futures
-    import shutil
 
-    # TODO load all test stuff
-    seg_test = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
-    mc_seg_test = remove_small_objects(
-        image=mc_seg_test, params=params.remove_small_objects
+
+    rf = train_random_forest_for_merges(
+        trainsets,
+        mc_segs_train,
+        mc_segs_train_keys,
+        params
     )
 
-    train_features = []
-    train_labels   = []
-    # loop over the training datasets
-    for ds_id, paths_to_betas in enumerate(mc_segs_train):
-        current_ds = trainsets[ds_id]
-        keys_to_betas = mc_segs_train_keys[ds_id]
-        assert len(keys_to_betas) == len(paths_to_betas)
-
-        # loop over the different beta segmentations per train set
-        for seg_id, seg_path in enumerate(paths_to_betas):
-
-            # load the segmentation
-            key = keys_to_betas[seg_id]
-            seg = vigra.readHD5(seg_path, key)
-            # TODO refactor params, parallelize internally if this becomes bottleneck
-            seg = remove_small_objects(seg, params = params.remove_small_objects)
-
-            # Delete distance transform and filters from cache
-            # Generate file name according to how the cacher generated it (append parameters)
-            # Find and delete the file if it is there
-            dt_args = (current_ds, 0, [1., 1., params.anisotropy_factor])
-            filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
-            if os.path.isfile(filepath):
-                os.remove(filepath)
-
-            # Clear filter cache
-            filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
-            if os.path.isdir(filters_filepath):
-                shutil.rmtree(filters_filepath)
-
-            # Compute distance transform on beta
-            # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
-            dt = current_ds.distance_transform(seg, *dt_args[1:])
-
-            # TODO: Compute border contacts
-
-            # TODO: Compute paths , TODO parallelize, internally
-            all_paths = []
-            paths_to_objs = []
-            paths_labels = []
-            for obj in np.unique(seg):
-                # TODO implement shortest paths with labels
-                # TODO clean paths for duplicate paths in this function
-                paths, paths_labels = shortest_paths_with_labels(
-                    masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
-                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds)
-                all_paths.extend(paths)
-                paths_to_objs.extend( len(paths) * [obj] )
-                all_paths_labels.extend(paths_labels)
-
-
-            # TODO: Extract features from paths
-            # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-            features_train.append(
-                path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
-            )
-            labels_train.append( paths_labels )
-
-    features_train = np.concatenate( features_train, axis = 0) # TODO correct axis ?
-    labels_train = np.concatenate( labels_train, axis = 0) # TODO correct axis ?
-
     # TODO: Do the same things for the test data
+    false_merges = predict_false_merge_paths(rf, mc_seg_test, mc_seg_test_key, params)
 
     # TODO: Random forest classification
     # Train on the betas

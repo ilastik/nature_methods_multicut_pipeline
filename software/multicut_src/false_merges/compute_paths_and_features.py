@@ -69,8 +69,8 @@ def shortest_paths(indicator,
         result = [compute_path_for_pair(pair) for pair in pairs]
 
     if yield_in_bounds:
-        paths = [res[0] for res in results]
-        paths_in_bounds = [res[1] for res in results]
+        paths = [res[0] for res in result]
+        paths_in_bounds = [res[1] for res in result]
         return paths, paths_in_bounds
     else:
         return result
