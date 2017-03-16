@@ -134,25 +134,25 @@ def path_features_from_feature_images(
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor, use_fastfilters = False)
+    #print feat_paths
     # TODO sort the feat_path correctly
     # load the feature images ->
     # FIXME this might be too memory hungry if we have a large global bounding box
 
     # compute the global bounding box
-    min_coords = np.min(
+    global_min = np.min(
             np.concatenate([np.min(path, axis = 0)[None,:] for path in paths], axis=0),
             axis = 0
             )
-    max_coords = np.max(
+    global_max = np.max(
             np.concatenate([np.max(path, axis = 0)[None,:] for path in paths], axis=0),
             axis = 0
-            )
-    max_coords += 1
+            ) + 1
     # substract min coords from all paths to bring them to new coordinates
-    paths = [path - min_coords for path in paths]
-    roi = np.s_[min_coords[0]:max_coords[0],
-            min_coords[1]:max_coords[1],
-            min_coords[2]:max_coords[2]]
+    paths_in_roi = [path - global_min for path in paths]
+    roi = np.s_[global_min[0]:global_max[0],
+            global_min[1]:global_max[1],
+            global_min[2]:global_max[2]]
 
     # load features in global boundng box
     feature_volumes = []
@@ -170,7 +170,7 @@ def path_features_from_feature_images(
     def extract_features_for_path(path):
 
         # calculate the local path bounding box
-        min_coors  = np.min(path, axis = 0)
+        min_coords  = np.min(path, axis = 0)
         max_coords = np.max(path, axis = 0)
         max_coords += 1
         shape = tuple( max_coords - min_coords)
@@ -204,13 +204,13 @@ def path_features_from_feature_images(
     # parallel
     with futures.ThreadPoolExecutor(params.max_threads) as executor:
         tasks = []
-        for p_id, path in enumerate(paths):
+        for p_id, path in enumerate(paths_in_roi):
             tasks.append( executor.submit( extract_features_for_path, path) )
-    out = np.concatenate([t.result() for t in tasks], axis = 0)
+        out = np.concatenate([t.result() for t in tasks], axis = 0)
 
     # serial for debugging
     #out = []
-    #for p_id, path in enumerate(paths):
+    #for p_id, path in enumerate(paths_in_roi):
     #    out.append( extract_features_for_path(path) )
     #out = np.concatenate(out, axis = 0)
 
