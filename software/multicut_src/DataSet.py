@@ -347,6 +347,7 @@ class DataSet(object):
             ):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
+        print "Calculating filters for input id:", inp_id
 
         # FIXME dirty hack to calculate features on the ditance trafo
         # FIXME the dt must be pre-computed for this to work
