@@ -19,28 +19,25 @@ class FeatureImageParams:
 
 
 def shortest_paths(indicator,
-        pairs,
-        bounds=None,
-        yield_in_bounds=False):
+        pairs):
     """
     This function was copied from processing_lib.py
     :param indicator:
-    :param pairs:
-    :param bounds:
-    :param yield_in_bounds:
     :return:
     """
 
-    # Crate the grid graph and shortest path objects
+    # TODO set this from global parameter object
+    n_threads = 1
+    #print "running sp fu"
     gridgr = graphs.gridGraph(indicator.shape)
-    indicator = indicator.astype(np.float32)
-    gridgr_edgeind = graphs.edgeFeaturesFromImage(gridgr, indicator)
-    instance = graphs.ShortestPathPathDijkstra(gridgr)
+    gridgr_edgeind = graphs.implicitMeanEdgeMap(gridgr, indicator.astype('float32'))
 
-    def compute_path_for_pair(pair):
+    def single_path(pair, instance = None):
         source = pair[0]
         target = pair[1]
         print 'Calculating path from {} to {}'.format(source, target)
+        if instance == None:
+            instance = graphs.ShortestPathPathDijkstra(gridgr)
 
         targetNode = gridgr.coordinateToNode(target)
         sourceNode = gridgr.coordinateToNode(source)
@@ -48,32 +45,19 @@ def shortest_paths(indicator,
         instance.run(gridgr_edgeind, sourceNode, target=targetNode)
         path = instance.path(pathType='coordinates')
         if path.any():
-            # Do not forget to correct for the offset caused by cropping!
-            if bounds is not None:
-                path = path + [bounds[0].start, bounds[1].start, bounds[2].start]
-                if yield_in_bounds:
-                    return path, paths_in_bounds
-            else:
-                return path
+            return path
 
-    # TODO FIXME Lifting the GIL for dijkstra.run() produces a deadlock for multiple threads
-    # -> need to discuss this with Thorsten
-    n_threads = 1
     if n_threads > 1:
         with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
             tasks = []
             for pair in pairs:
-                tasks.append( executor.submit(compute_path_for_pair, pair) )
-            result = [t.result() for t in tasks]
+                tasks.append( executor.submit(single_path, pair) )
+            paths = [t.result() for t in tasks]
     else:
-        result = [compute_path_for_pair(pair) for pair in pairs]
+        instance = graphs.ShortestPathPathDijkstra(gridgr)
+        paths = [single_path(pair, instance) for pair in pairs]
 
-    if yield_in_bounds:
-        paths = [res[0] for res in result]
-        paths_in_bounds = [res[1] for res in result]
-        return paths, paths_in_bounds
-    else:
-        return result
+    return paths
 
 
 # convenience function to combine path features
@@ -202,7 +186,7 @@ def path_features_from_feature_images(
     # we avoid the single threaded i/o in the beginning!
     # it also lessens memory requirements if we have less threads than filters
     # parallel
-    with futures.ThreadPoolExecutor(params.max_threads) as executor:
+    with futures.ThreadPoolExecutor(max_workers = params.max_threads) as executor:
         tasks = []
         for p_id, path in enumerate(paths_in_roi):
             tasks.append( executor.submit( extract_features_for_path, path) )
