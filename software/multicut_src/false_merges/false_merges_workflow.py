@@ -150,15 +150,26 @@ def train_random_forest_for_merges(
 
             # TODO: Extract features from paths
             # TODO: decide which filters and sigmas to use here (needs to be exposed first)
+            # if not features_train.any():
+            #     features_train = path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
+            # else:
+            #     features_train = np.concatenate(
+            #         (features_train, path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)),
+            #         axis=0
+            #     )
             features_train.append(
                 path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
             )
             labels_train.append(path_classes)
 
-        features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
-        labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
+    features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
+    labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
 
-    return []
+    from sklearn.ensemble import RandomForestClassifier as Skrf
+    rf = Skrf()
+    rf.fit(features_train, labels_train)
+
+    return rf
 
 
 # TODO predict for test dataset

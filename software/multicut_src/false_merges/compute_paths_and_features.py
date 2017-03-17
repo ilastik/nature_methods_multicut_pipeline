@@ -176,7 +176,7 @@ def path_features_from_feature_images(
                         path_image,
                         ignoreLabel = 0,
                         features = stats)
-                path_features.append( extractor[stat] for stat in stats) # TODO make sure that dimensions match for more that 1d stats!
+                path_features.extend( [extractor[stat][1] for stat in stats]) # TODO make sure that dimensions match for more that 1d stats!
         #ret = np.array(path_features)[:,None]
         #print ret.shape
         return np.array(path_features)[None,:]

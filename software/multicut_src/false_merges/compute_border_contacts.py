@@ -241,6 +241,9 @@ def compute_path_end_pairs(
         # Pairs are found if the segmentation object has more than one path end
         if ps:
 
+            # FIXME: For debugging take just the first item
+            ps = [ps[0]]
+
             # Determine the labels of both path ends
             label_pair = [sorted([gt[p[0], p[1], p[2]] for p in pair]) for pair in ps]
 
@@ -265,7 +268,7 @@ def compute_path_end_pairs(
     correspondence_list = uniques.view(correspondence_list.dtype)
     correspondence_list = correspondence_list.reshape((correspondence_list.shape[0]/2, 2))
 
-    return pairs, labels, classes, gt_labels, correspondence_list
+    return pairs, labels, classes, gt_labels, correspondence_list.tolist()
 
 
 # def find_border_contacts_arr(segmentation, disttransf, tkey='bc', debug=False):
