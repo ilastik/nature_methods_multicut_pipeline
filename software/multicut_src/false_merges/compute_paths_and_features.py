@@ -67,7 +67,8 @@ def path_feature_aggregator(ds, paths, anisotropy_factor):
     # TODO move all params to exp_params
     class Params:
         def __init__(self):
-            self.stats = ["Mean","Variance"]
+            # FIXME Pathlength ?! -> sounds redundant TODO use quantiles instead of Max and Min ?!
+            self.stats = ["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"]
             self.max_threads = 8
     params = Params()
     #
@@ -160,7 +161,7 @@ def path_features_from_feature_images(
         shape = tuple( max_coords - min_coords)
         path_image = np.zeros(shape, dtype='uint32')
         path -= min_coords
-        # TODO FIXME why swap axes ????
+        # we swapaxes to properly index the image properly
         path_sa = np.swapaxes(path, 0, 1)
         path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
 
