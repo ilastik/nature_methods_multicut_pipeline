@@ -166,7 +166,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'xyb':
             centers = {
-                lbl: [center + [volume_shape[2]] for center in centers_in_lbl]
+                lbl: [center + [volume_shape[2]-1] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
         elif orientation == 'xzf':
@@ -176,7 +176,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'xzb':
             centers = {
-                lbl: [[center[0], volume_shape[1], center[1]] for center in centers_in_lbl]
+                lbl: [[center[0], volume_shape[1]-1, center[1]] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
         elif orientation == 'yzf':
@@ -186,7 +186,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'yzb':
             centers = {
-                lbl: [[volume_shape[0], center[0], center[1]] for center in centers_in_lbl]
+                lbl: [[volume_shape[0]-1, center[0], center[1]] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
 
@@ -215,13 +215,57 @@ def compute_border_contacts(
 
 def compute_path_end_pairs(
         border_contacts,
+        gt,
+        correspondence_list,
         params
 ):
 
-    # TODO: Convert border_contacts to path_end_pairs
-    path_end_pairs = []
+    # Convert border_contacts to path_end_pairs
+    import itertools
 
-    return path_end_pairs
+    # TODO: Remove path end pairs under certain criteria
+    # TODO: Do this only if GT is supplied
+    # a) All classes: GT label pair is already in correspondence table
+    # b) Class 'non-merged': Only take them for beta_0.5?
+    # c) All classes: Too many pairs for one object
+
+    pairs = []
+    labels = []
+    classes = []
+    gt_labels = []
+    for lbl, contacts in border_contacts.iteritems():
+
+        # Get all possible combinations of path ends in one segmentation object
+        ps = list(itertools.combinations(contacts, 2))
+
+        # Pairs are found if the segmentation object has more than one path end
+        if ps:
+
+            # Determine the labels of both path ends
+            label_pair = [sorted([gt[p[0], p[1], p[2]] for p in pair]) for pair in ps]
+
+            # Assign a class to the paths:
+            #   False if a path doesn't cross a merging site
+            #   True if a path crosses a merging site
+            new_classes = [bool(lp[1] - lp[0]) for lp in label_pair]
+
+            pairs.extend(ps)
+            labels.extend([lbl] * len(ps))
+            classes.extend(new_classes)
+            gt_labels.extend(label_pair)
+            # pairs[lbl] = ps
+
+    # Update the correspondence list
+    correspondence_list.extend(gt_labels)
+    correspondence_list = np.array(correspondence_list)
+    # Only keep unique pairs
+    b = np.ascontiguousarray(correspondence_list).view(
+        np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
+    uniques = np.unique(b)
+    correspondence_list = uniques.view(correspondence_list.dtype)
+    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0]/2, 2))
+
+    return pairs, labels, classes, gt_labels, correspondence_list
 
 
 # def find_border_contacts_arr(segmentation, disttransf, tkey='bc', debug=False):

@@ -23,12 +23,14 @@ class ComputeFalseMergesParams:
             self,
             remove_small_objects=RemoveSmallObjectsParams(),
             feature_images=FeatureImageParams(),
+            paths_penalty_power=10,
             anisotropy_factor=10
     ):
 
         self.remove_small_objects = remove_small_objects
         self.feature_images=feature_images
         self.anisotropy_factor=anisotropy_factor
+        self.paths_penalty_power=paths_penalty_power
 
 
 def accumulate_paths_and_features():
@@ -41,10 +43,13 @@ def train_random_forest_for_merges(
         trainsets, # list of datasets with training data
         mc_segs_train, # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
+        gtruths,
+        gtruths_keys,
         params
 ):
 
     import shutil
+    from copy import deepcopy
 
     features_train = []
     labels_train = []
@@ -53,6 +58,16 @@ def train_random_forest_for_merges(
         current_ds = trainsets[ds_id]
         keys_to_betas = mc_segs_train_keys[ds_id]
         assert len(keys_to_betas) == len(paths_to_betas)
+
+        # TODO: Add gt to dataset
+        # Load ground truth
+        gt_file = gtruths[ds_id]
+        gt_key = gtruths_keys[ds_id]
+        gt = vigra.readHDF5(gt_file, gt_key)
+
+        # Initialize correspondence list which makes sure that the same merge is not extracted from
+        # multiple mc segmentations
+        correspondence_list = []
 
         # loop over the different beta segmentations per train set
         for seg_id, seg_path in enumerate(paths_to_betas):
@@ -90,33 +105,58 @@ def train_random_forest_for_merges(
             # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
             dt = current_ds.distance_transform(seg, *dt_args[1:])
 
-            # TODO: Compute path end pairs
+            # Compute path end pairs
             border_contacts = compute_border_contacts(seg, dt)
-            path_end_pairs = compute_path_end_pairs(border_contacts, params)
+            # This is supposed to only return those pairs that will be used for path computation
+            # TODO: Throw out some under certain conditions (see also within function)
+            path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs(
+                border_contacts, gt, correspondence_list, params
+            )
 
             # TODO: Compute paths , TODO parallelize, internally
             all_paths = []
-            paths_to_objs = []
-            paths_labels = []
-            for obj in np.unique(seg):
+
+            # Invert the distance transform
+            dt = np.amax(dt) - dt
+            # Penalty power on distance transform
+            dt = np.power(dt, 10)
+
+            for obj in np.unique(paths_to_objs):
                 # TODO implement shortest paths with labels
                 # TODO clean paths for duplicate paths in this function
-                paths, paths_labels = shortest_paths_with_labels(
-                    masked_disttransf, uv_ids_lifted_min_nh_coords, bounds=bounds, logger=logger,
-                    return_pathim=return_pathim, yield_in_bounds=yield_in_bounds)
+
+                # # Get the distance transform with correct penalty_power
+                # dt = current_ds.distance_transform(
+                #     seg, params.paths_penalty_power, [1., 1., params.anisotropy_factor])
+
+                # Mask distance transform to current object
+                masked_dt = deepcopy(dt)
+                masked_dt[seg != obj] = np.inf
+
+                # Take only the relevant path pairs
+                pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+
+                paths = shortest_paths(masked_dt, pairs_in)
+                # paths is now a list of numpy arrays
                 all_paths.extend(paths)
-                paths_to_objs.extend(len(paths) * [obj])
-                all_paths_labels.extend(paths_labels)
+
+            # TODO: Here we have to ensure that every path is actually computed
+            # TODO:  --> Throw not computed paths out of the lists
+
+            # TODO: Remove paths under certain criteria
+            # TODO: Do this only if GT is supplied
+            # a) Class 'non-merged': Paths cross labels in GT multiple times
+            # b) Class 'merged': Paths have to contain a certain amount of pixels in both GT classes
 
             # TODO: Extract features from paths
             # TODO: decide which filters and sigmas to use here (needs to be exposed first)
             features_train.append(
                 path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
             )
-            labels_train.append(paths_labels)
+            labels_train.append(path_classes)
 
-    features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
-    labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
+        features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
+        labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
 
     return []
 
@@ -145,6 +185,8 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
+        gtruths,
+        gtruths_keys,
         params=ComputeFalseMergesParams()
 ):
     """
@@ -176,12 +218,12 @@ def compute_false_merges(
     # The pipeline
     # ------------
 
-
-
     rf = train_random_forest_for_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
+        gtruths,
+        gtruths_keys,
         params
     )
 
