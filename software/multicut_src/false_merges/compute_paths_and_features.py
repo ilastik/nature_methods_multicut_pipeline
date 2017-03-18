@@ -19,16 +19,14 @@ class FeatureImageParams:
 
 
 def shortest_paths(indicator,
-        pairs):
+        pairs,
+        n_threads = 1):
     """
     This function was copied from processing_lib.py
     :param indicator:
     :return:
     """
 
-    # TODO set this from global parameter object
-    n_threads = 1
-    #print "running sp fu"
     gridgr = graphs.gridGraph(indicator.shape)
     gridgr_edgeind = graphs.implicitMeanEdgeMap(gridgr, indicator.astype('float32'))
 
@@ -48,12 +46,12 @@ def shortest_paths(indicator,
             return path
 
     if n_threads > 1:
+        print "Multi-threaded w/ n-threads = ", n_threads
         with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
-            tasks = []
-            for pair in pairs:
-                tasks.append( executor.submit(single_path, pair) )
+            tasks = [executor.submit(single_path, pair) for pair in pairs]
             paths = [t.result() for t in tasks]
     else:
+        print "Single threaded"
         instance = graphs.ShortestPathPathDijkstra(gridgr)
         paths = [single_path(pair, instance) for pair in pairs]
 

@@ -1,9 +1,8 @@
-
-
 import numpy as np
 import vigra
+import itertools
 
-
+# FIXME AAAAAAHHH THE HORROR
 def get_faces_with_neighbors(image):
 
     # --- XY ---
@@ -102,6 +101,7 @@ def get_faces_with_neighbors(image):
 
 def find_centroids(seg, dt, bounds):
 
+    # TODO FIXME use vigra functionality instead to avoid dependency on skimage
     from skimage import morphology
 
     centroids = {}
@@ -116,6 +116,7 @@ def find_centroids(seg, dt, bounds):
                                                            background_value=0)
 
         # Only these labels will be used for further processing
+        # TODO FIXME use vigra.filters.multiBinaryOpening or vigra.filters.multiGrayscaleOpening (dunno which is appropriate here)
         opened_labels = np.unique(morphology.opening(conncomp))
         # unopened_labels = np.unique(conncomp)
         # print 'opened_labels = {}'.format(opened_labels)
@@ -213,15 +214,14 @@ def compute_border_contacts(
     return centroids
 
 
-def compute_path_end_pairs(
+# FIXME this seems to be very inefficient
+def compute_path_end_pairs_and_labels(
         border_contacts,
         gt,
-        correspondence_list,
-        params
+        correspondence_list
 ):
 
     # Convert border_contacts to path_end_pairs
-    import itertools
 
     # TODO: Remove path end pairs under certain criteria
     # TODO: Do this only if GT is supplied
@@ -269,6 +269,26 @@ def compute_path_end_pairs(
     correspondence_list = correspondence_list.reshape((correspondence_list.shape[0]/2, 2))
 
     return pairs, labels, classes, gt_labels, correspondence_list.tolist()
+
+
+# FIXME this seems to be very inefficient
+def compute_path_end_pairs(
+        border_contacts,
+):
+
+    # Convert border_contacts to path_end_pairs
+    pairs = []
+    labels = []
+    for lbl, contacts in border_contacts.iteritems():
+        # Get all possible combinations of path ends in one segmentation object
+        ps = list(itertools.combinations(contacts, 2))
+        # Pairs are found if the segmentation object has more than one path end
+        if ps:
+            # FIXME: For debugging take just the first item
+            ps = [ps[0]]
+            pairs.extend(ps)
+            labels.extend([lbl] * len(ps))
+    return pairs, labels
 
 
 # def find_border_contacts_arr(segmentation, disttransf, tkey='bc', debug=False):

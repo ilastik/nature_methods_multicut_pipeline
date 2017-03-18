@@ -1,7 +1,47 @@
 import numpy as np
 import vigra
+from concurrent import futures
 
 from Tools import UnionFind
+
+# numpy.replace: replcaces the values in array according to dict
+# cf. SO: http://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
+def replace_from_dict(array, dict_like):
+    replace_keys, replace_vals = np.array(list(zip( *sorted(dict_like.items() ))))
+    indices = np.digitize(array, replace_keys, right = True)
+    return replace_vals[indices].astype(array.dtype)
+
+# TODO 10,000 seems to be a pretty large default value !
+# TODO FIXME rethink the relabeling here, in which cases do we want it, can it hurt?
+def remove_small_segments(segmentation,
+        size_thresh = 10000,
+        relabel = True):
+
+    # Make sure all objects have their individual label
+    # TODO FIXME this is very dangerous for sample C (black slices !)!
+    if relabel:
+        segmentation = vigra.analysis.labelVolumeWithBackground(
+            segmentation.astype('uint32'), neighborhood=6, background_value=0)
+
+    # Get the unique values of the segmentation including counts
+    uniq, counts = np.unique(segmentation, return_counts=True)
+
+    # Keep all uniques that have a count smaller than size_thresh
+    small_objs = uniq[counts < size_thresh]
+    large_objs = uniq[counts >= size_thresh]
+    print 'len(large_objs) == {}'.format(len(large_objs))
+    print 'len(small_objs) == {}'.format(len(small_objs))
+
+    # I think this is the fastest (single threaded way) to do this
+    # If we really need to parallelize this, we need to rethink a little, but for now, this should be totally fine!
+    if relabel:
+        large_objs_to_consecutive = {obj_id : i+1 for i, obj_id in enumerate(large_objs)}
+        obj_dict = {obj_id : 0 if obj_id in small_objs else large_objs_to_consecutive[obj_id] for obj_id in uniq}
+    else:
+        obj_dict = {obj_id : 0 if obj_id in small_objs else obj_id for obj_id in uniq}
+    segmentation = replace_from_dict(segmentation, obj_dict)
+    return segmentation
+
 
 # merge segments that are smaller than min_seg_size
 # TODO more efficiently ?!

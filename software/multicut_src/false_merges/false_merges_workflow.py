@@ -1,70 +1,92 @@
-from remove_small_objects import RemoveSmallObjectsParams, remove_small_objects
 from compute_paths_and_features import shortest_paths
 from multicut_src import probs_to_energies
-#from lifted_mc import compute_and_save_lifted_nh
-#from lifted_mc import compute_and_save_long_range_nh
+from multicut_src import remove_small_segments
+from multicut_src import compute_and_save_long_range_nh
 from multicut_src import learn_and_predict_rf_from_gt
 # from find_false_merges_src import path_features_from_feature_images
 # from find_false_merges_src import path_classification
 from compute_paths_and_features import FeatureImageParams, path_feature_aggregator
 from multicut_src.Tools import cache_name
-from compute_border_contacts import compute_path_end_pairs, compute_border_contacts
+from compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
 
 import numpy as np
 import vigra
 import os
 import cPickle as pickle
+import shutil
+from copy import deepcopy
 
 
+# TODO refactor params
 class ComputeFalseMergesParams:
 
     def __init__(
             self,
-            remove_small_objects=RemoveSmallObjectsParams(),
             feature_images=FeatureImageParams(),
             paths_penalty_power=10,
             anisotropy_factor=10
     ):
 
-        self.remove_small_objects = remove_small_objects
         self.feature_images=feature_images
         self.anisotropy_factor=anisotropy_factor
         self.paths_penalty_power=paths_penalty_power
 
-
 def extract_paths_from_segmentation(
         ds,
         seg_path,
-        key, params,
-        dt_args,
-        gt = None,
-        correspondence_list = None):
-    """ INPUTS NEEDED IN THIS LOOP
+        key,
+        params):
 
-    seg_path: path to mc segmentation (-> beta...)
-    key: internal key to mc segmentation
-    params: some parameter class (still needs implementation)
-    current_ds: the current dataset of the sample (A_0, ...)
+    seg = vigra.readHDF5(seg_path, key)
+    # FIXME we don't remove small objects for now, because this would relabel the segmentation, which we don't want in this case
 
+    # Compute distance transform on beta
+    dt = ds.distance_transform(seg, [1., 1., params.anisotropy_factor])
+    # Compute path end pairs
+    # TODO parallelize this function !
+    border_contacts = compute_border_contacts(seg, dt)
+    path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
+
+    # Invert the distance transform
+    dt = np.amax(dt) - dt
+    # Penalty power on distance transform
+    dt = np.power(dt, 10)
+
+    # compute the actual paths
+    # TODO implement shortest paths with labels
+    # TODO clean paths for duplicate paths in this function
+    all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
+
+    return all_paths, paths_to_objs
+
+
+# TODO refactor params
+def extract_paths_and_labels_from_segmentation(
+        ds,
+        seg_path,
+        key,
+        params,
+        gt,
+        correspondence_list):
+    """
+    params:
     """
 
     # load the segmentation
     seg = vigra.readHDF5(seg_path, key)
-    if gt is not None:
-        assert seg.shape == gt.shape
-    # TODO refactor params, parallelize internally if this becomes bottleneck
-    seg = remove_small_objects(seg, params=params.remove_small_objects)
+    assert seg.shape == gt.shape
+    seg = remove_small_segments(seg)
 
     # Compute distance transform on beta
-    # FIXME: It would be nicer with keyword arguments (the cacher doesn't accept them)
     dt = ds.distance_transform(seg, [1., 1., params.anisotropy_factor])
 
     # Compute path end pairs
+    # TODO parallelize this function !
     border_contacts = compute_border_contacts(seg, dt)
     # This is supposed to only return those pairs that will be used for path computation
     # TODO: Throw out some under certain conditions (see also within function)
-    path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs(
-        border_contacts, gt, correspondence_list, params
+    path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs_and_labels(
+        border_contacts, gt, correspondence_list
     )
 
     # Invert the distance transform
@@ -73,21 +95,25 @@ def extract_paths_from_segmentation(
     dt = np.power(dt, 10)
 
     # compute the actual paths
-    all_paths = []
-    for obj in np.unique(paths_to_objs):
-        # TODO implement shortest paths with labels
-        # TODO clean paths for duplicate paths in this function
+    # TODO implement shortest paths with labels
+    # TODO clean paths for duplicate paths in this function
+    all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
 
-        # Mask distance transform to current object
-        masked_dt = deepcopy(dt)
-        masked_dt[seg != obj] = np.inf
+    # TODO FIXME as far as I can see, we don't need this loop, it does not brinng anything,
+    # but makes the computations inefficient as hell...
+    #all_paths = []
+    #for obj in np.unique(paths_to_objs):
 
-        # Take only the relevant path pairs
-        pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+    #    # Mask distance transform to current object
+    #    masked_dt = deepcopy(dt)
+    #    masked_dt[seg != obj] = np.inf
 
-        paths = shortest_paths(masked_dt, pairs_in)
-        # paths is now a list of numpy arrays
-        all_paths.extend(paths)
+    #    # Take only the relevant path pairs
+    #    pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+
+    #    paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
+    #    # paths is now a list of numpy arrays
+    #    all_paths.extend(paths)
 
     # TODO: Here we have to ensure that every path is actually computed
     # TODO:  --> Throw not computed paths out of the lists
@@ -96,20 +122,9 @@ def extract_paths_from_segmentation(
     # TODO: Do this only if GT is supplied
     # a) Class 'non-merged': Paths cross labels in GT multiple times
     # b) Class 'merged': Paths have to contain a certain amount of pixels in both GT classes
+    # TODO implement stuff here
 
-    if gt is not None:
-        pass
-
-    # TODO also remove the labels of paths that are not used!
-
-    if correspondence_list is None and gt is None:
-        return all_paths
-    elif correspondence_list is None:
-        assert len(path_classes) == len(all_paths)
-        return all_paths, path_classes
-    else:
-        assert len(path_classes) == len(all_paths)
-        return all_paths, path_classes, correspondence_list
+    return all_paths, paths_to_objs, path_classes, correspondence_list
 
 
 # TODO move all training related stuff here
@@ -118,19 +133,17 @@ def train_random_forest_for_merges(
         trainsets, # list of datasets with training data
         mc_segs_train, # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
-        #gtruths,
-        #gtruths_keys,
         params,
         save_folder= None
 ):
 
-    import shutil
-    from copy import deepcopy
     # TODO use vigra rf 3 once it is in the vigra conda package
     from sklearn.ensemble import RandomForestClassifier as Skrf
 
+    caching = False
     if save_folder != None:
-        if os.path.exists(save_folder):
+        caching = True
+        if not os.path.exists(save_folder):
             os.mkdir(save_folder)
 
     save_path = None if save_folder == None else os.path.join(
@@ -138,25 +151,23 @@ def train_random_forest_for_merges(
             'rf_merges_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
         ) # TODO more meaningful save name
 
-    # check if the rf is already cached
-    if os.path.exists(save_path) and save_path != None:
+    # check if the rf will be cached and if yes, if it is already cached
+    if caching and os.path.exists(save_path):
+        print "Loading rf from:", save_path
         with open(save_path) as f:
             rf = pickle.load(f)
     # otherwise do the actual calculations
     else:
+        print save_path
         features_train = []
         labels_train = []
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
             current_ds = trainsets[ds_id]
             keys_to_betas = mc_segs_train_keys[ds_id]
-            assert len(keys_to_betas) == len(paths_to_betas)
+            assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
 
-            # TODO: Add gt to dataset
             # Load ground truth
-            #gt_file = gtruths[ds_id]
-            #gt_key = gtruths_keys[ds_id]
-            #gt = vigra.readHDF5(gt_file, gt_key)
             gt = current_ds.gt()
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
@@ -175,7 +186,7 @@ def train_random_forest_for_merges(
                 if os.path.isfile(filepath):
                     os.remove(filepath)
 
-                all_paths, path_classes correspondence_list = extract_paths_from_segmentation(
+                all_paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                         current_ds,
                         seg_path,
                         key,
@@ -197,16 +208,20 @@ def train_random_forest_for_merges(
 
         features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
         labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
+        assert features_train.shape[0] == labels_train.shape[0]
+
+        # remove nans
+        features_train = np.nan_to_num(features_train).astype('float32')
 
         # TODO vigra.rf3
         # TODO set n_threads from global param object
         n_threads = 8
         rf = Skrf(n_jobs = n_threads)
         rf.fit(features_train, labels_train)
-        if save_path != None:
+        if caching:
+            print "Saving path-rf to:", save_path
             with open(save_path, 'w') as f:
                 pickle.dump(rf, f)
-
     return rf
 
 
@@ -217,8 +232,7 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
-        gtruths,
-        gtruths_keys,
+        rf_save_folder = None,
         params=ComputeFalseMergesParams()
 ):
     """
@@ -250,38 +264,39 @@ def compute_false_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
-        gtruths,
-        gtruths_keys,
-        params
+        #gtruths,
+        #gtruths_keys,
+        params,
+        rf_save_folder
     )
 
-    paths_test = extract_paths_from_segmentation(
+    paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
-        seg_path,
-        key,
+        mc_seg_test,
+        mc_seg_test_key,
         params)
+    assert len(paths_test) == len(paths_to_objs_test)
 
     features_test = path_feature_aggregator(
             ds_test,
             paths_test,
             params.anisotropy_factor)
+    assert features_test.shape[0] == len(paths_test)
+    features_test = np.nan_to_num(features_test)
     # TODO vigra.rf3
-    return rf.predict_proba(features_test)[:,1] # FIXME TODO do we keep first or second channel ?
+    return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test # FIXME TODO do we keep first or second channel ?
 
 
 def resolve_merges_with_lifted_edges(ds,
         seg_id,
-        false_merge_ids,
-        false_paths,
+        false_paths, # dict(merge_ids : false_paths)
         path_rf,
         mc_segmentation,
-        edge_probs,
-        exp_params, pf_params, path_params # TODO unify parameter objects
+        mc_weights_all, # the precomputed mc-weights
+        exp_params,
+        penalty_power = 10 # TODO move this to exp_params
 ):
     assert isinstance(false_paths, dict)
-    assert len(false_paths) == len(false_merge_ids)
-
-    from copy import deepcopy
 
     disttransf = ds.distance_trafo(mc_segmentation, [1.,1.,exp_params.anisotropy])
     # Pre-processing of the distance transform
@@ -292,7 +307,7 @@ def resolve_merges_with_lifted_edges(ds,
     # c) Increase the value difference between pixels near the boundaries and pixels
     #    central within the processes. This increases the likelihood of the paths to
     #    follow the center of processes, thus avoiding short-cuts
-    disttransf = np.power(disttransf, path_params.penalty_power)
+    disttransf = np.power(disttransf, penalty_power)
 
     # get the over-segmentation and get fragments corresponding to merge_id
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
@@ -303,12 +318,11 @@ def resolve_merges_with_lifted_edges(ds,
 
     # get the region adjacency graph
     rag = ds._rag(seg_id)
-    mc_weights_all = probs_to_energies(ds, edge_probs, seg_id, exp_params)
 
     # get the multicut weights
     uv_ids = rag.uvIds()
 
-    for merge_id in false_merge_ids:
+    for merge_id in false_paths:
 
         mask = mc_segmentation == merge_id
         seg_ids = np.unique(seg[mask])
