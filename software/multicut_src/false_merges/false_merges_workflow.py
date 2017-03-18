@@ -1,7 +1,7 @@
 from compute_paths_and_features import shortest_paths
 from multicut_src import probs_to_energies
 from multicut_src import remove_small_segments
-from multicut_src import compute_and_save_long_range_nh
+from multicut_src import compute_and_save_long_range_nh, optimizeLifted
 from multicut_src import learn_and_predict_rf_from_gt
 # from find_false_merges_src import path_features_from_feature_images
 # from find_false_merges_src import path_classification
@@ -14,6 +14,7 @@ import vigra
 import os
 import cPickle as pickle
 import shutil
+import itertools
 from copy import deepcopy
 
 
@@ -284,9 +285,13 @@ def compute_false_merges(
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
     # TODO vigra.rf3
-    return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test # FIXME TODO do we keep first or second channel ?
+    return paths_test, rf.predict_proba(features_test)[:,0], paths_to_objs_test # FIXME TODO do we keep first or second channel ?
 
 
+# TODO : DEBUGGING!!!
+# TODO: Debug images
+# TODO: Look at paths
+# otherwise out of sync options etc. could be a pain....
 def resolve_merges_with_lifted_edges(ds,
         seg_id,
         false_paths, # dict(merge_ids : false_paths)
@@ -298,7 +303,7 @@ def resolve_merges_with_lifted_edges(ds,
 ):
     assert isinstance(false_paths, dict)
 
-    disttransf = ds.distance_trafo(mc_segmentation, [1.,1.,exp_params.anisotropy])
+    disttransf = ds.distance_transform(mc_segmentation, [1.,1.,exp_params.anisotropy_factor])
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -311,10 +316,9 @@ def resolve_merges_with_lifted_edges(ds,
 
     # get the over-segmentation and get fragments corresponding to merge_id
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
-    print 'Computing eccentricity centers...'
-    ecc_centers_seg = vigra.filters.eccentricityCenters(seg)
-    ecc_centers_seg_dict = dict(zip(np.unique(seg), ecc_centers_seg))
-    print ' ... done computing eccentricity centers.'
+
+    # I have moved this to the dataset to have it cached
+    ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
 
     # get the region adjacency graph
     rag = ds._rag(seg_id)
@@ -322,6 +326,7 @@ def resolve_merges_with_lifted_edges(ds,
     # get the multicut weights
     uv_ids = rag.uvIds()
 
+    resolved_objs = {}
     for merge_id in false_paths:
 
         mask = mc_segmentation == merge_id
@@ -337,26 +342,27 @@ def resolve_merges_with_lifted_edges(ds,
 
         # Sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
         # ------------------------------------------------------------------------
-        import itertools
         compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
         uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
 
         # local graph (consecutive in obj)
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0)
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
         # mapping = old to new,
         # reverse = new to old
         reverse_mapping = {val: key for key, val in mapping.iteritems()}
         # edge dict
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_seg])
 
-        # TODO: This as parameter
-        # TODO: Move sampling here
-        # TODO: Sample until enough false merges are found
+        # TODO: Alternatively sample until enough false merges are found
+        # TODO: min range and sample size should be parameter
         min_range = 3
         max_sample_size = 10
-        uv_ids_lifted_min_nh_local, all_uv_ids = compute_and_save_long_range_nh(
-            uv_local, min_range, max_sample_size=max_sample_size, return_non_sampled=True
+        uv_ids_lifted_min_nh_local = compute_and_save_long_range_nh(
+                uv_local,
+                min_range,
+                max_sample_size
         )
+        uv_ids_lifted_min_nh_local = np.sort(uv_ids_lifted_min_nh_local, axis = 1)
 
         # TODO: Compute the paths from the centers of mass of the pairs list
         # -------------------------------------------------------------
@@ -366,56 +372,72 @@ def resolve_merges_with_lifted_edges(ds,
         masked_disttransf[np.logical_not(mask)] = np.inf
 
         # Turn them to the original labels
-        uv_ids_lifted_min_nh = np.array([[reverse_mapping[u] for u in uv] for uv in uv_ids_lifted_min_nh_local])
+        uv_ids_lifted_min_nh = np.array([ np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_lifted_min_nh_local])
 
         # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
-        uv_ids_lifted_min_nh_coords = [[ecc_centers_seg_dict[u] for u in uv] for uv in uv_ids_lifted_min_nh]
+        uv_ids_lifted_min_nh_coords = [[ecc_centers_seg[u] for u in uv] for uv in uv_ids_lifted_min_nh]
 
-        # we initialize the false_paths with the paths actually classified as being wrong
-        # TODO these need to be mapped to a lifted edge / added to the uv ids
-        paths_obj = deepcopy(false_paths[merge_id])
         # Compute the shortest paths according to the pairs list
-        paths_obj.extend( shortest_paths(
+        paths_obj = shortest_paths(
             masked_disttransf,
-            uv_ids_lifted_min_nh_coords) )
+            uv_ids_lifted_min_nh_coords,
+            8) # TODO set n_threads from global params
+
+        # add the paths actually classified as being wrong if not already present
+        extra_paths = false_paths[merge_id]
+        # first we map them to segments
+        extra_coords = [ [ tuple(p[0]), tuple(p[-1])] for p in extra_paths]
+        extra_path_uvs = np.array([np.array(
+            [mapping[seg[coord[0]]],
+             mapping[seg[coord[1]]] ]) for coord in extra_coords])
+        extra_path_uvs = np.sort(extra_path_uvs, axis = 1)
+
+        for extra_id, extra_uv in enumerate(extra_path_uvs):
+            if not any(np.equal(uv_ids_lifted_min_nh_local, extra_uv).all(1)): # check whether this uv - pair is already present
+                paths_obj.append(extra_paths[extra_id])
+                uv_ids_lifted_min_nh_local = np.append(uv_ids_lifted_min_nh_local, extra_uv[None,:], axis = 0)
 
         # Compute the path features
-        # TODO: Cache the path features?
-        features = path_feature_aggregator(ds, false_paths, exp_params.anisotropy_factor)
-        path_probs = path_rf.predict_proba(features)[:,1] # TODO which channel ?
+        features = path_feature_aggregator(ds, paths_obj, exp_params.anisotropy_factor)
+        features = np.nan_to_num(features)
+
+        # compute the lifted weights from rf probabilities
+        lifted_weights = path_rf.predict_proba(features)[:,0] # TODO which channel ?
 
         # Class 0: 'false paths', i.e. containing a merge
         # Class 1: 'true paths' , i.e. not containing a merge
 
-        # TODO: Do this:
-        # # This is from probs_to_energies():
-        # # ---------------------------------
-        #
-        # # scale the probabilities
-        # # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
-        # p_min = 0.001
-        # p_max = 1. - p_min
-        # edge_probs = (p_max - p_min) * edge_probs + p_min
+        # scale the probabilities
+        p_min = 0.001
+        p_max = 1. - p_min
+        lifted_weights = (p_max - p_min) * lifted_weights + p_min
 
         # Transform probs to weights
-        # TODO: proper function?
-        lifted_weights = np.log((1 - path_probs[:, 0]) / path_probs[:, 0])
+        lifted_weights = np.log((1 - lifted_weights) / lifted_weights)
+
+        resolved_nodes = optimizeLifted(uv_local,
+                uv_ids_lifted_min_nh_local,
+                mc_weights,
+                lifted_weights )
+
+        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
+        # project back to global node ids and save
+        resolved_objs[merge_id] = {reverse_mapping[i] : node_res for i, node_res in enumerate(resolved_nodes)}
+
+    return resolved_objs
 
 
-        #
-        # # probabilities to energies, second term is boundary bias
-        # edge_energies = np.log((1. - edge_probs) / edge_probs) + np.log(
-        #     (1. - exp_params.beta_local) / exp_params.beta_local)
+def project_resolved_objects_to_segmentation(ds,
+        seg_id,
+        mc_segmentation,
+        resolved_objs):
 
-        # # add lifted_edges and solve lmc
-        # I will need:
-        #   - mc_weights, edges
-        #   - lifted_weights, edges
-
-        # run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
-
-
-        # TODO : DEBUGGING!!!
-        # TODO: Debug images
-        # TODO: Look at paths
-
+    rag = ds._rag(seg_id)
+    mc_labeling, _ = rag.projectBaseGraphGt( mc_segmentation )
+    new_label_offset = np.max(mc_labeling) + 1
+    for obj in resolved_objs:
+        resolved_nodes = resolved_objs[obj]
+        for node_id in resolved_nodes:
+            mc_labeling[node_id] = new_label_offset + resolved_nodes[node_id]
+        new_label_offset += np.max(resolved_nodes.values()) + 1
+    return rag.projectLabelsToBaseGraph(mc_labeling)

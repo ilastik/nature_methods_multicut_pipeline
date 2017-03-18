@@ -474,12 +474,14 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood):
 
 # we assume that uv is consecutive
 #@cacher_hdf5()
-def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=None, return_non_sampled=False):
+# sample size 0 means we do not sample!
+def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     import random
+    import itertools
+
     originalGraph = agraph.Graph(uvIds.max()+1)
     originalGraph.insertEdges(uvIds)
 
-    import itertools
     uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
 
     lm_short = agraph.liftedMcModel(originalGraph)
@@ -496,31 +498,19 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=None, retur
     # http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
     b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
     uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
-    # uniques = concatenated[idx]
 
     # Extract those that have count == 1
-    uv_long_range = uniques[counts == 1]
+    # TODO this is not tested
+    long_range_idx = idx[counts == 1]
+    uv_long_range = concatenated[long_range_idx]
 
     # Extract random sample
-    if max_sample_size is not None:
-        if uv_long_range.shape[0] > max_sample_size:
+    if max_sample_size:
+        sample_size = min(max_sample_size, uv_long_range.shape[0])
+        uv_long_range = np.array(random.sample(uv_long_range, sample_size))
 
-            all_uv_long_range = uv_long_range
-            uv_long_range = np.array(random.sample(uv_long_range, max_sample_size))
-        else:
-            all_uv_long_range = uv_long_range
+    return uv_long_range
 
-    # Transfer back to the original shape
-    uv_long_range = uv_long_range.view(concatenated.dtype)
-    uv_long_range = uv_long_range.reshape((uv_long_range.shape[0]/2, 2))
-
-    if not return_non_sampled:
-        return uv_long_range
-    else:
-        # Transfer back to the original shape
-        all_uv_long_range = all_uv_long_range.view(concatenated.dtype)
-        all_uv_long_range = all_uv_long_range.reshape((all_uv_long_range.shape[0]/2, 2))
-        return uv_long_range, all_uv_long_range
 
 
 @cacher_hdf5()

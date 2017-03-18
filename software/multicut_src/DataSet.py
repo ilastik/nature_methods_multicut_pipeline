@@ -4,6 +4,7 @@ import vigra.graphs as graphs
 import os
 import h5py
 from concurrent import futures
+import itertools
 
 import graph as agraph
 
@@ -296,6 +297,33 @@ class DataSet(object):
 
         assert len(adjacent_edges) == rag.edgeNum, str(len(adjacent_edges)) + " , " + str(rag.edgeNum)
         return adjacent_edges
+
+
+    # calculates the eccentricity centers for given seg_id
+    @cacher_hdf5()
+    def eccentricity_centers(self, seg_id, is_2d_stacked):
+        seg = self.seg(seg_id)
+        n_threads = 20 # TODO get this from global params
+        if is_2d_stacked: # if we have a stacked segmentation, we can parallelize over the slices
+
+            # calculate the centers for a 2d slice
+            def centers_2d(z):
+                seg_z = seg[:,:,z]
+                min_label = seg_z.min()
+                # eccentricity centers expect a consecutive labeling -> we only return the relevant part
+                centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
+                return [cent + (z,) for cent in centers] # extend by z coordinate
+
+            with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[2])]
+                centers = [t.result() for t in tasks]
+                # return flattened list
+            centers_list = list(itertools.chain(*centers))
+            n_segs = seg.max() + 1
+            assert len(centers_list) == n_segs, "%i, %i" % (len(centers_list), n_segs)
+            return centers_list
+        else:
+            return vigra.filters.eccentricityCenters(seg)
 
 
     #
@@ -1034,6 +1062,7 @@ class DataSet(object):
 
     # features based on curvature of xy edges
     # FIXME very naive implementation
+    # FIXME this only works for sorted coordinates !!
     @cacher_hdf5("feature_folder")
     def curvature_features(self, seg_id):
         rag = self._rag(seg_id)
