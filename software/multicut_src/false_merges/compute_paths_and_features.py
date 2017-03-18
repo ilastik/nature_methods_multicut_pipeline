@@ -67,7 +67,7 @@ def path_feature_aggregator(ds, paths, anisotropy_factor):
     # TODO move all params to exp_params
     class Params:
         def __init__(self):
-            # FIXME Pathlength ?! -> sounds redundant TODO use quantiles instead of Max and Min ?!
+            #TODO use quantiles instead of Max and Min ?!
             self.stats = ["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"]
             self.max_threads = 8
     params = Params()

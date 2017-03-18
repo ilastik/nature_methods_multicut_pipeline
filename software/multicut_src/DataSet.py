@@ -305,7 +305,7 @@ class DataSet(object):
     # FIXME: Apperently the cacher does not accept keyword arguments
     # this will be ignorant of using a different segmentation
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def distance_transform(self, segmentation, penalty_power, anisotropy):
+    def distance_transform(self, segmentation, anisotropy):
 
         # # if that does what I think it does (segmentation to edge image), we can use vigra...
         # def pixels_at_boundary(image, axes=[1, 1, 1]):
@@ -327,8 +327,6 @@ class DataSet(object):
                 [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
                 axis = 2)
         dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
-        if penalty_power > 0:
-            dt = np.power(dt, penalty_power)
         return dt
 
     # make pixelfilter for the given input.
@@ -353,7 +351,7 @@ class DataSet(object):
         # FIXME the dt must be pre-computed for this to work
         if inp_id == 'distance_transform':
             fake_seg = np.zeros((10,10))
-            inp = self.distance_transform(fake_seg, 0, [1.,1.,anisotropy_factor])
+            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
             input_name = 'distance_transform'
         else:
             assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
