@@ -90,31 +90,33 @@ def extract_paths_and_labels_from_segmentation(
         border_contacts, gt, correspondence_list
     )
 
-    # Invert the distance transform
-    dt = np.amax(dt) - dt
-    # Penalty power on distance transform
-    dt = np.power(dt, 10)
-
-    # compute the actual paths
-    # TODO implement shortest paths with labels
-    # TODO clean paths for duplicate paths in this function
-    all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
+    # # TODO FIXME This is a lot more efficient than the path calculation below but is not entirely correct.
+    # # Paths may switch objects on the way since there is no infinity border
+    # # Invert the distance transform
+    # dt = np.amax(dt) - dt
+    # # Penalty power on distance transform
+    # dt = np.power(dt, 10)
+    #
+    # # compute the actual paths
+    # # TODO implement shortest paths with labels
+    # # TODO clean paths for duplicate paths in this function
+    # all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
 
     # TODO FIXME as far as I can see, we don't need this loop, it does not brinng anything,
     # but makes the computations inefficient as hell...
-    #all_paths = []
-    #for obj in np.unique(paths_to_objs):
+    all_paths = []
+    for obj in np.unique(paths_to_objs):
 
-    #    # Mask distance transform to current object
-    #    masked_dt = deepcopy(dt)
-    #    masked_dt[seg != obj] = np.inf
+       # Mask distance transform to current object
+       masked_dt = deepcopy(dt)
+       masked_dt[seg != obj] = np.inf
 
-    #    # Take only the relevant path pairs
-    #    pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+       # Take only the relevant path pairs
+       pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-    #    paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
-    #    # paths is now a list of numpy arrays
-    #    all_paths.extend(paths)
+       paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
+       # paths is now a list of numpy arrays
+       all_paths.extend(paths)
 
     # TODO: Here we have to ensure that every path is actually computed
     # TODO:  --> Throw not computed paths out of the lists
@@ -124,6 +126,13 @@ def extract_paths_and_labels_from_segmentation(
     # a) Class 'non-merged': Paths cross labels in GT multiple times
     # b) Class 'merged': Paths have to contain a certain amount of pixels in both GT classes
     # TODO implement stuff here
+
+    # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
+    keep_mask = [x is not None for x in all_paths]
+    keep_indices = np.where(keep_mask)[0]
+    all_paths = np.array(all_paths)[keep_indices].tolist()
+    paths_to_objs = np.array(paths_to_objs)[keep_indices].tolist()
+    path_classes = np.array(path_classes)[keep_indices].tolist()
 
     return all_paths, paths_to_objs, path_classes, correspondence_list
 
@@ -345,8 +354,12 @@ def resolve_merges_with_lifted_edges(ds,
         compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
         uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
 
+
         # local graph (consecutive in obj)
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
+        # FIXME Temporarily commented out the new vigra relabelConsecutive version
+        # seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0)
+
         # mapping = old to new,
         # reverse = new to old
         reverse_mapping = {val: key for key, val in mapping.iteritems()}
@@ -420,7 +433,9 @@ def resolve_merges_with_lifted_edges(ds,
                 mc_weights,
                 lifted_weights )
 
-        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
+        # FIXME Changed to older version of vigra
+        # resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
+        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0)
         # project back to global node ids and save
         resolved_objs[merge_id] = {reverse_mapping[i] : node_res for i, node_res in enumerate(resolved_nodes)}
 
