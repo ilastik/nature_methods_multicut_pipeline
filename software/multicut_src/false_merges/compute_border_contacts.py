@@ -90,10 +90,10 @@ def get_faces_with_neighbors(image):
     bounds = {
         'xyf': np.s_[shp[2]:shp[2] + shp[0], shp[2]:shp[2] + shp[1]],
         'xyb': np.s_[shp[2]:shp[2] + shp[0], shp[2]:shp[2] + shp[1]],
-        'xzf': np.s_[shp[1]:shp[1] + shp[0], shp[1]:shp[1] + shp[2]],
-        'xzb': np.s_[shp[1]:shp[1] + shp[0], shp[1]:shp[1] + shp[2]],
-        'yzf': np.s_[shp[0]:shp[0] + shp[1], shp[0]:shp[0] + shp[2]],
-        'yzb': np.s_[shp[0]:shp[0] + shp[1], shp[0]:shp[0] + shp[2]]
+        'xzf': np.s_[shp[1]:shp[1] + shp[0], shp[1]+1:shp[1] + shp[2]-1],
+        'xzb': np.s_[shp[1]:shp[1] + shp[0], shp[1]+1:shp[1] + shp[2]-1],
+        'yzf': np.s_[shp[0]+1:shp[0] + shp[1]-1, shp[0]+1:shp[0] + shp[2]-1],
+        'yzb': np.s_[shp[0]+1:shp[0] + shp[1]-1, shp[0]+1:shp[0] + shp[2]-1]
     }
 
     return faces, bounds
@@ -139,7 +139,7 @@ def find_centroids(seg, dt, bounds):
             # Get the coordinates of the maximum pixel(s)
             coords = np.where(cur_dt[bounds])
 
-            # If nothing was found
+            # If something was found
             if coords[0].any():
 
                 # Only one pixel is allowed to be selected
