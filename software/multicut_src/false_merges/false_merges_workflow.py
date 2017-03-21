@@ -53,10 +53,24 @@ def extract_paths_from_segmentation(
     # Penalty power on distance transform
     dt = np.power(dt, 10)
 
-    # compute the actual paths
-    # TODO implement shortest paths with labels
-    # TODO clean paths for duplicate paths in this function
-    all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
+    # TODO FIXME as far as I can see, we don't need this loop, it does not bring anything,
+    # but makes the computations inefficient as hell...
+    all_paths = []
+    for obj in np.unique(paths_to_objs):
+
+        # Mask distance transform to current object
+        masked_dt = deepcopy(dt)
+        masked_dt[seg != obj] = np.inf
+
+        # Take only the relevant path pairs
+        pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+
+        paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
+        # paths is now a list of numpy arrays
+        all_paths.extend(paths)
+
+    # # compute the actual paths
+    # all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
 
     return all_paths, paths_to_objs
 
@@ -92,10 +106,10 @@ def extract_paths_and_labels_from_segmentation(
 
     # # TODO FIXME This is a lot more efficient than the path calculation below but is not entirely correct.
     # # Paths may switch objects on the way since there is no infinity border
-    # # Invert the distance transform
-    # dt = np.amax(dt) - dt
-    # # Penalty power on distance transform
-    # dt = np.power(dt, 10)
+    # Invert the distance transform
+    dt = np.amax(dt) - dt
+    # Penalty power on distance transform
+    dt = np.power(dt, 10)
     #
     # # compute the actual paths
     # # TODO implement shortest paths with labels
