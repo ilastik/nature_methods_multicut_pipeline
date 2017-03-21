@@ -714,7 +714,7 @@ def optimizeLifted(uvs_local,
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
     n_nodes = uvs_local.max() + 1
-    assert n_nodes == uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
+    assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
 
     # build the lifted model
     graph = agraph.Graph(n_nodes)
