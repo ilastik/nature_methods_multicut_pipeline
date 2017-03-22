@@ -309,11 +309,6 @@ def compute_false_merges(
         params)
     assert len(paths_test) == len(paths_to_objs_test)
 
-    # Cache test paths (This may be relevant for subsequent evaluation)
-    if test_paths_save_file is not None:
-        with open(test_paths_save_file, mode='w') as f:
-            pickle.dump([paths_test, paths_to_objs_test], f)
-
     features_test = path_feature_aggregator(
             ds_test,
             paths_test,
@@ -321,7 +316,8 @@ def compute_false_merges(
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
     # TODO vigra.rf3
-    return paths_test, rf.predict_proba(features_test)[:,0], paths_to_objs_test # FIXME TODO do we keep first or second channel ?
+    # We keep the second channel as we are looking for paths crossing a merging site (class = 1)
+    return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test
 
 
 # TODO : DEBUGGING!!!
