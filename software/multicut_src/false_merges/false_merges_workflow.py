@@ -32,6 +32,7 @@ class ComputeFalseMergesParams:
         self.anisotropy_factor=anisotropy_factor
         self.paths_penalty_power=paths_penalty_power
 
+
 def extract_paths_from_segmentation(
         ds,
         seg_path,
@@ -71,6 +72,12 @@ def extract_paths_from_segmentation(
 
     # # compute the actual paths
     # all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
+
+    # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
+    keep_mask = [x is not None for x in all_paths]
+    keep_indices = np.where(keep_mask)[0]
+    all_paths = np.array(all_paths)[keep_indices].tolist()
+    paths_to_objs = np.array(paths_to_objs)[keep_indices].tolist()
 
     return all_paths, paths_to_objs
 
