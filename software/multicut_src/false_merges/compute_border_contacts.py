@@ -241,8 +241,8 @@ def compute_path_end_pairs_and_labels(
         # Pairs are found if the segmentation object has more than one path end
         if ps:
 
-            # FIXME: For debugging take just the first item
-            ps = [ps[0]]
+            # # For debugging take just the first item
+            # ps = [ps[0]]
 
             # Determine the labels of both path ends
             label_pair = [sorted([gt[p[0], p[1], p[2]] for p in pair]) for pair in ps]
@@ -284,8 +284,8 @@ def compute_path_end_pairs(
         ps = list(itertools.combinations(contacts, 2))
         # Pairs are found if the segmentation object has more than one path end
         if ps:
-            # FIXME: For debugging take just the first item
-            ps = [ps[0]]
+            # # For debugging take just the first item
+            # ps = [ps[0]]
             pairs.extend(ps)
             labels.extend([lbl] * len(ps))
     return pairs, labels

@@ -264,6 +264,7 @@ def compute_false_merges(
         mc_seg_test,
         mc_seg_test_key,
         rf_save_folder = None,
+        test_paths_save_file=None,
         params=ComputeFalseMergesParams()
 ):
     """
@@ -307,6 +308,11 @@ def compute_false_merges(
         mc_seg_test_key,
         params)
     assert len(paths_test) == len(paths_to_objs_test)
+
+    # Cache test paths (This may be relevant for subsequent evaluation)
+    if test_paths_save_file is not None:
+        with open(test_paths_save_file, mode='w') as f:
+            pickle.dump([paths_test, paths_to_objs_test], f)
 
     features_test = path_feature_aggregator(
             ds_test,
