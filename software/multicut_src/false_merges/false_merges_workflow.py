@@ -165,35 +165,59 @@ def train_random_forest_for_merges(
         mc_segs_train, # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
         params,
-        save_folder= None
+        rf_save_folder=None,
+        paths_save_folder=None
 ):
 
     # TODO use vigra rf 3 once it is in the vigra conda package
     from sklearn.ensemble import RandomForestClassifier as Skrf
 
     caching = False
-    if save_folder != None:
+    if rf_save_folder != None:
         caching = True
-        if not os.path.exists(save_folder):
-            os.mkdir(save_folder)
+        if not os.path.exists(rf_save_folder):
+            os.mkdir(rf_save_folder)
+    if paths_save_folder != None:
+        if not os.path.exists(paths_save_folder):
+            os.mkdir(paths_save_folder)
 
-    save_path = None if save_folder == None else os.path.join(
-            save_folder,
-            'rf_merges_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
-        ) # TODO more meaningful save name
+    rf_save_path = None if rf_save_folder == None else os.path.join(
+        rf_save_folder,
+        'rf_merges_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
+    ) # TODO more meaningful save name
+    paths_save_path = None if paths_save_folder == None else os.path.join(
+        paths_save_folder,
+        'path_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
+    )
 
     # check if the rf will be cached and if yes, if it is already cached
-    if caching and os.path.exists(save_path):
-        print "Loading rf from:", save_path
-        with open(save_path) as f:
+    if caching and os.path.exists(rf_save_path):
+        print "Loading rf from:", rf_save_path
+        with open(rf_save_path) as f:
             rf = pickle.load(f)
+
     # otherwise do the actual calculations
     else:
-        print save_path
+        cached_paths = []
+        if caching and os.path.exists(paths_save_path):
+            # If the paths already exist (necessary if new features should be used)
+            print "Loading paths from:", paths_save_path
+            with open(paths_save_path, mode='r') as f:
+                cached_paths = pickle.load(f)
+
+        print rf_save_path
         features_train = []
         labels_train = []
+        all_paths = []
+        all_paths_to_objs = []
+        all_path_classes = []
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
+
+            all_paths.append([])
+            all_paths_to_objs.append([])
+            all_path_classes.append([])
+
             current_ds = trainsets[ds_id]
             keys_to_betas = mc_segs_train_keys[ds_id]
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
@@ -217,13 +241,31 @@ def train_random_forest_for_merges(
                 if os.path.isfile(filepath):
                     os.remove(filepath)
 
-                all_paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
-                        current_ds,
-                        seg_path,
-                        key,
-                        params,
-                        gt,
-                        correspondence_list)
+                if not cached_paths:
+                    # Compute the paths
+                    paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
+                            current_ds,
+                            seg_path,
+                            key,
+                            params,
+                            gt,
+                            correspondence_list)
+                else:
+
+                    # load the segmentation and compute distance transform
+                    seg = vigra.readHDF5(seg_path, key)
+                    assert seg.shape == gt.shape
+                    seg = remove_small_segments(seg)
+                    ds.distance_transform(seg, *dt_args[1:])
+
+                    # Get the paths and stuff for the current object
+                    paths = cached_paths['paths'][ds_id][seg_id]
+                    paths_to_objs = cached_paths['paths_to_objs'][ds_id][seg_id]
+                    path_classes = cached_paths['path_classes'][ds_id][seg_id]
+
+                all_paths[ds_id].append(paths)
+                all_paths_to_objs[ds_id].append(paths_to_objs)
+                all_path_classes[ds_id].append(path_classes)
 
                 # Clear filter cache
                 filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
@@ -233,12 +275,12 @@ def train_random_forest_for_merges(
                 # TODO: Extract features from paths
                 # TODO: decide which filters and sigmas to use here (needs to be exposed first)
                 features_train.append(
-                    path_feature_aggregator(current_ds, all_paths, params.anisotropy_factor)
+                    path_feature_aggregator(current_ds, paths, params.anisotropy_factor)
                 )
                 labels_train.append(path_classes)
 
-        features_train = np.concatenate(features_train, axis=0)  # TODO correct axis ?
-        labels_train = np.concatenate(labels_train, axis=0)  # TODO correct axis ?
+        features_train = np.concatenate(features_train, axis=0)
+        labels_train = np.concatenate(labels_train, axis=0)
         assert features_train.shape[0] == labels_train.shape[0]
 
         # remove nans
@@ -250,9 +292,18 @@ def train_random_forest_for_merges(
         rf = Skrf(n_jobs = n_threads)
         rf.fit(features_train, labels_train)
         if caching:
-            print "Saving path-rf to:", save_path
-            with open(save_path, 'w') as f:
+            print "Saving path-rf to:", rf_save_path
+            with open(rf_save_path, 'w') as f:
                 pickle.dump(rf, f)
+            print "Saving paths to:", paths_save_path
+            with open(paths_save_path, 'w') as f:
+                pickle.dump(
+                    {
+                        'paths': all_paths,
+                        'paths_to_objs': all_paths_to_objs,
+                        'path_classes': all_path_classes
+                    }, f
+                )
     return rf
 
 
@@ -264,7 +315,7 @@ def compute_false_merges(
         mc_seg_test,
         mc_seg_test_key,
         rf_save_folder = None,
-        test_paths_save_file=None,
+        paths_save_folder=None,
         params=ComputeFalseMergesParams()
 ):
     """
@@ -299,14 +350,42 @@ def compute_false_merges(
         #gtruths,
         #gtruths_keys,
         params,
-        rf_save_folder
+        rf_save_folder,
+        paths_save_folder
     )
 
-    paths_test, paths_to_objs_test = extract_paths_from_segmentation(
-        ds_test,
-        mc_seg_test,
-        mc_seg_test_key,
-        params)
+    paths_save_path = None if paths_save_folder == None else os.path.join(
+        paths_save_folder,
+        'path_{}.pkl'.format(ds_test.ds_name)
+    )
+    caching = False
+    if paths_save_folder is not None:
+        caching = True
+    cached_paths = []
+    if caching and os.path.exists(paths_save_path):
+        # If the paths already exist (necessary if new features should be used)
+        print "Loading paths from:", paths_save_path
+        with open(paths_save_path, mode='r') as f:
+            cached_paths = pickle.load(f)
+
+        paths_test = cached_paths['paths']
+        paths_to_objs_test = cached_paths['paths_to_objs']
+    else:
+        paths_test, paths_to_objs_test = extract_paths_from_segmentation(
+            ds_test,
+            mc_seg_test,
+            mc_seg_test_key,
+            params
+        )
+        if caching:
+            with open(paths_save_path, 'w') as f:
+                pickle.dump(
+                    {
+                        'paths': paths_test,
+                        'paths_to_objs': paths_to_objs_test,
+                    }, f
+                )
+
     assert len(paths_test) == len(paths_to_objs_test)
 
     features_test = path_feature_aggregator(
@@ -438,10 +517,10 @@ def resolve_merges_with_lifted_edges(ds,
         features = np.nan_to_num(features)
 
         # compute the lifted weights from rf probabilities
-        lifted_weights = path_rf.predict_proba(features)[:,0] # TODO which channel ?
+        lifted_weights = path_rf.predict_proba(features)[:,1]
 
-        # Class 0: 'false paths', i.e. containing a merge
-        # Class 1: 'true paths' , i.e. not containing a merge
+        # Class 1: contain a merge
+        # Class 0: don't contain a merge
 
         # scale the probabilities
         p_min = 0.001
