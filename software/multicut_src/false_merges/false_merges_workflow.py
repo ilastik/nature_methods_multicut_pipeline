@@ -30,7 +30,8 @@ class ComputeFalseMergesParams:
             feature_stats=["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"],
             paths_penalty_power=10,
             anisotropy_factor=10,
-            max_threads=8
+            max_threads=8,
+            paths_avoid_duplicates=True
     ):
 
         self.feature_image_filter_names=feature_image_filter_names
@@ -39,6 +40,7 @@ class ComputeFalseMergesParams:
         self.paths_penalty_power=paths_penalty_power
         self.max_threads=max_threads
         self.feature_stats=feature_stats
+        self.paths_avoid_duplicates=paths_avoid_duplicates
 
 
 def extract_paths_from_segmentation(
@@ -119,13 +121,13 @@ def extract_paths_and_labels_from_segmentation(
         border_contacts, gt, correspondence_list
     )
 
-    # # TODO FIXME This is a lot more efficient than the path calculation below but is not entirely correct.
     # # Paths may switch objects on the way since there is no infinity border
     # Invert the distance transform
     dt = np.amax(dt) - dt
     # Penalty power on distance transform
     dt = np.power(dt, 10)
     #
+    # # TODO FIXME This is a lot more efficient than the path calculation below but is not entirely correct.
     # # compute the actual paths
     # # TODO implement shortest paths with labels
     # # TODO clean paths for duplicate paths in this function
@@ -235,7 +237,10 @@ def train_random_forest_for_merges(
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
             # multiple mc segmentations
-            correspondence_list = []
+            if params.paths_avoid_duplicates:
+                correspondence_list = []
+            else:
+                correspondence_list = None
 
             # loop over the different beta segmentations per train set
             for seg_id, seg_path in enumerate(paths_to_betas):

@@ -229,6 +229,10 @@ def compute_path_end_pairs_and_labels(
     # b) Class 'non-merged': Only take them for beta_0.5?
     # c) All classes: Too many pairs for one object
 
+    use_correspondence = False
+    if correspondence_list is not None:
+        use_correspondence = True
+
     pairs = []
     labels = []
     classes = []
@@ -247,16 +251,24 @@ def compute_path_end_pairs_and_labels(
             # Determine the labels of both path ends
             label_pair = [sorted([gt[p[0], p[1], p[2]] for p in pair]) for pair in ps]
 
-            # Assign a class to the paths:
-            #   False if a path doesn't cross a merging site
-            #   True if a path crosses a merging site
-            new_classes = [bool(lp[1] - lp[0]) for lp in label_pair]
+            # Throw out pairs if they were already found in a different mc source
+            if use_correspondence:
+                corr_mask = np.array([x not in correspondence_list for x in label_pair])
+                label_pair = np.array(label_pair)[corr_mask, ...].tolist()
+                ps = np.array(ps)[corr_mask, ...].tolist()
 
-            pairs.extend(ps)
-            labels.extend([lbl] * len(ps))
-            classes.extend(new_classes)
-            gt_labels.extend(label_pair)
-            # pairs[lbl] = ps
+            # The path list can, again, be empty
+            if ps:
+                # Assign a class to the paths:
+                #   False if a path doesn't cross a merging site
+                #   True if a path crosses a merging site
+                new_classes = [bool(lp[1] - lp[0]) for lp in label_pair]
+
+                pairs.extend(ps)
+                labels.extend([lbl] * len(ps))
+                classes.extend(new_classes)
+                gt_labels.extend(label_pair)
+                # pairs[lbl] = ps
 
     # Update the correspondence list
     correspondence_list.extend(gt_labels)
