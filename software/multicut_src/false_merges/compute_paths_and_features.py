@@ -6,16 +6,16 @@ from concurrent import futures
 # from .. import DataSet
 #from .. import cacher_hdf5
 
-class FeatureImageParams:
-
-    def __init__(self,
-                 filter_names=["gaussianSmoothing",
-                               "hessianOfGaussianEigenvalues",
-                               "laplacianOfGaussian"],
-                 sigmas=[1.6, 4.2, 8.3]
-                 ):
-        self.filter_names = filter_names
-        self.sigmas=sigmas
+# class FeatureImageParams:
+#
+#     def __init__(self,
+#                  filter_names=["gaussianSmoothing",
+#                                "hessianOfGaussianEigenvalues",
+#                                "laplacianOfGaussian"],
+#                  sigmas=[1.6, 4.2, 8.3]
+#                  ):
+#         self.filter_names = filter_names
+#         self.sigmas=sigmas
 
 
 def shortest_paths(indicator,
@@ -60,16 +60,17 @@ def shortest_paths(indicator,
 
 # convenience function to combine path features
 # TODO code different features with some keys
-# TODO expose the filters and sigmas for experimentation
-def path_feature_aggregator(ds, paths, anisotropy_factor):
+def path_feature_aggregator(ds, paths, params):
     # TODO move all params to exp_params
-    class Params:
-        def __init__(self):
-            #TODO use quantiles instead of Max and Min ?!
-            self.stats = ["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"]
-            self.max_threads = 8
-    params = Params()
+    # class Params:
+    #     def __init__(self):
+    #         #TODO use quantiles instead of Max and Min ?!
+    #         self.stats = ["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"]
+    #         self.max_threads = 8
+    # params = Params()
     #
+    anisotropy_factor = params.anisotropy_factor
+
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor, params),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor, params),
@@ -148,7 +149,7 @@ def path_features_from_feature_images(
                 feature_volumes.append(f['data'][roi][...,None])
             else:
                 feature_volumes.append(f['data'][roi])
-    stats = params.stats
+    stats = params.feature_stats
 
     def extract_features_for_path(path):
 

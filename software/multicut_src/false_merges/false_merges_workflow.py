@@ -5,7 +5,7 @@ from multicut_src import compute_and_save_long_range_nh, optimizeLifted
 from multicut_src import learn_and_predict_rf_from_gt
 # from find_false_merges_src import path_features_from_feature_images
 # from find_false_merges_src import path_classification
-from compute_paths_and_features import FeatureImageParams, path_feature_aggregator
+from compute_paths_and_features import path_feature_aggregator
 from multicut_src.Tools import cache_name
 from compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
 
@@ -23,14 +23,22 @@ class ComputeFalseMergesParams:
 
     def __init__(
             self,
-            feature_images=FeatureImageParams(),
+            feature_image_filter_names=["gaussianSmoothing",
+                               "hessianOfGaussianEigenvalues",
+                               "laplacianOfGaussian"],
+            feature_image_sigmas=[1.6, 4.2, 8.3],
+            feature_stats=["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"],
             paths_penalty_power=10,
-            anisotropy_factor=10
+            anisotropy_factor=10,
+            max_threads=8
     ):
 
-        self.feature_images=feature_images
+        self.feature_image_filter_names=feature_image_filter_names
+        self.feature_image_sigmas=feature_image_sigmas
         self.anisotropy_factor=anisotropy_factor
         self.paths_penalty_power=paths_penalty_power
+        self.max_threads=max_threads
+        self.feature_stats=feature_stats
 
 
 def extract_paths_from_segmentation(
@@ -275,7 +283,7 @@ def train_random_forest_for_merges(
                 # TODO: Extract features from paths
                 # TODO: decide which filters and sigmas to use here (needs to be exposed first)
                 features_train.append(
-                    path_feature_aggregator(current_ds, paths, params.anisotropy_factor)
+                    path_feature_aggregator(current_ds, paths, params)
                 )
                 labels_train.append(path_classes)
 
@@ -391,7 +399,7 @@ def compute_false_merges(
     features_test = path_feature_aggregator(
             ds_test,
             paths_test,
-            params.anisotropy_factor)
+            params)
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
     # TODO vigra.rf3
