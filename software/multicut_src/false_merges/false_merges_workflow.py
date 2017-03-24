@@ -3,6 +3,7 @@ from multicut_src import probs_to_energies
 from multicut_src import remove_small_segments
 from multicut_src import compute_and_save_long_range_nh, optimizeLifted
 from multicut_src import learn_and_predict_rf_from_gt
+from multicut_src import ExperimentSettings
 # from find_false_merges_src import path_features_from_feature_images
 # from find_false_merges_src import path_classification
 from compute_paths_and_features import path_feature_aggregator
@@ -16,44 +17,6 @@ import cPickle as pickle
 import shutil
 import itertools
 from copy import deepcopy
-
-
-# TODO refactor params
-class ComputeFalseMergesParams:
-
-    def __init__(
-            self,
-            feature_image_filter_names=["gaussianSmoothing",
-                               "hessianOfGaussianEigenvalues",
-                               "laplacianOfGaussian"],
-            feature_image_sigmas=[1.6, 4.2, 8.3],
-            feature_stats=["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"],
-            paths_penalty_power=10,
-            anisotropy_factor=10,
-            max_threads=8,
-            paths_avoid_duplicates=True
-    ):
-
-        self.feature_image_filter_names=feature_image_filter_names
-        self.feature_image_sigmas=feature_image_sigmas
-        self.anisotropy_factor=anisotropy_factor
-        self.paths_penalty_power=paths_penalty_power
-        self.max_threads=max_threads
-        self.feature_stats=feature_stats
-        self.paths_avoid_duplicates=paths_avoid_duplicates
-
-
-class ResolveFalseMergesParams:
-
-    def __init__(
-            self,
-            min_nh_range=5,
-            max_sample_size=20,
-            paths_penalty_power=10
-    ):
-        self.min_nh_range=min_nh_range
-        self.max_sample_size=max_sample_size
-        self.paths_penalty_power = paths_penalty_power
 
 
 def extract_paths_from_segmentation(
@@ -348,7 +311,7 @@ def compute_false_merges(
         mc_seg_test_key,
         rf_save_folder = None,
         paths_save_folder=None,
-        params=ComputeFalseMergesParams()
+        params=ExperimentSettings()
 ):
     """
     Computes and returns false merge candidates
@@ -443,7 +406,7 @@ def resolve_merges_with_lifted_edges(
         mc_segmentation,
         mc_weights_all, # the precomputed mc-weights
         exp_params,
-        resolve_params=ResolveFalseMergesParams() # TODO move this to exp_params
+        export_paths_path=None
 ):
     assert isinstance(false_paths, dict)
 
@@ -456,7 +419,7 @@ def resolve_merges_with_lifted_edges(
     # c) Increase the value difference between pixels near the boundaries and pixels
     #    central within the processes. This increases the likelihood of the paths to
     #    follow the center of processes, thus avoiding short-cuts
-    disttransf = np.power(disttransf, resolve_params.paths_penalty_power)
+    disttransf = np.power(disttransf, exp_params.paths_penalty_power)
 
     # get the over-segmentation and get fragments corresponding to merge_id
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
@@ -469,6 +432,10 @@ def resolve_merges_with_lifted_edges(
 
     # get the multicut weights
     uv_ids = rag.uvIds()
+
+    if export_paths_path is not None:
+        if not os.path.exists(export_paths_path):
+            os.mkdir(export_paths_path)
 
     resolved_objs = {}
     for merge_id in false_paths:
@@ -503,8 +470,8 @@ def resolve_merges_with_lifted_edges(
 
         # TODO: Alternatively sample until enough false merges are found
         # TODO: min range and sample size should be parameter
-        min_range = resolve_params.min_nh_range
-        max_sample_size = resolve_params.max_sample_size
+        min_range = exp_params.min_nh_range
+        max_sample_size = exp_params.max_sample_size
         uv_ids_lifted_min_nh_local = compute_and_save_long_range_nh(
                 uv_local,
                 min_range,
@@ -531,8 +498,6 @@ def resolve_merges_with_lifted_edges(
             uv_ids_lifted_min_nh_coords,
             8) # TODO set n_threads from global params
 
-        # TODO: Cache paths for evaluation purposes
-
 
         # add the paths actually classified as being wrong if not already present
         extra_paths = false_paths[merge_id]
@@ -549,11 +514,18 @@ def resolve_merges_with_lifted_edges(
                 uv_ids_lifted_min_nh_local = np.append(uv_ids_lifted_min_nh_local, extra_uv[None,:], axis = 0)
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj, exp_params.anisotropy_factor)
+        features = path_feature_aggregator(ds, paths_obj, exp_params)
         features = np.nan_to_num(features)
 
         # compute the lifted weights from rf probabilities
         lifted_weights = path_rf.predict_proba(features)[:,1]
+
+        # TODO: Cache paths for evaluation purposes
+        if export_paths_path is not None:
+            with open(export_paths_path + 'resolve_paths_{}'.format(merge_id), mode='w') as f:
+                pickle.dump(paths_obj, f)
+            with open(export_paths_path + 'resolve_paths_weights_{}'.format(merge_id), mode='w') as f:
+                pickle.dump(lifted_weights, f)
 
         # Class 1: contain a merge
         # Class 0: don't contain a merge

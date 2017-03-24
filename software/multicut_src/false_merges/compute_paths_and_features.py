@@ -186,7 +186,7 @@ def path_features_from_feature_images(
     # we avoid the single threaded i/o in the beginning!
     # it also lessens memory requirements if we have less threads than filters
     # parallel
-    with futures.ThreadPoolExecutor(max_workers = params.max_threads) as executor:
+    with futures.ThreadPoolExecutor(max_workers = params.n_threads) as executor:
         tasks = []
         for p_id, path in enumerate(paths_in_roi):
             tasks.append( executor.submit( extract_features_for_path, path) )
