@@ -43,6 +43,19 @@ class ComputeFalseMergesParams:
         self.paths_avoid_duplicates=paths_avoid_duplicates
 
 
+class ResolveFalseMergesParams:
+
+    def __init__(
+            self,
+            min_nh_range=5,
+            max_sample_size=20,
+            paths_penalty_power=10
+    ):
+        self.min_nh_range=min_nh_range
+        self.max_sample_size=max_sample_size
+        self.paths_penalty_power = paths_penalty_power
+
+
 def extract_paths_from_segmentation(
         ds,
         seg_path,
@@ -285,12 +298,18 @@ def train_random_forest_for_merges(
                 if os.path.isdir(filters_filepath):
                     shutil.rmtree(filters_filepath)
 
-                # TODO: Extract features from paths
-                # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-                features_train.append(
-                    path_feature_aggregator(current_ds, paths, params)
-                )
-                labels_train.append(path_classes)
+                if paths:
+
+                    # TODO: Extract features from paths
+                    # TODO: decide which filters and sigmas to use here (needs to be exposed first)
+                    features_train.append(
+                        path_feature_aggregator(current_ds, paths, params)
+                    )
+                    labels_train.append(path_classes)
+
+                else:
+
+                    print "No paths found for seg_id = {}".format(seg_id)
 
         features_train = np.concatenate(features_train, axis=0)
         labels_train = np.concatenate(labels_train, axis=0)
@@ -416,14 +435,15 @@ def compute_false_merges(
 # TODO: Debug images
 # TODO: Look at paths
 # otherwise out of sync options etc. could be a pain....
-def resolve_merges_with_lifted_edges(ds,
+def resolve_merges_with_lifted_edges(
+        ds,
         seg_id,
         false_paths, # dict(merge_ids : false_paths)
         path_rf,
         mc_segmentation,
         mc_weights_all, # the precomputed mc-weights
         exp_params,
-        penalty_power = 10 # TODO move this to exp_params
+        resolve_params=ResolveFalseMergesParams() # TODO move this to exp_params
 ):
     assert isinstance(false_paths, dict)
 
@@ -436,7 +456,7 @@ def resolve_merges_with_lifted_edges(ds,
     # c) Increase the value difference between pixels near the boundaries and pixels
     #    central within the processes. This increases the likelihood of the paths to
     #    follow the center of processes, thus avoiding short-cuts
-    disttransf = np.power(disttransf, penalty_power)
+    disttransf = np.power(disttransf, resolve_params.paths_penalty_power)
 
     # get the over-segmentation and get fragments corresponding to merge_id
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
@@ -483,8 +503,8 @@ def resolve_merges_with_lifted_edges(ds,
 
         # TODO: Alternatively sample until enough false merges are found
         # TODO: min range and sample size should be parameter
-        min_range = 3
-        max_sample_size = 10
+        min_range = resolve_params.min_nh_range
+        max_sample_size = resolve_params.max_sample_size
         uv_ids_lifted_min_nh_local = compute_and_save_long_range_nh(
                 uv_local,
                 min_range,
@@ -510,6 +530,9 @@ def resolve_merges_with_lifted_edges(ds,
             masked_disttransf,
             uv_ids_lifted_min_nh_coords,
             8) # TODO set n_threads from global params
+
+        # TODO: Cache paths for evaluation purposes
+
 
         # add the paths actually classified as being wrong if not already present
         extra_paths = false_paths[merge_id]

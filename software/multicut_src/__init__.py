@@ -16,4 +16,4 @@ from false_merges import shortest_paths, path_feature_aggregator
 #from detect_false_merges import RemoveSmallObjectsParams, pipeline_remove_small_objects
 
 from false_merges import compute_false_merges, resolve_merges_with_lifted_edges, project_resolved_objects_to_segmentation
-from false_merges import ComputeFalseMergesParams
+from false_merges import ComputeFalseMergesParams, ResolveFalseMergesParams
