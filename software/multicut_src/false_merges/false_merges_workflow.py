@@ -520,11 +520,11 @@ def resolve_merges_with_lifted_edges(
         # compute the lifted weights from rf probabilities
         lifted_weights = path_rf.predict_proba(features)[:,1]
 
-        # TODO: Cache paths for evaluation purposes
+        # Cache paths for evaluation purposes
         if export_paths_path is not None:
-            with open(export_paths_path + 'resolve_paths_{}'.format(merge_id), mode='w') as f:
+            with open(export_paths_path + 'resolve_paths_{}.pkl'.format(merge_id), mode='w') as f:
                 pickle.dump(paths_obj, f)
-            with open(export_paths_path + 'resolve_paths_weights_{}'.format(merge_id), mode='w') as f:
+            with open(export_paths_path + 'resolve_paths_probs_{}.pkl'.format(merge_id), mode='w') as f:
                 pickle.dump(lifted_weights, f)
 
         # Class 1: contain a merge
