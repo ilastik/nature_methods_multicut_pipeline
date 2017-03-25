@@ -94,7 +94,7 @@ def wsdt(prob_map):
     segmentation = np.zeros_like(prob_map, dtype = np.uint32)
     offset = 0
     for z in xrange(prob_map.shape[2]):
-        wsdt = wsDtSegmentation(prob_map[:,:,z], threshold,
+        wsdt, _ = wsDtSegmentation(prob_map[:,:,z], threshold,
                 minMemSize, minSegSize,
                 sigMinima, sigWeights, groupSeeds)
 

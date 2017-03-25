@@ -30,7 +30,7 @@ def watersheds(prob_map):
     offset = 0
     for z in xrange(prob_map.shape[2]):
 
-        wsdt = wsDtSegmentation(prob_map[:,:,z], threshold,
+        wsdt, _ = wsDtSegmentation(prob_map[:,:,z], threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
         segmentation[:,:,z] = wsdt

@@ -89,7 +89,7 @@ def wsdt(prob_map):
     sigWeights = 2.6
     groupSeeds = False
 
-    segmentation = wsDtSegmentation(prob_map, threshold,
+    segmentation, _ = wsDtSegmentation(prob_map, threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
 
