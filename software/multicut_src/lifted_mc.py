@@ -1,12 +1,11 @@
-import vigra
 import os
 
-import vigra.graphs as vgraph
-
-import graph as agraph
-#import nifty
 import numpy
-#import scipy.ndimage
+import vigra
+
+import vigra.graphs as vgraph
+import graph as agraph
+
 from MCSolverImpl import *
 from Tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt
@@ -177,7 +176,7 @@ def compute_lifted_feature_multiple_segmentations(ds, trainsets, referenceSegId,
         uv_ids = np.sort(rag.uvIds(), axis = 1)
         n_var = uv_ids.max() + 1
 
-        mc_node, mc_energy, t_inf = nifty_fusionmoves(
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(
                 n_var, uv_ids,
                 energies, pipelineParam)
 
@@ -322,10 +321,7 @@ def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, lif
 @cacher_hdf5(ignoreNumpyArrays=True)
 def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds, liftedNeighborhood):
 
-    import nifty
-
     print "Computing multcut features for lifted neighborhood", liftedNeighborhood
-
 
     # variables for the multicuts
     uv_ids_local     = ds._adjacent_segments(segId)
@@ -377,10 +373,8 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
         w = weight * edge_areas / area_max
         energies = np.multiply(w, energies)
 
-
-
     # compute map
-    ret, mc_energy, t_inf, obj = nifty_fusionmoves(n_var, uv_ids_local, energies, pipelineParam, returnObj=True)
+    ret, mc_energy, t_inf, obj = multicut_fusionmoves(n_var, uv_ids_local, energies, pipelineParam, returnObj=True)
 
     ilpFactory = obj.multicutIlpFactory(ilpSolver='cplex',
         addThreeCyclesConstraints=True,
@@ -392,8 +386,6 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
 
     fmFactory = obj.fusionMoveBasedFactory(
         fusionMove=obj.fusionMoveSettings(mcFactory=greedy),
-        #fusionMove=obj.fusionMoveSettings(mcFactory=ilpFactory),
-        #proposalGen=nifty.greedyAdditiveProposals(sigma=30,nodeNumStopCond=-1,weightStopCond=0.0),
         proposalGen=obj.watershedProposals(sigma=1,seedFraction=0.01),
         numberOfIterations=100,
         numberOfParallelProposals=16, # no effect if nThreads equals 0 or 1

@@ -1,11 +1,25 @@
 import numpy as np
 import vigra
-import opengm
 import os
 import time
 from DataSet import DataSet, InverseCutout
 from Tools import cacher_hdf5
 import sys
+
+# if build from sorce and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+    ilp_bkend = 'cplex'
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+        ilp_bkend = 'cplex'
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 
 
 ###
@@ -118,109 +132,7 @@ def weight_all_edges(ds, edge_energies, seg_id, edge_areas, weight):
     return energies_return
 
 
-# solve the multicut problem with the exact opengm solver
-def multicut_exact(n_var, uv_ids,
-        edge_energies, exp_params):
-
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
-    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
-
-    # set up the opengm model
-    states = np.ones(n_var) * n_var
-    gm = opengm.gm(states)
-
-    # potts model
-    potts_shape = [n_var, n_var]
-
-    potts = opengm.pottsFunctions(potts_shape,
-                                  np.zeros_like( edge_energies ),
-                                  edge_energies )
-
-    # potts model to opengm function
-    fids_b = gm.addFunctions(potts)
-
-    gm.addFactors(fids_b, uv_ids)
-
-    # save the opengm model
-    if False:
-        opengm.saveGm(gm, "./gm_small_sample_C_gt.gm")
-
-    # the workflow, we use
-    wf = "(IC)(CC-IFD)"
-
-    param = opengm.InfParam( workflow = wf, verbose = exp_params.verbose,
-            verboseCPLEX = exp_params.verbose, numThreads = 4 )
-
-    print "Starting Inference"
-
-    inf = opengm.inference.Multicut(gm, parameter=param)
-    t_inf = time.time()
-    inf.infer()
-    t_inf = time.time() - t_inf
-
-    res_node = inf.arg()
-    ru = res_node[uv_ids[:,0]]
-    rv = res_node[uv_ids[:,1]]
-    res_edge = ru!=rv
-
-    E_glob = gm.evaluate(res_node)
-
-    return (res_node, res_edge, E_glob, t_inf)
-
-
-# solve the multicut problem with the nifty fusion moves solver
-def multicut_fusionmoves(n_var, uv_ids,
-        edge_energies, exp_params):
-
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
-    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
-
-    # set up the opengm model
-    states = np.ones(n_var) * n_var
-    gm = opengm.gm(states)
-
-    # potts model
-    potts_shape = [n_var, n_var]
-
-    potts = opengm.pottsFunctions(potts_shape,
-                                  np.zeros_like( edge_energies ),
-                                  edge_energies )
-
-    # potts model to opengm function
-    fids_b = gm.addFunctions(potts)
-    gm.addFactors(fids_b, uv_ids)
-
-    pparam = opengm.InfParam(seedFraction= exp_params.seed_fraction)
-    parameter = opengm.InfParam(generator='randomizedWatershed',
-                                proposalParam=pparam,
-                                numStopIt=exp_params.num_it_stop,
-                                numIt=exp_params.num_it)
-
-    print "Starting Inference"
-    inf = opengm.inference.IntersectionBased(gm, parameter=parameter)
-
-    if exp_params.verbose:
-        t_inf = time.time()
-        inf.infer(inf.verboseVisitor())
-        t_inf = time.time() - t_inf
-    else:
-        t_inf = time.time()
-        inf.infer()
-        t_inf = time.time() - t_inf
-
-    res_node = inf.arg()
-    ru = res_node[uv_ids[:,0]]
-    rv = res_node[uv_ids[:,1]]
-    res_edge = ru!=rv
-
-    E_glob = gm.evaluate(res_node)
-
-    return res_node, res_edge, E_glob, t_inf
-
-
-def nifty_exact(n_var, uv_ids, edge_energies, exp_params):
-
-    import nifty
+def multicut_exact(n_var, uv_ids, edge_energies, exp_params):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
@@ -250,15 +162,11 @@ def nifty_exact(n_var, uv_ids, edge_energies, exp_params):
 
     mc_energy = obj.evalNodeLabels(ret)
 
-    return ret, mc_energy, t_inf
+    return ret, mc_energy, t_inf, obj
 
 
 
-def nifty_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,returnObj=False):
-
-    print "Here"
-
-    import nifty
+def multicut_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,returnObj=False):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)

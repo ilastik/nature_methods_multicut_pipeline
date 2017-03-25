@@ -1,6 +1,5 @@
 import numpy as np
 import vigra
-import opengm
 import os
 import time
 import sys
@@ -31,32 +30,23 @@ def _get_feat_str(feature_list):
 def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
     #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
     # solve the multicut witht the given solver
-    if mc_params.solver == "opengm_exact":
-        (mc_node, mc_edges, mc_energy, t_inf) = multicut_exact(
-                n_var, uv_ids,
-                edge_energies, mc_params)
-    elif mc_params.solver == "opengm_fusionmoves":
-        (mc_node, mc_edges, mc_energy, t_inf) = multicut_fusionmoves(
-                n_var, uv_ids,
-                edge_energies, mc_params)
-    elif mc_params.solver == "nifty_exact":
-        (mc_node, mc_energy, t_inf) = nifty_exact(
+    elif mc_params.solver == "multicut_exact":
+        mc_node, mc_energy, t_inf, _ = multicut_exact(
                 n_var, uv_ids, edge_energies, mc_params)
-        ru = mc_node[uv_ids[:,0]]
-        rv = mc_node[uv_ids[:,1]]
-        mc_edges = ru!=rv
-    elif mc_params.solver == "nifty_fusionmoves":
-        (mc_node, mc_energy, t_inf) = nifty_fusionmoves(
+    elif mc_params.solver == "multicut_fusionmoves":
+        mc_node, mc_energy, t_inf, _ = multicut_fusionmoves(
                 n_var, uv_ids, edge_energies, mc_params)
-        ru = mc_node[uv_ids[:,0]]
-        rv = mc_node[uv_ids[:,1]]
-        mc_edges = ru!=rv
     else:
         raise RuntimeError("Something went wrong, sovler " + mc_params.solver + ", not in valid solver.")
+
+    # get the result mapped to the edges
+    ru = mc_node[uv_ids[:,0]]
+    rv = mc_node[uv_ids[:,1]]
+    mc_edges = ru!=rv
+
     # we dont want zero as a segmentation result
     # because it is the ignore label in many settings
-    if 0 in mc_node:
-        mc_node += 1
+    mc_node, _, _ = vigra.relabelConsecutive(mc_node, start_label = 1)
     return mc_node, mc_edges, mc_energy, t_inf
 
 

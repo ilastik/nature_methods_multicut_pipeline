@@ -32,8 +32,8 @@ class ExperimentSettings(object):
         self.n_trees = 500
 
         # parameter for multicuts
-        # multicut solver, possible values: "opengm_exact", "opengm_fusionmoves"
-        self.solver = "opengm_exact"
+        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves"
+        self.solver = "multicut_exact"
         # weighting scheme for edge energies, possible values "none", "xyz", "z", "all"
         self.weighting_scheme = "none"
         # weight for edge energies
@@ -97,7 +97,7 @@ class ExperimentSettings(object):
         self.weighting_scheme = scheme_str
 
     def set_solver(self, solver):
-        assert solver in ("opengm_exact", "opengm_fusionmoves", "nifty_exact", "nifty_fusionmoves")
+        assert solver in ("multicut_exact", "multicut_fusionmoves")
         self.solver = solver
 
     def set_weight(self, weight):

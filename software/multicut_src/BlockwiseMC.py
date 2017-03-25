@@ -1,5 +1,4 @@
 import numpy as np
-import opengm
 import time
 
 from DataSet import DataSet
@@ -36,23 +35,6 @@ def blockwise_multicut_workflow(ds_train, ds_test,
     uv_ids_glob = ds_test._adjacent_segments(seg_id_test)
 
     assert edge_energies.shape[0] == n_edges, str(edge_energies.shape[0]) + " , " + str(n_edges)
-
-    # set up the global graphical model to get the energy later
-    # set up the opengm model
-    states = np.ones(n_nodes) * n_nodes
-    gm_global = opengm.gm(states)
-    # potts model
-    potts_shape = [n_nodes, n_nodes]
-    potts = opengm.pottsFunctions(potts_shape,
-                                  np.zeros_like( edge_energies ),
-                                  edge_energies )
-    # potts model to opengm function
-    fids_b = gm_global.addFunctions(potts)
-    gm_global.addFactors(fids_b, uv_ids_glob)
-
-    # save the opengm model
-    if False:
-        opengm.saveGm(gm_global, "./gm_large_" + ds_test.ds_name + ".gm")
 
     # implementation of a single blockwise mc
     def block_mc(edge_energies, seg_local, rag_global, mc_params):
@@ -181,11 +163,11 @@ def blockwise_multicut_workflow(ds_train, ds_test,
     print "Running MC for reduced problem"
 
     # run mc on the new problem
-    if mc_params.solver == "opengm_exact":
+    if mc_params.solver == "multicut_exact":
         res_node_new, res_edge_new, E_new, _ = multicut_exact(
             n_nodes_new, uv_ids_new,
             energies_new, mc_params)
-    elif mc_params.solver == "opengm_fusionmoves":
+    elif mc_params.solver == "multicut_fusionmoves":
         res_node_new, res_edge_new, E_new, _ = multicut_fusionmoves(
             n_nodes_new, uv_ids_new,
             energies_new, mc_params)
@@ -205,7 +187,8 @@ def blockwise_multicut_workflow(ds_train, ds_test,
     res_edge = ru!=rv
 
     # get the global energy
-    E_glob = gm_global.evaluate(res_node)
+    # TODO need to get this from nifty, too drunk right now...
+    E_glob = -42. # dummy ...
 
     if 0 in res_node:
         res_node += 1
