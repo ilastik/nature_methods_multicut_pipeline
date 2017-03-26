@@ -6,11 +6,8 @@ source:
    git_url: ../..
 
 build:
-  #
-  # You must build this recipe using 'conda build --numpy=X.Y'
-  #
-  number: 2
-  string: np{{CONDA_NPY[:]}}py{{CONDA_PY}}_{{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
+  number: 1
+  string: {{PKG_BUILDNUM}}_g{{GIT_FULL_HASH[:7]}}
 
 requirements:
    build:
@@ -18,22 +15,22 @@ requirements:
     - gcc 4.8.5  7999 # [linux]
     - gcc 4.8.5  999  # [osx]
 
-    - python 2.7*,{{PY_VER}}*
-    - numpy >=1.9,{{NPY_VER}}*
-    - hdf5  1.8.14
+    - python 2.7*
+    - numpy >=1.12
+    - hdf5  1.8.17
     - boost 1.55.0
-    - vigra-thorsten 1.11 np19py27_3_g575e7eb
+    - vigra
 
    run:
     # Special libgcc version from channel 'ilastik'
     - libgcc   4.8.5  1999 # [linux]
     - libgcc   4.8.5  1    # [osx]
 
-    - python   {{PY_VER}}*
-    - numpy    {{NPY_VER}}*
-    - hdf5     1.8.14
+    - python   2.7
+    - numpy    >=1.12
+    - hdf5     1.8.17
     - boost    1.55.0
-    - vigra-thorsten 1.11 np19py27_3_g575e7eb
+    - vigra
 
 test:
   imports:

@@ -30,7 +30,7 @@ def _get_feat_str(feature_list):
 def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
     #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
     # solve the multicut witht the given solver
-    elif mc_params.solver == "multicut_exact":
+    if mc_params.solver == "multicut_exact":
         mc_node, mc_energy, t_inf, _ = multicut_exact(
                 n_var, uv_ids, edge_energies, mc_params)
     elif mc_params.solver == "multicut_fusionmoves":
