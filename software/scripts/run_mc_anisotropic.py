@@ -1,20 +1,20 @@
 # script for multicut on anisotropic data
 
 import sys
+# TODO FIXME maybe we need something similar for nifty_with_cplex
 #try to import opengm, it will fail if cplex is not installed
-try:
-    from opengm.inference import IntersectionBased
-except ImportError:
-    print "##########################################################################"
-    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-    print "##########################################################################"
-    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-    print "##########################################################################"
-    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-    print "#########               see README.txt for details                 #######"
-    print "##########################################################################"
-
-    sys.exit(1)
+#try:
+#    from opengm.inference import IntersectionBased
+#except ImportError:
+#    print "##########################################################################"
+#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+#    print "##########################################################################"
+#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+#    print "##########################################################################"
+#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+#    print "#########               see README.txt for details                 #######"
+#    print "##########################################################################"
+#    sys.exit(1)
 
 import argparse
 import os
@@ -222,12 +222,12 @@ def main():
     if args.snemi_mode:
         exp_params.set_anisotropy(5.)
         exp_params.set_weighting_scheme("all")
-        exp_params.set_solver("opengm_exact")
+        exp_params.set_solver("multicut_exact")
         gamma = 10000.
     else:
         exp_params.set_anisotropy(25.)
         exp_params.set_weighting_scheme("z")
-        exp_params.set_solver("opengm_fusionmoves")
+        exp_params.set_solver("multicut_fusionmoves")
         gamma = 2.
 
     seg_id = 0

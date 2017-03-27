@@ -189,7 +189,7 @@ def run_and_eval_mc(sample):
     exp_params.set_ntrees(300)
     exp_params.set_anisotropy(25.)
     exp_params.set_weighting_scheme("z")
-    exp_params.set_solver("opengm_fusionmoves")
+    exp_params.set_solver("multicut_fusionmoves")
 
     local_feats_list  = ("prob", "reg")
     sample.make_filters(1, 25.)

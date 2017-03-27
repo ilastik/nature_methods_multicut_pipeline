@@ -1,19 +1,20 @@
 # script for multicut on isotropic data
 import sys
-#try to import opengm, it will fail if cplex is not installed
-try:
-    from opengm.inference import IntersectionBased
-except ImportError:
-    print "##########################################################################"
-    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-    print "##########################################################################"
-    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-    print "##########################################################################"
-    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-    print "#########               see README.txt for details                 #######"
-    print "##########################################################################"
 
-    sys.exit(1)
+# TODO FIXME maybe we need something similar for nifty
+#try to import opengm, it will fail if cplex is not installed
+#try:
+#    from opengm.inference import IntersectionBased
+#except ImportError:
+#    print "##########################################################################"
+#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+#    print "##########################################################################"
+#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+#    print "##########################################################################"
+#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+#    print "#########               see README.txt for details                 #######"
+#    print "##########################################################################"
+#    sys.exit(1)
 
 import argparse
 import os
@@ -176,7 +177,7 @@ def main():
     exp_params.set_ntrees(500)
     exp_params.set_anisotropy(1.)
     exp_params.set_use2d(False)
-    exp_params.set_solver("opengm_fusionmoves")
+    exp_params.set_solver("multicut_fusionmoves")
     #exp_params.set_weighting_scheme("all")
     exp_params.set_lifted_neighborhood(2)
 
