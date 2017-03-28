@@ -64,6 +64,10 @@ class DataSet(object):
         # dirty hack to make cutouts without defects work...
         self.ignore_defects = False
 
+        # segmentation mask -> learning + inference will be restriced to
+        # superpixels in this mask
+        self.has_seg_mask = False
+
 
     def __str__(self):
         return self.ds_name
@@ -74,6 +78,24 @@ class DataSet(object):
 
     def add_false_merge_gt_id(self, gt_id):
         self.gt_false_merges.add(gt_id)
+
+    # This needs to be called before add seg!
+    def add_seg_mask(self, mask_path, mask_key):
+        assert self.has_raw
+        mask = vigra.readHDF5(mask_path, mask_key)
+        assert mask.shape == self.shape
+        assert all( np.unique(mask) == np.array([0,1]) )
+        self.has_seg_mask = True
+        if self.n_seg > 0:
+            print "WARNING: Adding a segmentation mask does not change existing segmentations."
+        # TODO implement this subvolume crap
+        save_path = os.path.join(self.cache_folder,"seg_mask.h5")
+        vigra.writeHDF5(mask, save_path, 'data', compression = self.compression)
+
+    def get_seg_mask(self):
+        assert self.has_seg_mask
+        save_path = os.path.join(self.cache_folder,"seg_mask.h5")
+        return vigra.readHDF5(save_path, 'data')
 
     #
     # Interface for adding inputs, segmentations and groundtruth
@@ -168,7 +190,16 @@ class DataSet(object):
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
+        if self.has_seg_mask:
+            assert not self.is_subvolume, "Segmask with subvolume is not supported yet!"
+            print "Cutting segmentation mask from seg"
+            mask = self.get_seg_mask()
+            seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
+                    start_label = 1,
+                    keep_zeros = False)
+            seg[ np.logical_not(mask) ] = 0
+        else:
+            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1
@@ -185,7 +216,15 @@ class DataSet(object):
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
+        if self.has_seg_mask:
+            assert not self.is_subvolume, "Segmask with subvolume is not supported yet!"
+            mask = self.get_seg_mask()
+            seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
+                    start_label = 1,
+                    keep_zeros = False)
+            seg[ np.logical_not(mask) ] = 0
+        else:
+            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
         vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
         self.n_seg += 1
@@ -210,6 +249,7 @@ class DataSet(object):
             assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
             gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
+
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
         # also messes up defects in cremi...
         #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
@@ -1036,7 +1076,8 @@ class DataSet(object):
 
         rag = self._rag(seg_id)
         node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
+        # this fails for non-consecutive gt, which however should not be a problem
+        #assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
 
         uv_ids = self._adjacent_segments(seg_id)
         u_gt = node_gt[ uv_ids[:,0] ]

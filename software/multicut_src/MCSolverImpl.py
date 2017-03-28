@@ -55,6 +55,12 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
         print "Weighting all edges"
         edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
 
+    # set the edges with the segmask to be maximally repulsive
+    if ds.has_seg_mask:
+        uv_ids = ds._adjacent_segments(seg_id)
+        ignore_mask = (uv_ids == 0).any(axis = 1)
+        edge_energies[ ignore_mask ] = 2 * edge_energies.min()
+
     return edge_energies
 
 

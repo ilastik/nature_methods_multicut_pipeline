@@ -152,6 +152,16 @@ def learn_and_predict_rf_from_gt(cache_folder,
             assert ignore_mask.shape[0] == labels_cut.shape[0]
             labels_cut[ ignore_mask ] = 0.5
 
+        # ignore all edges that are connected to the ignore label (==0) in the seg mask
+        if cutout.has_seg_mask:
+            if with_defects:
+                uv_ids, _ = modified_mc_problem(cutout, seg_id_train, n_bins, bin_threshold)
+            else:
+                uv_ids = cutout._adjacent_segments(seg_id_train)
+            ignore_mask = (uv_ids == 0).any(axis = 1)
+            assert ignore_mask.shape[0] == labels_cut.shape[0]
+            labels_cut[ ignore_mask ] = 0.5
+
         # set z edges to 0.5
         if exp_params.learn_2d:
             raise AttributeError("2d learning not supported for defect pipeline yet")
@@ -159,7 +169,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
             labels_cut[edge_indications == 0] = 0.5
 
         # inspect edges for debugging
-        if False:
+        if True:
             labels_for_vol = np.zeros(labels_cut.shape, dtype = np.uint32)
             labels_for_vol[labels_cut == 1.]  = 1
             labels_for_vol[labels_cut == 0.]  = 2
@@ -309,6 +319,7 @@ def learn_and_predict_anisotropic_rf(cache_folder,
         n_bins = 0,
         bin_threshold = 0):
 
+    assert False, "Needs to be updated to newer functionality"
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(ds_test, DataSet)
