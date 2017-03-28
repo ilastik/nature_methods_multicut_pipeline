@@ -52,7 +52,7 @@ def extract_paths_from_segmentation(
         # Take only the relevant path pairs
         pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-        paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
+        paths = shortest_paths(masked_dt, pairs_in, n_threads = 16)
         # paths is now a list of numpy arrays
         all_paths.extend(paths)
 
@@ -121,7 +121,7 @@ def extract_paths_and_labels_from_segmentation(
        # Take only the relevant path pairs
        pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-       paths = shortest_paths(masked_dt, pairs_in, n_threads = 1)
+       paths = shortest_paths(masked_dt, pairs_in, n_threads = 16)
        # paths is now a list of numpy arrays
        all_paths.extend(paths)
 
@@ -391,6 +391,12 @@ def compute_false_merges(
     features_test = np.nan_to_num(features_test)
     # TODO vigra.rf3
     # We keep the second channel as we are looking for paths crossing a merging site (class = 1)
+    # FIXME Remove this
+    # Cache features for debugging
+    if not os.path.exists(paths_save_folder + '../debug'):
+        os.mkdir(paths_save_folder + '../debug')
+    with open(paths_save_folder + '../debug/features_test.pkl', mode='w') as f:
+        pickle.dump(features_test, f)
     return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test
 
 
@@ -496,7 +502,7 @@ def resolve_merges_with_lifted_edges(
         paths_obj = shortest_paths(
             masked_disttransf,
             uv_ids_lifted_min_nh_coords,
-            8) # TODO set n_threads from global params
+            16) # TODO set n_threads from global params
 
 
         # add the paths actually classified as being wrong if not already present
@@ -516,6 +522,14 @@ def resolve_merges_with_lifted_edges(
         # Compute the path features
         features = path_feature_aggregator(ds, paths_obj, exp_params)
         features = np.nan_to_num(features)
+        # FIXME Remove this
+        # Cache features for debug purpose
+        with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+            pickle.dump(features, f)
+
+        fs = path_feature_aggregator(ds, (extra_paths[0],), exp_params)
+        with open(export_paths_path + '../debug/fs_{}.pkl'.format(merge_id), mode='w') as f:
+            pickle.dump(fs, f)
 
         # compute the lifted weights from rf probabilities
         lifted_weights = path_rf.predict_proba(features)[:,1]
