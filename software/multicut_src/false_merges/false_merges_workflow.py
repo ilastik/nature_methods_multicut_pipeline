@@ -240,13 +240,8 @@ def train_random_forest_for_merges(
                             params,
                             gt,
                             correspondence_list)
-                else:
 
-                    # load the segmentation and compute distance transform
-                    seg = vigra.readHDF5(seg_path, key)
-                    assert seg.shape == gt.shape
-                    seg = remove_small_segments(seg)
-                    ds.distance_transform(seg, *dt_args[1:])
+                else:
 
                     # Get the paths and stuff for the current object
                     paths = cached_paths['paths'][ds_id][seg_id]
@@ -261,6 +256,14 @@ def train_random_forest_for_merges(
                 filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
                 if os.path.isdir(filters_filepath):
                     shutil.rmtree(filters_filepath)
+
+                if cached_paths:
+
+                    # load the segmentation and compute distance transform
+                    seg = vigra.readHDF5(seg_path, key)
+                    assert seg.shape == gt.shape
+                    seg = remove_small_segments(seg)
+                    ds.distance_transform(seg, *dt_args[1:])
 
                 if paths:
 
