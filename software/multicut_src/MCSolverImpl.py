@@ -172,7 +172,12 @@ def multicut_exact(n_var, uv_ids, edge_energies, exp_params):
 
 
 
-def multicut_fusionmoves(n_var, uv_ids, edge_energies, exp_params,nThreads=0,returnObj=False):
+def multicut_fusionmoves(n_var,
+        uv_ids,
+        edge_energies,
+        exp_params,
+        nThreads=0,
+        returnObj=False):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)

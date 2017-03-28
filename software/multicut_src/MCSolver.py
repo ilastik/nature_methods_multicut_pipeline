@@ -35,7 +35,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
                 n_var, uv_ids, edge_energies, mc_params)
     elif mc_params.solver == "multicut_fusionmoves":
         mc_node, mc_energy, t_inf, _ = multicut_fusionmoves(
-                n_var, uv_ids, edge_energies, mc_params)
+                n_var, uv_ids, edge_energies, mc_params, mc_params.n_threads)
     else:
         raise RuntimeError("Something went wrong, sovler " + mc_params.solver + ", not in valid solver.")
 
