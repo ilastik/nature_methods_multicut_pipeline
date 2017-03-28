@@ -164,12 +164,13 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         # set z edges to 0.5
         if exp_params.learn_2d:
-            raise AttributeError("2d learning not supported for defect pipeline yet")
+            if with_defects:
+                raise AttributeError("2d learning not supported for defect pipeline yet")
             edge_indications = modified_edge_indications(cutout, seg_id_train) if with_defects else cutout.edge_indications(seg_id_train)
             labels_cut[edge_indications == 0] = 0.5
 
         # inspect edges for debugging
-        if True:
+        if False:
             labels_for_vol = np.zeros(labels_cut.shape, dtype = np.uint32)
             labels_for_vol[labels_cut == 1.]  = 1
             labels_for_vol[labels_cut == 0.]  = 2
