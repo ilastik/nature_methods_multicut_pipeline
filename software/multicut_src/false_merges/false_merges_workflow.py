@@ -185,6 +185,7 @@ def train_random_forest_for_merges(
     # otherwise do the actual calculations
     else:
         cached_paths = []
+        print "Looking for paths folder: {}".format(paths_save_path)
         if caching and os.path.exists(paths_save_path):
             # If the paths already exist (necessary if new features should be used)
             print "Loading paths from:", paths_save_path
