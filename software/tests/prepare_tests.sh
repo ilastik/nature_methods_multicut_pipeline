@@ -2,7 +2,8 @@
 wget http://files.ilastik.org/multicut/NaturePaperDataUpl.zip
 
 # unzip
-tar -xvzf NaturePaperDataUpl.zip
+unzip NaturePaperDataUpl.zip
+rm NaturePaperDataUpl.zip
 
 # make cache directories
 mkdir cache
