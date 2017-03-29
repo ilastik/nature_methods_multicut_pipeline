@@ -10,7 +10,7 @@ echo "#############################"
 
 # with lifted multicut
 python ../scripts/run_mc_2d.py NaturePaperDataUpl/ISBI2012 \
-    cache_isbi \
+    cache/cache_isbi \
     --use_lifted true
 
 echo "#############################"

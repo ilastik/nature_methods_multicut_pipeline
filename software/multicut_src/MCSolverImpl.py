@@ -17,6 +17,7 @@ except ImportError:
     except ImportError:
         try:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
+            ilp_bkend = 'gurobi'
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -138,12 +139,15 @@ def weight_all_edges(ds, edge_energies, seg_id, edge_areas, weight):
     return energies_return
 
 
-def multicut_exact(n_var, uv_ids, edge_energies, exp_params):
+def multicut_exact(n_var,
+        uv_ids,
+        edge_energies,
+        exp_params):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
 
-    g =  nifty.graph.UndirectedGraph(int(n_var))
+    g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
 
     assert g.numberOfEdges == edge_energies.shape[0]
@@ -153,7 +157,7 @@ def multicut_exact(n_var, uv_ids, edge_energies, exp_params):
 
     t_inf = time.time()
 
-    solver = obj.multicutIlpFactory(ilpSolver='cplex',verbose=0,
+    solver = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
@@ -182,7 +186,7 @@ def multicut_fusionmoves(n_var,
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
 
-    g =  nifty.graph.UndirectedGraph(int(n_var))
+    g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
 
     assert g.numberOfEdges == edge_energies.shape[0]
@@ -195,13 +199,10 @@ def multicut_fusionmoves(n_var,
 
     t_inf = time.time()
 
-    ilpFac = obj.multicutIlpFactory(ilpSolver='cplex',verbose=0,
+    ilpFac = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     )
-
-    print "Num It Stop:"
-    print exp_params.num_it_stop
 
     factory = obj.fusionMoveBasedFactory(
         verbose=1,

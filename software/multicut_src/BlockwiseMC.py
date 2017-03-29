@@ -76,8 +76,10 @@ def blockwise_multicut_workflow(ds_train, ds_test,
         n_var = nodes.shape[0]
         energies_local = edge_energies[inner_edges]
 
-        node_result, edge_result, _, _ = multicut_fusionmoves(n_var, uv_ids,
-                energies_local, mc_params)
+        node_result, _, _ = multicut_fusionmoves(n_var,
+                uv_ids,
+                energies_local,
+                mc_params)
 
         return edge_result, inner_edges, outer_edges
 
@@ -164,11 +166,11 @@ def blockwise_multicut_workflow(ds_train, ds_test,
 
     # run mc on the new problem
     if mc_params.solver == "multicut_exact":
-        res_node_new, res_edge_new, E_new, _ = multicut_exact(
+        res_node_new, E_new, _ = multicut_exact(
             n_nodes_new, uv_ids_new,
             energies_new, mc_params)
     elif mc_params.solver == "multicut_fusionmoves":
-        res_node_new, res_edge_new, E_new, _ = multicut_fusionmoves(
+        res_node_new, E_new, _ = multicut_fusionmoves(
             n_nodes_new, uv_ids_new,
             energies_new, mc_params)
 
