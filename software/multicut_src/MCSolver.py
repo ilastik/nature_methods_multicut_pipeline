@@ -31,10 +31,10 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
     #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
     # solve the multicut witht the given solver
     if mc_params.solver == "multicut_exact":
-        mc_node, mc_energy, t_inf, _ = multicut_exact(
+        mc_node, mc_energy, t_inf = multicut_exact(
                 n_var, uv_ids, edge_energies, mc_params)
     elif mc_params.solver == "multicut_fusionmoves":
-        mc_node, mc_energy, t_inf, _ = multicut_fusionmoves(
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(
                 n_var, uv_ids, edge_energies, mc_params, mc_params.n_threads)
     else:
         raise RuntimeError("Something went wrong, sovler " + mc_params.solver + ", not in valid solver.")
@@ -46,7 +46,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
 
     # we dont want zero as a segmentation result
     # because it is the ignore label in many settings
-    mc_node, _, _ = vigra.relabelConsecutive(mc_node, start_label = 1)
+    mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label = 1, keep_zeros = False)
     return mc_node, mc_edges, mc_energy, t_inf
 
 
@@ -96,9 +96,9 @@ def multicut_workflow(ds_train, ds_test,
     # number of variables = number of nodes
     seg_id_max = ds_test.seg(seg_id_test).max()
     n_var = seg_id_max + 1
-    assert n_var == ds_test._rag(seg_id_test).nodeNum
     # uv - ids = node ides connected by the edges
     uv_ids = ds_test._adjacent_segments(seg_id_test)
+    assert n_var == uv_ids.max() + 1, "%i, %i" % (n_var, uv_ids.max() + 1)
     # energies for the multicut
     edge_energies = probs_to_energies(ds_test,
             edge_probs,

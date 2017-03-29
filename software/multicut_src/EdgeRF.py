@@ -83,6 +83,7 @@ def local_feature_aggregator_with_defects(ds,
     return np.concatenate(features, axis = 1)
 
 
+# TODO restructure this, such that the features are not loaded if the RF is already there!
 # set cache folder to None if you dont want to cache the resulting rf
 def learn_and_predict_rf_from_gt(cache_folder,
         trainsets, ds_test,
