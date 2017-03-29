@@ -142,7 +142,8 @@ def weight_all_edges(ds, edge_energies, seg_id, edge_areas, weight):
 def multicut_exact(n_var,
         uv_ids,
         edge_energies,
-        exp_params):
+        exp_params,
+        return_obj = False):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
@@ -172,7 +173,10 @@ def multicut_exact(n_var,
 
     mc_energy = obj.evalNodeLabels(ret)
 
-    return ret, mc_energy, t_inf, obj
+    if not return_obj:
+        return ret, mc_energy, t_inf
+    else:
+        return ret, mc_energy, t_inf, obj
 
 
 
@@ -181,7 +185,7 @@ def multicut_fusionmoves(n_var,
         edge_energies,
         exp_params,
         nThreads=0,
-        returnObj=False):
+        return_obj=False):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
@@ -226,7 +230,7 @@ def multicut_fusionmoves(n_var,
     t_inf = time.time() - t_inf
 
     mc_energy = obj.evalNodeLabels(ret)
-    if not returnObj:
+    if not return_obj:
         return ret, mc_energy, t_inf
     else:
         return ret, mc_energy, t_inf, obj
