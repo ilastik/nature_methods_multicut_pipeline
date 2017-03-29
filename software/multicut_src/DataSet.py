@@ -194,10 +194,10 @@ class DataSet(object):
             assert not self.is_subvolume, "Segmask with subvolume is not supported yet!"
             print "Cutting segmentation mask from seg"
             mask = self.get_seg_mask()
+            seg[ np.logical_not(mask) ] = 0
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
                     start_label = 1,
-                    keep_zeros = False)
-            seg[ np.logical_not(mask) ] = 0
+                    keep_zeros = True)
         else:
             seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
@@ -1566,4 +1566,3 @@ class InverseCutout(Cutout):
 
     def get_tesselation(self, tesselation_id):
         raise AttributeError("Can't be called for InverseCutout")
-
