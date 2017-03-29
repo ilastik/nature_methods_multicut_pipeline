@@ -9,7 +9,6 @@ class ExperimentSettings(object):
         # number of threads for all things in parallel, set to max - 1
         import multiprocessing
         self.n_threads = max( multiprocessing.cpu_count() - 1, 1)
-        self.n_threads_lifted = max( multiprocessing.cpu_count() - 1, 1)
 
         # parameter fo feature calculation
         # anisotropy factor for the filter calculation
@@ -21,7 +20,7 @@ class ExperimentSettings(object):
         # flag to activate learning only from the xy-edges (for ISBI12)
         self.learn_2d = False
         # flag to ignore certain edges when learning
-        self.use_ignore_mask = True
+        self.use_ignore_mask = False
         # flag to learn from fuzzy groundtruth projection
         self.learn_fuzzy = False
         # minimal overlap for positive examples in fuzzy projection
@@ -32,8 +31,8 @@ class ExperimentSettings(object):
         self.n_trees = 500
 
         # parameter for multicuts
-        # multicut solver, possible values: "opengm_exact", "opengm_fusionmoves"
-        self.solver = "opengm_exact"
+        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves"
+        self.solver = "multicut_exact"
         # weighting scheme for edge energies, possible values "none", "xyz", "z", "all"
         self.weighting_scheme = "none"
         # weight for edge energies
@@ -101,15 +100,12 @@ class ExperimentSettings(object):
     def set_nthreads(self, n_threads):
         self.n_threads = n_threads
 
-    def set_nthreads_lifted(self, n_threads_lifted):
-        self.n_threads_lifted = n_threads_lifted
-
     def set_weighting_scheme(self, scheme_str):
         assert scheme_str in ("z", "all", "xyz", "none"), scheme_str
         self.weighting_scheme = scheme_str
 
     def set_solver(self, solver):
-        assert solver in ("opengm_exact", "opengm_fusionmoves", "nifty_exact", "nifty_fusionmoves")
+        assert solver in ("multicut_exact", "multicut_fusionmoves")
         self.solver = solver
 
     def set_weight(self, weight):

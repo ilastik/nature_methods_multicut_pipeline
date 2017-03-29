@@ -130,8 +130,11 @@ def get_skip_starts(ds, seg_id, n_bins, bin_threshold):
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id, n_bins, bin_threshold)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
+
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
+    if ds.ignore_defects:
+        return np.array([0])
     node_res = defects_to_nodes(ds, seg_id, n_bins, bin_threshold)
     # need to split into defect nodes and node_z
     mid = node_res.shape[0] / 2
@@ -283,6 +286,8 @@ def modified_adjacency(ds, seg_id, n_bins, bin_threshold):
 @cacher_hdf5()
 def modified_edge_indications(ds, seg_id, n_bins, bin_threshold):
     modified_indications = ds.edge_indications(seg_id)
+    if ds.ignore_defects:
+        return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
     modified_indications = np.delete(modified_indications, delete_edges)
@@ -292,6 +297,8 @@ def modified_edge_indications(ds, seg_id, n_bins, bin_threshold):
 @cacher_hdf5()
 def modified_edge_gt(ds, seg_id, n_bins, bin_threshold):
     modified_edge_gt = ds.edge_gt(seg_id)
+    if ds.ignore_defects:
+        return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
     modified_edge_gt = np.delete(modified_edge_gt, delete_edges)
@@ -322,7 +329,7 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         for path in filter_paths:
             with h5py.File(path) as f:
                 filt_ds = f['data']
-                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_dn][:,:,None]],axis=2)
+                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_up][:,:,None]],axis=2)
             if len(filt.shape) == 3:
                 gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag_local.baseGraph, filt)
                 edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
@@ -340,13 +347,18 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
         # FIXME horrible loop....
         keep_indices = []
-        for uv in uvs_local:
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
-            if where_uv[0].size:
+        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
+        found = 0
+        for i, uv in enumerate(uvs_local):
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
+            if where_uv.size:
                 assert where_uv[0].size == 1
-                keep_indices.append(where_uv[0][0])
-        keep_indices = np.sort(keep_indices)
-        features.append(target_features[keep_indices])
+                keep_indices.append(i)
+                to_skip_edges[where_uv[0]] = found
+                found += 1
+        assert len(keep_indices) == skip_edge_pairs.shape[0]
+        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
+        features.append(target_features[keep_indices][to_skip_edges])
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
 
@@ -354,6 +366,8 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_threshold):
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
+    if ds.ignore_defects:
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_starts  = get_skip_starts(ds, seg_id, n_bins, bin_threshold)
@@ -367,7 +381,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
     seg = ds.seg(seg_id)
     lower_slices  = np.unique(skip_starts)
     skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
-    skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
     target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
 
     # calculate the volume filters for the given input
@@ -394,6 +408,10 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor, n_bins, bin_th
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_threshold):
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
+    if ds.ignore_defects:
+        modified_features = np.c_[modified_features,
+                np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
@@ -411,7 +429,6 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_
 
     #del extracted_features
 
-    print node_features.shape
     n_stat_feats = 17 # magic_nu...
     region_stats = node_features[:,:n_stat_feats]
 
@@ -427,12 +444,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh, n_bins, bin_
     region_centers = node_features[:,n_stat_feats:]
     sU = region_centers[skip_edges[:,0],:]
     sV = region_centers[skip_edges[:,1],:]
-    print sU.shape, sV.shape
-
     skip_center_feats = np.c_[(sU - sV)**2, skip_ranges]
-
-    print skip_stat_feats.shape
-    print skip_center_feats.shape
 
     assert skip_center_feats.shape[0] == skip_stat_feats.shape[0]
     skip_features = np.concatenate([skip_stat_feats, skip_center_feats], axis = 1)
@@ -506,21 +518,27 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
         # FIXME horrible loop....
         keep_indices = []
-        for uv in uvs_local:
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))
-            if where_uv[0].size:
+        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
+        found = 0
+        for i, uv in enumerate(uvs_local):
+            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
+            if where_uv.size:
                 assert where_uv[0].size == 1
-                keep_indices.append(where_uv[0][0])
-        keep_indices = np.sort(keep_indices)
-        features.append(target_features[keep_indices])
+                keep_indices.append(i)
+                to_skip_edges[where_uv[0]] = found
+                found += 1
+        assert len(keep_indices) == skip_edge_pairs.shape[0]
+        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
+        features.append(target_features[keep_indices][to_skip_edges])
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
-
 
 
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges, n_bins, bin_threshold):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
+    if ds.ignore_defects:
+        return modified_features
 
     skip_edges   = get_skip_edges(ds, seg_id, n_bins, bin_threshold)
     skip_ranges  = get_skip_ranges(ds, seg_id, n_bins, bin_threshold)
@@ -560,6 +578,11 @@ def modified_topology_features(ds, seg_id, use_2d_edges, n_bins, bin_threshold):
 #
 
 def modified_mc_problem(ds, seg_id, n_bins, bin_threshold):
+    if ds.ignore_defects:
+        uvs = ds._adjacent_segments(seg_id)
+        nvar= np.max(uvs)+1
+        return nvar, uvs
+
     modified_uv_ids = ds._adjacent_segments(seg_id)
     skip_edges   = np.sort( get_skip_edges(ds, seg_id, n_bins, bin_threshold), axis = 1)
     delete_edges = get_delete_edges(ds, seg_id, n_bins, bin_threshold)
@@ -569,8 +592,10 @@ def modified_mc_problem(ds, seg_id, n_bins, bin_threshold):
     n_var = ds.seg(seg_id).max() + 1
     return n_var, modified_uv_ids
 
+
+# the last argument is only for caching results with different features correctly
 @cacher_hdf5(ignoreNumpyArrays=True)
-def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bins, bin_threshold):
+def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bins, bin_threshold, feat_cache):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
@@ -611,6 +636,7 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bin
         max_repulsive = 2 * edge_energies.min()
         edge_energies[ignore_indices] = max_repulsive
 
+    assert not np.isnan(edge_energies).any()
     return edge_energies
 
 #
@@ -618,9 +644,9 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, n_bin
 #
 
 # TODO modified features, need to figure out how to do this exactly ...
-def _get_replace_slices(slice_list):
+def _get_replace_slices(defected_slices, shape):
     # find consecutive slices with defects
-    consecutive_defects = np.split(slice_list, np.where(np.diff(defected_slices) != 1)[0] + 1)
+    consecutive_defects = np.split(defected_slices, np.where(np.diff(defected_slices) != 1)[0] + 1)
     # find the replace slices for defected slices
     replace_slice = {}
     for consec in consecutive_defects:
@@ -647,9 +673,15 @@ def _get_replace_slices(slice_list):
     return replace_slice
 
 
-def postprocess_segmentation(seg_result, slice_list):
-    pass
-
+def postprocess_segmentation(ds, seg_id, seg_result, n_bins, bin_threshold):
+    defect_nodes = defects_to_nodes(ds, seg_id, n_bins, bin_threshold)
+    mid = defect_nodes.shape[0] / 2
+    defect_slices = np.unique(defect_nodes[mid:])
+    replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
+    for defect_slice in defect_slices:
+        replace = replace_slices[defect_slice]
+        seg_result[:,:,defect_slice] = seg_result[:,:,replace]
+    return seg_result
 
 def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
     replace_slices = _get_replace_slices(slice_list)

@@ -194,7 +194,7 @@ def edges_to_volume(rag, edges, ignore_z = False):
     assert rag.edgeNum == edges.shape[0], str(rag.edgeNum) + " , " + str(edges.shape[0])
 
     print rag.baseGraph.shape
-    volume = np.zeros(rag.baseGraph.shape, dtype = np.uint8)
+    volume = np.zeros(rag.baseGraph.shape, dtype = np.uint32)
 
     for edge_id in rag.edgeIds():
         # don't write the ignore label!

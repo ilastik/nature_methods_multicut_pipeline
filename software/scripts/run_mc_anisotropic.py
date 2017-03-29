@@ -1,20 +1,20 @@
 # script for multicut on anisotropic data
 
 import sys
+# TODO FIXME maybe we need something similar for nifty_with_cplex
 #try to import opengm, it will fail if cplex is not installed
-try:
-    from opengm.inference import IntersectionBased
-except ImportError:
-    print "##########################################################################"
-    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-    print "##########################################################################"
-    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-    print "##########################################################################"
-    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-    print "#########               see README.txt for details                 #######"
-    print "##########################################################################"
-
-    sys.exit(1)
+#try:
+#    from opengm.inference import IntersectionBased
+#except ImportError:
+#    print "##########################################################################"
+#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+#    print "##########################################################################"
+#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+#    print "##########################################################################"
+#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+#    print "#########               see README.txt for details                 #######"
+#    print "##########################################################################"
+#    sys.exit(1)
 
 import argparse
 import os
@@ -71,7 +71,7 @@ def wsdt(prob_map):
     offset = 0
     for z in xrange(prob_map.shape[2]):
 
-        wsdt = wsDtSegmentation(prob_map[:,:,z], threshold,
+        wsdt, _ = wsDtSegmentation(prob_map[:,:,z], threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
 
@@ -222,12 +222,12 @@ def main():
     if args.snemi_mode:
         exp_params.set_anisotropy(5.)
         exp_params.set_weighting_scheme("all")
-        exp_params.set_solver("opengm_exact")
+        exp_params.set_solver("multicut_exact")
         gamma = 10000.
     else:
         exp_params.set_anisotropy(25.)
         exp_params.set_weighting_scheme("z")
-        exp_params.set_solver("opengm_fusionmoves")
+        exp_params.set_solver("multicut_fusionmoves")
         gamma = 2.
 
     seg_id = 0
@@ -241,7 +241,7 @@ def main():
         ds_test.make_filters( 0, exp_params.anisotropy_factor)
         ds_test.make_filters( 1, exp_params.anisotropy_factor)
 
-        mc_node, mc_edges, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
+        mc_node, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
            seg_id, seg_id,
            local_feats_list, lifted_feats_list, exp_params,
            gamma = gamma, weight_z_lifted = True)
