@@ -68,10 +68,14 @@ class DataSet(object):
         # superpixels in this mask
         self.has_seg_mask = False
 
+        self.defect_slices = []
+
 
     def __str__(self):
         return self.ds_name
 
+    def set_defect_slices(self, defect_slice_list):
+        self.defect_slices = defect_slcice_list
 
     def add_false_split_gt_id(self, gt_id):
         self.gt_false_splits.add(gt_id)

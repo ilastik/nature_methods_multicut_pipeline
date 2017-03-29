@@ -551,6 +551,7 @@ def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob
         return pTest
 
 
+# TODO adapt
 def learn_and_predict_lifted(trainsets, dsTest,
         segIdTrain, segIdTest,
         feature_list_lifted, feature_list_local,

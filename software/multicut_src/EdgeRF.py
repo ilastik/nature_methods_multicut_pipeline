@@ -61,8 +61,6 @@ def local_feature_aggregator(ds,
 def local_feature_aggregator_with_defects(ds,
         seg_id,
         feature_list,
-        n_bins,
-        bin_threshold,
         anisotropy_factor = 1.,
         use_2d = False):
 
@@ -72,17 +70,23 @@ def local_feature_aggregator_with_defects(ds,
         assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo"), feat
     features = []
     if "raw" in feature_list:
-        features.append(modified_edge_features(ds, seg_id, 0, anisotropy_factor, n_bins, bin_threshold ))
+        features.append(modified_edge_features(
+            ds, seg_id,
+            0, anisotropy_factor))
     if "prob" in feature_list:
-        features.append(modified_edge_features(ds, seg_id, 1, anisotropy_factor, n_bins, bin_threshold ))
+        features.append(modified_edge_features(ds, seg_id,
+            1, anisotropy_factor))
     if "affinities" in feature_list:
-        features.append(modified_edge_features_from_affinity_maps(ds, seg_id, 1, anisotropy_factor, n_bins, bin_threshold ))
+        features.append(modified_edge_features_from_affinity_maps(ds, seg_id,
+            1, anisotropy_factor))
     if "extra_input" in feature_list:
-        features.append(modified_edge_features(ds, seg_id, 2, anisotropy_factor, n_bins, bin_threshold ))
+        features.append(modified_edge_features(ds, seg_id,
+            2, anisotropy_factor))
     if "reg" in feature_list:
-        features.append(modified_region_features(ds, seg_id, 0, ds._adjacent_segments(seg_id), False, n_bins, bin_threshold ) )
+        features.append(modified_region_features(ds, seg_id,
+            0, ds._adjacent_segments(seg_id), False) )
     if "topo" in feature_list:
-        features.append(modified_topology_features(ds, seg_id, use_2d, n_bins, bin_threshold ))
+        features.append(modified_topology_features(ds, seg_id, use_2d))
     #if "curve" in feature_list:
     #    features.append(ds.curvature_features(seg_id))
 
@@ -154,9 +158,7 @@ def learn_rf(cache_folder,
         exp_params,
         trainstr,
         paramstr,
-        with_defects = False,
-        n_bins = 0,
-        bin_threshold = 0):
+        with_defects = False):
 
     if cache_folder is not None: # we use caching for the rf => look if already exists
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
@@ -185,7 +187,7 @@ def learn_rf(cache_folder,
         features_cut = feature_aggregator( cutout, seg_id )
 
         if with_defects:
-            uv_ids, _ = modified_mc_problem(cutout, seg_id, n_bins, bin_threshold)
+            uv_ids, _ = modified_mc_problem(cutout, seg_id)
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
 
@@ -199,9 +201,7 @@ def learn_rf(cache_folder,
         else:
             labels_cut = modified_edge_gt(
                     cutout,
-                    seg_id,
-                    n_bins,
-                    bin_threshold) if with_defects else cutout.edge_gt(seg_id)
+                    seg_id) if with_defects else cutout.edge_gt(seg_id)
 
         assert labels_cut.shape[0] == features_cut.shape[0]
 
@@ -223,9 +223,7 @@ def learn_rf(cache_folder,
         # TODO !!!
         if with_defects and not cutout.ignore_defects:
             skip_transition = n_edges - get_skip_edges(cutout,
-                    seg_id,
-                    n_bins,
-                    bin_threshold).shape[0]
+                    seg_id).shape[0]
             features_skip.append(features_cut[skip_transition:])
             labels_skip.append(labels_cut[skip_transition:])
             features_cut = features_cut[:skip_transition]
@@ -272,9 +270,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         trainsets, ds_test,
         seg_id_train, seg_id_test,
         feature_list, exp_params,
-        with_defects = False,
-        n_bins = 0,
-        bin_threshold = 0):
+        with_defects = False):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
@@ -286,11 +282,9 @@ def learn_and_predict_rf_from_gt(cache_folder,
         trainsets = [trainsets]
 
     if with_defects:
-        assert n_bins > 0
-        assert bin_threshold > 0
         feature_aggregator = partial( local_feature_aggregator_with_defects,
-            feature_list = feature_list, n_bins = n_bins,
-            bin_threshold = bin_threshold, anisotropy_factor = exp_params.anisotropy_factor,
+            feature_list = feature_list,
+            anisotropy_factor = exp_params.anisotropy_factor,
             use_2d = exp_params.use_2d )
     else:
         feature_aggregator = partial( local_feature_aggregator,
@@ -333,9 +327,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         exp_params,
         trainstr,
         paramstr,
-        with_defects,
-        n_bins,
-        bin_threshold)
+        with_defects)
 
     if with_defects:
         rf = rfs[0]
@@ -350,9 +342,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     if with_defects:
         skip_transition = features_test.shape[0] - get_skip_edges(
                 ds_test,
-                seg_id_test,
-                n_bins,
-                bin_threshold).shape[0]
+                seg_id_test).shape[0]
         features_test_skip = features_test[skip_transition:]
         features_test = features_test[:skip_transition]
 
@@ -379,6 +369,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
 # TODO reactivate / unify with above to avoind all the code copy
 # TODO implement caching
+# TODO adapt to new defect handling
 # set cache folder to None if you dont want to cache the result
 def learn_and_predict_anisotropic_rf(cache_folder,
         trainsets, ds_test,
