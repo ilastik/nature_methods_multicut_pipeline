@@ -111,7 +111,7 @@ def multicut_workflow(ds_train, ds_test,
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow_with_defect_correction(ds_train, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, mc_params
+        feature_list, mc_params,
         use_2_rfs = False):
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)

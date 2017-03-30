@@ -60,6 +60,7 @@ class DataSet(object):
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
 
+        # FIXME TODO instead copy the defect list (recentered) to cutouts and check if list is empty!
         # if this is set to true, all defect calculations are ignored
         # dirty hack to make cutouts without defects work...
         self.ignore_defects = False
