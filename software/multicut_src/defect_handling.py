@@ -383,8 +383,8 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
                 keep_indices.append(i)
                 to_skip_edges[where_uv[0]] = found
                 found += 1
-        assert len(keep_indices) == skip_edge_pairs.shape[0]
-        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
+        assert len(keep_indices) == skip_edge_pairs.shape[0], "%i, %i" % (len(keep_indices), skip_edge_pairs.shape[0])
+        assert len(to_skip_edges) == skip_edge_pairs.shape[0], "%i, %i" % (len(to_skip_edges), skip_edge_pairs.shape[0])
         features.append(target_features[keep_indices][to_skip_edges])
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features

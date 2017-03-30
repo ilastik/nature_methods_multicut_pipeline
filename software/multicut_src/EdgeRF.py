@@ -186,7 +186,7 @@ def learn_rf(cache_folder,
 
         features_cut = feature_aggregator( cutout, seg_id )
 
-        if with_defects:
+        if with_defects and cutout.defect_slices:
             uv_ids, _ = modified_mc_problem(cutout, seg_id)
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
