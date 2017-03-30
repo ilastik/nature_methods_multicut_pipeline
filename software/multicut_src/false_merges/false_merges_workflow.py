@@ -34,6 +34,10 @@ def extract_paths_from_segmentation(
     # TODO parallelize this function !
     border_contacts = compute_border_contacts(seg, dt)
     path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
+    # Sort the paths_to_objs by size (not doing that leads to a possible bug in the next loop)
+    order = np.argsort(paths_to_objs)
+    paths_to_objs = np.array(paths_to_objs)[order].tolist()
+    path_pairs = np.array(path_pairs)[order].tolist()
 
     # Invert the distance transform
     dt = np.amax(dt) - dt
@@ -52,7 +56,7 @@ def extract_paths_from_segmentation(
         # Take only the relevant path pairs
         pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-        paths = shortest_paths(masked_dt, pairs_in, n_threads = 16)
+        paths = shortest_paths(masked_dt, pairs_in, n_threads = 32)
         # paths is now a list of numpy arrays
         all_paths.extend(paths)
 
@@ -121,7 +125,7 @@ def extract_paths_and_labels_from_segmentation(
        # Take only the relevant path pairs
        pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-       paths = shortest_paths(masked_dt, pairs_in, n_threads = 16)
+       paths = shortest_paths(masked_dt, pairs_in, n_threads = 32)
        # paths is now a list of numpy arrays
        all_paths.extend(paths)
 
@@ -475,7 +479,7 @@ def resolve_merges_with_lifted_edges(
         # local graph (consecutive in obj)
         # FIXME Temporarily commented out the new vigra relabelConsecutive version
         # seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0)
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
 
         # mapping = old to new,
         # reverse = new to old
@@ -511,7 +515,7 @@ def resolve_merges_with_lifted_edges(
         paths_obj = shortest_paths(
             masked_disttransf,
             uv_ids_lifted_min_nh_coords,
-            16) # TODO set n_threads from global params
+            32) # TODO set n_threads from global params
 
 
         # add the paths actually classified as being wrong if not already present
