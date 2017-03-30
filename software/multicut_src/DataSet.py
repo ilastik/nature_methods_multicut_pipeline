@@ -90,12 +90,15 @@ class DataSet(object):
     def add_seg_mask(self, mask_path, mask_key):
         assert self.has_raw
         mask = vigra.readHDF5(mask_path, mask_key)
-        assert mask.shape == self.shape
-        assert all( np.unique(mask) == np.array([0,1]) )
+        assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
         self.has_seg_mask = True
         if self.n_seg > 0:
             print "WARNING: Adding a segmentation mask does not change existing segmentations."
-        # TODO implement this subvolume crap
+        if self.is_subvolume:
+            p = self.block_coordinates
+            assert mask.shape[0] >= p[1] and mask.shape[1] >= p[3] and mask.shape[2] >= p[5]
+            mask = mask[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
+        assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
         save_path = os.path.join(self.cache_folder,"seg_mask.h5")
         vigra.writeHDF5(mask, save_path, 'data', compression = self.compression)
 
@@ -184,7 +187,6 @@ class DataSet(object):
             seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
         if self.has_seg_mask:
-            assert not self.is_subvolume, "Segmask with subvolume is not supported yet!"
             print "Cutting segmentation mask from seg"
             mask = self.get_seg_mask()
             seg[ np.logical_not(mask) ] = 0
@@ -1216,6 +1218,11 @@ class DataSet(object):
                 cutout.add_raw(inp_path)
             else:
                 cutout.add_input(inp_path)
+
+        # check if we have a seg mask and copy
+        if self.has_seg_mask:
+            mask_path = os.path.join(self.cache_folder,"seg_mask.h5")
+            cutout.add_seg_mask(mask_path, 'data')
 
         for seg_id in range(self.n_seg):
             seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
