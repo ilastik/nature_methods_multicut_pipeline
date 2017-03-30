@@ -221,7 +221,7 @@ def learn_rf(cache_folder,
 
         # FIXME this won't work if we have any of the masking things activated
         # TODO !!!
-        if with_defects and not cutout.ignore_defects:
+        if with_defects and cutout.defect_slices:
             skip_transition = n_edges - get_skip_edges(cutout,
                     seg_id).shape[0]
             features_skip.append(features_cut[skip_transition:])

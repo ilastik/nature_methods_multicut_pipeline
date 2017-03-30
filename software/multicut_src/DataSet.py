@@ -3,6 +3,7 @@ import vigra
 import vigra.graphs as graphs
 import os
 import h5py
+from concurrent import futures
 
 import graph as agraph
 
@@ -63,7 +64,7 @@ class DataSet(object):
         # FIXME TODO instead copy the defect list (recentered) to cutouts and check if list is empty!
         # if this is set to true, all defect calculations are ignored
         # dirty hack to make cutouts without defects work...
-        self.ignore_defects = False
+        #self.ignore_defects = False
 
         # segmentation mask -> learning + inference will be restriced to
         # superpixels in this mask
@@ -75,8 +76,9 @@ class DataSet(object):
     def __str__(self):
         return self.ds_name
 
-    def set_defect_slices(self, defect_slice_list):
-        self.defect_slices = defect_slcice_list
+    def add_defect_slices(self, defect_slice_list):
+        assert isinstance(defect_slice_list, list)
+        self.defect_slices = defect_slice_list
 
     def add_false_split_gt_id(self, gt_id):
         self.gt_false_splits.add(gt_id)
@@ -106,6 +108,20 @@ class DataSet(object):
     # Interface for adding inputs, segmentations and groundtruth
     #
 
+    def _add_raw(self, raw):
+        assert len(raw.shape) == 3, "Only 3d data supported"
+        # for subvolume make sure that boundaries are included
+        if self.is_subvolume:
+            p = self.block_coordinates
+            assert raw.shape[0] >= p[1] and raw.shape[1] >= p[3] and raw.shape[2] >= p[5]
+            raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
+        self.shape = raw.shape
+        save_path = os.path.join(self.cache_folder,"inp0.h5")
+        vigra.writeHDF5(raw, save_path, "data")
+        self.has_raw = True
+        self.n_inp = 1
+
+
     # add the raw_data
     # expects hdf5 input
     # probably better to do normalization in a way suited to the data!
@@ -113,17 +129,7 @@ class DataSet(object):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
         raw = vigra.readHDF5(raw_path, raw_key).view(np.ndarray)
-        assert len(raw.shape) == 3, "Only 3d data supported"
-        # for subvolume make sure that boundaries are included
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert raw.shape[0] >= p[1] and raw.shape[1] >= p[3] and raw.shape[2] >= p[5]
-            raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
-        self.shape = raw.shape
-        save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data")
-        self.has_raw = True
-        self.n_inp = 1
+        self._add_raw(raw)
 
 
     # add the raw_data from np.array
@@ -131,25 +137,10 @@ class DataSet(object):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
         assert isinstance(raw, np.ndarray)
-        assert len(raw.shape) == 3, "Only 3d data supported"
-        # for subvolume make sure that boundaries are included
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert raw.shape[0] >= p[1] and raw.shape[1] >= p[3] and raw.shape[2] >= p[5]
-            raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
-        self.shape = raw.shape
-        save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data")
-        self.has_raw = True
-        self.n_inp = 1
+        self._add_raw(raw)
 
 
-    # add additional input map
-    # expects hdf5 input
-    def add_input(self, inp_path, inp_key):
-        if not self.has_raw:
-            raise RuntimeError("Add Rawdata before additional pixmaps")
-        pixmap = vigra.readHDF5(inp_path,inp_key)
+    def _add_input(self, pixmap):
         if self.is_subvolume:
             p = self.block_coordinates
             assert pixmap.shape[0] >= p[1] and pixmap.shape[1] >= p[3] and pixmap.shape[2] >= p[5]
@@ -162,18 +153,20 @@ class DataSet(object):
 
     # add additional input map
     # expects hdf5 input
+    def add_input(self, inp_path, inp_key):
+        if not self.has_raw:
+            raise RuntimeError("Add Rawdata before additional pixmaps")
+        pixmap = vigra.readHDF5(inp_path,inp_key)
+        self._add_input(pixmap)
+
+
+    # add additional input map
+    # expects hdf5 input
     def add_input_from_data(self, pixmap):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
         assert isinstance(pixmap, np.ndarray)
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert pixmap.shape[0] >= p[1] and pixmap.shape[1] >= p[3] and pixmap.shape[2] >= p[5]
-            pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
-        assert pixmap.shape == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
-        save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data")
-        self.n_inp += 1
+        self._add_input(pixmap)
 
 
     # return input with inp_id (0 corresponds to the raw data)
@@ -184,12 +177,7 @@ class DataSet(object):
         return vigra.readHDF5(inp_path, "data").astype('float32')
 
 
-    # add segmentation of the volume
-    # expects hdf5 input
-    def add_seg(self, seg_path, seg_key):
-        if not self.has_raw:
-            raise RuntimeError("Add Rawdata before adding a segmentation")
-        seg = vigra.readHDF5(seg_path, seg_key).astype('uint32')
+    def _add_seg(self, seg):
         if self.is_subvolume:
             p = self.block_coordinates
             assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
@@ -212,27 +200,20 @@ class DataSet(object):
 
     # add segmentation of the volume
     # expects hdf5 input
+    def add_seg(self, seg_path, seg_key):
+        if not self.has_raw:
+            raise RuntimeError("Add Rawdata before adding a segmentation")
+        seg = vigra.readHDF5(seg_path, seg_key).astype('uint32')
+        self._add_seg(seg)
+
+
+    # add segmentation of the volume
+    # expects hdf5 input
     def add_seg_from_data(self, seg):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before adding a segmentation")
         assert isinstance(seg, np.ndarray)
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
-            seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
-        assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        if self.has_seg_mask:
-            assert not self.is_subvolume, "Segmask with subvolume is not supported yet!"
-            mask = self.get_seg_mask()
-            seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
-                    start_label = 1,
-                    keep_zeros = False)
-            seg[ np.logical_not(mask) ] = 0
-        else:
-            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
-        save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
-        vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
-        self.n_seg += 1
+        self._add_seg(seg)
 
 
     # return segmentation with seg_id
@@ -243,18 +224,12 @@ class DataSet(object):
         return vigra.readHDF5(seg_path, "data")
 
 
-    # only single gt for now!
-    # add grountruth
-    def add_gt(self, gt_path, gt_key):
-        if self.has_gt:
-            raise RuntimeError("Groundtruth has already been added")
-        gt = vigra.readHDF5(gt_path, gt_key)
+    def _add_gt(self, gt):
         if self.is_subvolume:
             p = self.block_coordinates
             assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
             gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
-
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
         # also messes up defects in cremi...
         #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
@@ -266,19 +241,20 @@ class DataSet(object):
 
     # only single gt for now!
     # add grountruth
+    def add_gt(self, gt_path, gt_key):
+        if self.has_gt:
+            raise RuntimeError("Groundtruth has already been added")
+        gt = vigra.readHDF5(gt_path, gt_key)
+        self._add_gt(gt)
+
+
+    # only single gt for now!
+    # add grountruth
     def add_gt_from_data(self, gt):
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
         assert isinstance(gt, np.ndarray)
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
-            gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
-        assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
-        #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
-        save_path = os.path.join(self.cache_folder,"gt.h5")
-        vigra.writeHDF5(gt, save_path, "data", compression = self.compression)
-        self.has_gt = True
+        self._add_gt(gt)
 
 
     # get the groundtruth
@@ -419,8 +395,6 @@ class DataSet(object):
                     if not os.path.exists(filt_path):
                         # code parallelized
 
-                        from concurrent import futures
-
                         with futures.ThreadPoolExecutor(max_workers = 8) as executor:
                             tasks = []
                             for z in xrange(inp.shape[2]):
@@ -525,7 +499,6 @@ class DataSet(object):
         assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
 
         import fastfilters
-        from concurrent import futures
 
         filter_names = [ "fastfilters.gaussianSmoothing",
                          "fastfilters.hessianOfGaussianEigenvalues",
@@ -854,24 +827,24 @@ class DataSet(object):
         n_edges = rag.edgeNum
         edge_indications = np.zeros(n_edges, dtype = 'uint8')
         uv_ids = rag.uvIds()
-        # TODO no loops, no no no loops
-        for edge_id in range( n_edges ):
+
+        def _edge_indication(edge_id):
             edge_coords = rag.edgeCoordinates(edge_id)
-            z_coords = edge_coords[:,2]
-            z = np.unique(z_coords)
-            if z.size != 1:
+            z = np.unique(edge_coords[:,2])
+            if z.size > 1:
                 uv = uv_ids[edge_id]
                 if not 0 in uv:
-                    assert z.size == 1, "Edge indications can only be calculated for flat superpixel" + str(z)
+                    assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
                 else:
-                    continue
-            # check whether we have a z or a xy edge
-            if z - int(z) == 0.:
-                # xy-edge!
-                edge_indications[edge_id] = 1
-            else:
-                # z-edge!
-                edge_indications[edge_id] = 0
+                    return False
+            # check whether we have a z (-> 0) or a xy edge (-> 1)
+            edge_indications[edge_id] = 1 if (z - int(z) == 0.) else 0
+            return True
+
+        # TODO num workers from global params
+        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+            tasks = [executor.submit(_edge_indication, edge_id) for edge_id in xrange( n_edges )]
+        results = [t.result() for t in tasks]
         return edge_indications
 
 
@@ -1257,6 +1230,13 @@ class DataSet(object):
 
         for false_split_gt in self.gt_false_splits:
             cutout.add_false_split_gt_id(false_split_gt)
+
+        # copy the defect slices
+        def_slices = []
+        for z in self.defect_slices:
+            if (z >= block_coordinates[4] and z < block_coordinates[5]):
+                def_slices.append(z - block_coordinates[4])
+        cutout.add_defect_slices(def_slices)
 
         self.n_cutouts += 1
         self.cutouts.append(cutout)

@@ -106,7 +106,6 @@ def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
 @cacher_hdf5()
 def defects_to_nodes_from_slice_list(ds, seg_id):
     seg = ds.seg(seg_id)
-    assert seg.shape == defects.shape
 
     def defects_to_nodes_z(z):
         defect_nodes_slice = np.unique(seg[:,:,z])
@@ -160,7 +159,7 @@ def get_skip_starts(ds, seg_id):
 
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id):
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         return np.array([0])
     node_res = defects_to_nodes_from_slice_list(ds, seg_id)
     # need to split into defect nodes and node_z
@@ -313,7 +312,7 @@ def modified_adjacency(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_indications(ds, seg_id):
     modified_indications = ds.edge_indications(seg_id)
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
     delete_edges = get_delete_edges(ds, seg_id)
@@ -324,7 +323,7 @@ def modified_edge_indications(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_gt(ds, seg_id):
     modified_edge_gt = ds.edge_gt(seg_id)
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id  )
     delete_edges = get_delete_edges(ds, seg_id)
@@ -394,7 +393,7 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
@@ -436,7 +435,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         modified_features = np.c_[modified_features,
                 np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
         return modified_features
@@ -565,7 +564,7 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
@@ -606,7 +605,7 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
 #
 
 def modified_mc_problem(ds, seg_id):
-    if ds.ignore_defects:
+    if not ds.defect_slices:
         uvs = ds._adjacent_segments(seg_id)
         nvar= np.max(uvs)+1
         return nvar, uvs
