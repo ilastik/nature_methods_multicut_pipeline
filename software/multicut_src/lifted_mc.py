@@ -401,11 +401,8 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
                             numberOfIterations=pipelineParam.pAndMapIterations, verbose=2, noiseType='uniform')
     pAndMap = obj.perturbAndMap(obj, s)
     pmapProbs =  pAndMap.optimize(ret)
-    #print pmapProbs
-
 
     # use perturb and map probs with clustering
-
     return clusteringFeatures(ds, segId,
             uvIds, pmapProbs, pipelineParam.lifted_neighborhood, True )
 

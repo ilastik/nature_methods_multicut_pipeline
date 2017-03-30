@@ -187,7 +187,7 @@ def learn_rf(cache_folder,
         features_cut = feature_aggregator( cutout, seg_id )
 
         if with_defects and cutout.defect_slices:
-            uv_ids, _ = modified_mc_problem(cutout, seg_id)
+            _, uv_ids = modified_mc_problem(cutout, seg_id)
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
 
@@ -245,11 +245,13 @@ def learn_rf(cache_folder,
     assert features_train.shape[0] == labels_train.shape[0]
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))
 
+    print "Start learning random forest"
     rf = RandomForest(features_train.astype('float32'), labels_train,
         treeCount = exp_params.n_trees,
         n_threads = exp_params.n_threads)
 
     if with_defects:
+        print "Start learning defect random forest"
         rf_defects = RandomForest(features_skip.astype('float32'), labels_skip.ravel(),
             treeCount = exp_params.n_trees,
             n_threads = exp_params.n_threads)

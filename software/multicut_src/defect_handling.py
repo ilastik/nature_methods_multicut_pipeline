@@ -298,6 +298,8 @@ def modified_adjacency(ds, seg_id):
     skip_starts = skip_starts[sort_indices]
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(skip_starts.astype(int)) >= 0), "start index of skip edges must increase monotonically."
+    # sort the skip edges
+    skip_edges = np.sort(skip_edges, axis = 1)
 
     # save delete, ignore and skip edges, a little hacky due to stupid caching...
     save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
@@ -611,11 +613,12 @@ def modified_mc_problem(ds, seg_id):
         return nvar, uvs
 
     modified_uv_ids = ds._adjacent_segments(seg_id)
-    skip_edges   = np.sort( get_skip_edges(ds, seg_id), axis = 1)
     delete_edges = get_delete_edges(ds, seg_id)
     modified_uv_ids = np.delete(modified_uv_ids, delete_edges, axis = 0)
+    skip_edges   = get_skip_edges(ds, seg_id)
     modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
     assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
+    # assume consecutive segmentation here
     n_var = ds.seg(seg_id).max() + 1
     return n_var, modified_uv_ids
 
