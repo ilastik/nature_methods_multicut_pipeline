@@ -297,7 +297,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         str(exp_params.learn_2d), str(exp_params.learn_fuzzy),
         str(exp_params.n_trees), str(exp_params.negative_threshold),
         str(exp_params.positive_threshold), str(exp_params.use_2d),
-        str(exp_params.use_ignore_mask)] )
+        str(exp_params.use_ignore_mask), str(with_defects)] )
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets ]) + "_" + str(seg_id_train)
 
