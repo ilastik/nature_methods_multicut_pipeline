@@ -103,7 +103,7 @@ def mask_edges(ds,
         with_defects):
 
     # TODO implement masking for defect ppl
-    if exp_params.use_ignore_mask or exp_params.learn_2d or ds.has_gt:
+    if exp_params.use_ignore_mask or exp_params.learn_2d:
         if with_defects:
             raise AttributeError("Edge masking not implemented for defect pipeline yet.")
 
