@@ -16,8 +16,13 @@ RandomForest = vigra.learning.RandomForest3
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
-        is_perturb_and_map = False, with_defects = False, n_bins = 0, bin_threshold = 0 ):
+def clusteringFeatures(ds,
+        segId,
+        extraUV,
+        edgeIndicator,
+        liftedNeighborhood,
+        is_perturb_and_map = False,
+        with_defects = False):
 
     print "Computing clustering features for lifted neighborhood", liftedNeighborhood
     if is_perturb_and_map:
@@ -26,7 +31,7 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
         print "For normal clustering"
 
     if with_defects:
-        n_nodes, uvs_local = modified_mc_problem(ds, segId, n_bins, bin_threshold)
+        n_nodes, uvs_local = modified_mc_problem(ds, segId)
         originalGraph = vgraph.listGraph(n_nodes)
         originalGraph.addEdges(uvs_local)
     else:
@@ -111,13 +116,18 @@ def clusteringFeatures(ds, segId, extraUV, edgeIndicator, liftedNeighborhood,
 
 # TODO we might even loop over different solver here ?! -> nifty greedy ?!
 @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_multiple_segmentations(ds, trainsets, referenceSegId, featureListLocal, uvIdsLifted, pipelineParam):
+def compute_lifted_feature_multiple_segmentations(ds,
+        trainsets,
+        referenceSegId,
+        featureListLocal,
+        uvIdsLifted,
+        pipelineParam):
 
+    assert False, "Currently not supported"
     import nifty
+    from concurrent import futures
 
     print "Computing lifted features from multople segmentations from %i segmentations for reference segmentation %i" % (ds.n_seg, referenceSegId)
-
-    from concurrent import futures
 
     pLocals = []
     indications = []
@@ -227,9 +237,18 @@ def compute_lifted_feature_multiple_segmentations(ds, trainsets, referenceSegId,
     return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
 
 
+# TODO need to adapt to defects
 @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, liftedNeighborhood):
+def compute_lifted_feature_multicut(ds,
+        segId,
+        pLocal,
+        pipelineParam,
+        uvIds,
+        liftedNeighborhood,
+        with_defects = False):
 
+    if with_defects:
+        assert False, "Currently not supported"
     print "Computing multcut features for lifted neighborhood", liftedNeighborhood
 
     from concurrent import futures
@@ -316,10 +335,18 @@ def compute_lifted_feature_multicut(ds, segId, pLocal, pipelineParam, uvIds, lif
     return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
 
 
-
-
+# TODO adapt to defects
 @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds, liftedNeighborhood):
+def compute_lifted_feature_pmap_multicut(ds,
+        segId,
+        pLocal,
+        pipelineParam,
+        uvIds,
+        liftedNeighborhood,
+        with_defects = False):
+
+    if with_defects:
+        assert False, "Currently not supported"
 
     print "Computing multcut features for lifted neighborhood", liftedNeighborhood
 
@@ -336,7 +363,6 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
 
     weight = pipelineParam.weight
     beta = pipelineParam.beta_local
-
 
     # copy the probabilities
     probs = pLocal.copy()
@@ -407,43 +433,80 @@ def compute_lifted_feature_pmap_multicut(ds, segId, pLocal, pipelineParam, uvIds
             uvIds, pmapProbs, pipelineParam.lifted_neighborhood, True )
 
 
-def lifted_feature_aggregator(ds, trainsets, featureList, featureListLocal,
-        pLocal, pipelineParam, uvIds, segId,
-        with_defects, n_bins, bin_threshold):
+def lifted_feature_aggregator(ds,
+        trainsets,
+        featureList,
+        featureListLocal,
+        pLocal,
+        pipelineParam,
+        uvIds,
+        segId,
+        with_defects = False):
 
     assert len(featureList) > 0
     for feat in featureList:
         assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
 
     features = []
-    if "mc" in featureList: # TODO make defect proof
-        features.append( compute_lifted_feature_multicut(ds, segId,
-            pLocal, pipelineParam, uvIds, pipelineParam.lifted_neighborhood) )
+    if "mc" in featureList:# TODO make defect proof
+        features.append(
+                compute_lifted_feature_multicut(ds,
+                    segId,
+                    pLocal,
+                    pipelineParam,
+                    uvIds,
+                    pipelineParam.lifted_neighborhood,
+                    with_defects) )
     if "perturb" in featureList:# TODO make defect proof
-        features.append( compute_lifted_feature_pmap_multicut(ds, segId,
-            pLocal, pipelineParam, uvIds, pipelineParam.lifted_neighborhood) )
+        features.append(
+                compute_lifted_feature_pmap_multicut(ds,
+                    segId,
+                    pLocal,
+                    pipelineParam,
+                    uvIds,
+                    pipelineParam.lifted_neighborhood,
+                    with_defects) )
     if "cluster" in featureList:
-        features.append( clusteringFeatures(ds, segId,
-            uvIds, pLocal, pipelineParam.lifted_neighborhood, False,
-            with_defects, n_bins, bin_threshold) )
+        features.append(
+                clusteringFeatures(ds,
+                    segId,
+                    uvIds,
+                    pLocal,
+                    pipelineParam.lifted_neighborhood,
+                    False,
+                    with_defects) )
     if "reg" in featureList: # this should be defect proof without any adjustments!
-        features.append( ds.region_features(segId, 0, uvIds, pipelineParam.lifted_neighborhood) )
-    if "multiseg" in featureList:# TODO make defect proof
-        features.append( compute_lifted_feature_multiple_segmentations(ds, trainsets, segId, featureListLocal, uvIds, pipelineParam) )
-
-    for feat in features:
-        print feat.shape
+        features.append(
+                ds.region_features(segId,
+                    0,
+                    uvIds,
+                    pipelineParam.lifted_neighborhood) )
+    if "multiseg" in featureList:# TODO reactivate
+        features.append(
+                compute_lifted_feature_multiple_segmentations(ds,
+                    trainsets,
+                    segId,
+                    featureListLocal,
+                    uvIds,
+                    pipelineParam) )
+    if exp_params.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
+        nz_train = node_z_coord(ds, segId)
+        lifted_distance = np.abs(
+                np.subtract( nz_train[uv_ids_train[:,0]],
+                        nz_train[uv_ids_train[:,1]]) )
+        features.append(lifted_distance[:,None])
 
     return numpy.concatenate( features, axis=1 )
 
 
 @cacher_hdf5()
-def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = False, n_bins = 0, bin_threshold = 0):
+def compute_and_save_lifted_nh(ds,
+        segId,
+        liftedNeighborhood,
+        with_defects = False):
 
     if with_defects:
-        assert n_bins > 0
-        assert bin_threshold > 0
-        n_nodes, uvs_local = modified_mc_problem(ds, segId, n_bins, bin_threshold)
+        n_nodes, uvs_local = modified_mc_problem(ds, segId)
     else:
         rag = ds._rag(segId)
         n_nodes = rag.nodeNum
@@ -461,6 +524,7 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = Fal
     return uvIds[uvs_local.shape[0]:,:]
 
 
+# TODO adapt to defects
 # we assume that uv is consecutive
 #@cacher_hdf5()
 # sample size 0 means we do not sample!
@@ -501,204 +565,232 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     return uv_long_range
 
 
-
 @cacher_hdf5()
 def node_z_coord(ds, segId):
-
     rag = ds._rag(segId)
     labels = rag.labels
     labels = labels.squeeze()
-
     nz = numpy.zeros(rag.maxNodeId +1, dtype='uint32')
-
     for z in range(labels.shape[2]):
         lz = labels[:,:,z]
         nz[lz] = z
-
     return nz
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_fuzzy_gt(ds, segId, uvIds):
-
+    if ds.has_seg_mask:
+        assert False, "Fuzzy gt not supported yet for segmentation mask"
     gt = ds.gt()
     oseg = ds.seg(segId)
-
-
     fuzzyLiftedGt = agraph.candidateSegToRagSeg(
     oseg.astype('uint32'), gt.astype('uint32'),
         uvIds.astype(np.uint64))
-
     return fuzzyLiftedGt
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, segId, uvIds):
-
     rag = ds._rag(segId)
     gt = ds.gt()
     nodeGt,_ =  rag.projectBaseGraphGt(gt)
-    labels   = (nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]]).astype('float32')
-
+    labels   = (nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]])
     return labels
 
 
-# TODO we should cache this for rerunning experiments
-# (will take very long for larger ds like snemi)
-#@cacher_hdf5(ignoreNumpyArrays=True)
-def doActualTrainingAndPrediction(trainSets, dsTest, X, Y, F, pipelineParam, oob = False):
+def mask_lifted_edges(ds,
+        seg_id,
+        labels,
+        uv_ids,
+        exp_params):
 
-    rf_save_folder = os.path.join(pipelineParam.rf_cache_folder,"lifted_rfs" )
-    if not os.path.exists(rf_save_folder):
-        os.mkdir(rf_save_folder)
+    labeled = np.ones_like(labels, bool)
 
-    rf_save_path = os.path.join(rf_save_folder,
-            "rf_trainsets_" + "_".join([ds.ds_name for ds in trainSets]) + ".h5")
+    # mask edges in ignore mask
+    if exp_params.use_ignore_mask:
+        ignore_mask = ds_train.lifted_ignore_mask(
+            seg_id,
+            exp_params.lifted_neighborhood,
+            uv_ids)
+        labeled[ignore_mask] = False
 
-    pred_save_folder = os.path.join(rf_save_folder, "predictions")
-    if not os.path.exists(pred_save_folder):
-        os.mkdir(pred_save_folder)
-    pred_save_path = os.path.join(pred_save_folder,
-            "pred_trainsets_" + "_".join([ds.ds_name for ds in trainSets]) + "_testset_" + dsTest.ds_name + ".h5")
+    # check which of the edges is in plane and mask the others
+    if exp_params.learn_2d:
+        nz_train = node_z_coord(ds, seg_id)
+        zU = nz_train[uv_ids[:,0]]
+        zV = nz_train[uv_ids[:,1]]
+        if with_defects:
+            raise AttributeError("2d learning not supported for pipeline with defect correction, yet")
+        ignore_mask = (zU != zV)
+        labeled[ignore_mask] = False
 
-    if os.path.exists(pred_save_path):
-        return vigra.readHDF5(pred_save_path, 'data')
+    # ignore all edges that are connected to the ignore label (==0) in the seg mask
+    if ds.has_seg_mask:
+        ignore_mask = (uv_ids == 0).any(axis = 1)
+        assert ignore_mask.shape[0] == labels.shape[0]
+        labeled[ ignore_mask ] = False
 
-    else:
-
-        if os.path.exists(rf_save_path):
-            rf  = RandomForest(rf_save_path, 'data')
-
-        else:
-            rf = RandomForest(X.astype('float32'), Y.astype('uint32'),
-                treeCount = pipelineParam.n_trees,
-                n_threads = pipelineParam.n_threads,
-                max_depth = 10 )
-            #print "Trained RF on lifted edges:" #TODO expose oob in vigra
-            #if oob:
-            #    print "OOB-Error:", 1. - rf.oob_score_
-            rf.writeHDF5(rf_save_path, 'data')
-
-        pTest = rf.predictProbabilities(F.astype('float32'), n_threads = pipelineParam.n_threads)[:,1]
-        pTest /= rf.treeCount()
-        # FIXME sometimes there are some nans -> just replace them for now, but this should be fixed
-        pTest[np.isnan(pTest)] = .5
-        assert not np.isnan(pTest).any(), str(np.isnan(pTest).sum())
-        vigra.writeHDF5(pTest,pred_save_path,'data')
-        return pTest
+    return labeled
 
 
-# TODO adapt
-def learn_and_predict_lifted(trainsets, dsTest,
-        segIdTrain, segIdTest,
-        feature_list_lifted, feature_list_local,
-        pipelineParam, with_defects = False,
-        n_bins = 0, bin_threshold = 0):
+def learn_lifted_rf(cache_folder,
+        trainsets,
+        seg_id,
+        feature_list_lifted,
+        feature_list_local,
+        exp_params,
+        trainstr,
+        paramstr,
+        with_defects = False):
 
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list), type(trainsets)
+    # check if already cached
+    if cache_folder is not None: # we use caching for the rf => look if already exists
+        rf_folder = os.path.join(cache_folder, "lifted_rf" + trainstr)
+        rf_name = "rf_" + "_".join( [trainstr, paramstr] ) + ".h5"
+        if not os.path.exists(rf_folder):
+            os.mkdir(rf_folder)
+        rf_path   = os.path.join(rf_folder, rf_name)
+        if os.path.exists(rf_path):
+            return RandomForest(rf_path, 'rf')
+            #if with_defects: TODO figure out if we need different random forests
+            #    return RandomForest(rf_path, 'rf'), RandomForest(rf_path, 'rf_defects')
 
-    if not isinstance(trainsets, list):
-        trainsets = [trainsets,]
-    if with_defects:
-        assert n_bins > 0
-        assert bin_threshold > 0
+    features_train = []
+    labels_train   = []
 
-    featuresTrain = []
-    labelsTrain   = []
+    for ds_train in trainsets:
 
-    uvIdsTest = compute_and_save_lifted_nh(dsTest, segIdTest, pipelineParam.lifted_neighborhood,
-        with_defects, n_bins, bin_threshold)
-    nzTest  = node_z_coord(dsTest, segIdTest)
-    for dsTrain in trainsets:
+        assert ds_train.n_cutouts == 3, "Wrong number of cutouts: " + str(ds_train.n_cutouts)
+        train_cut = ds_train.get_cutout(1)
 
         # get edge probabilities from random forest on training set cut out in the middle
-        pLocalTrain = learn_and_predict_rf_from_gt(
-            pipelineParam.rf_cache_folder,
-            [dsTrain.get_cutout(0), dsTrain.get_cutout(2)],
-            dsTrain.get_cutout(1) ,
-            segIdTrain,
-            segIdTrain,
+        p_local_train = learn_and_predict_rf_from_gt(
+            exp_params.rf_cache_folder,
+            [ds_train.get_cutout(0), ds_train.get_cutout(2)],
+            train_cut,
+            seg_id_train,
+            seg_id_train,
             feature_list_local,
-            pipelineParam,
-            with_defects,
-            n_bins,
-            bin_threshold)
+            exp_params,
+            with_defects)
 
-        uvIdsTrain = compute_and_save_lifted_nh(
-            dsTrain.get_cutout(1),
-            segIdTrain,
-            pipelineParam.lifted_neighborhood,
-            with_defects,
-            n_bins,
-            bin_threshold)
-
-        nzTrain = node_z_coord(dsTrain.get_cutout(1), segIdTrain)
+        uv_ids_train = compute_and_save_lifted_nh(
+            train_cut,
+            seg_id_train,
+            exp_params.lifted_neighborhood,
+            with_defects)
 
         # compute the features for the training set
-        fTrain = lifted_feature_aggregator(
-            dsTrain.get_cutout(1),
-            [dsTrain.get_cutout(0), dsTrain.get_cutout(2)],
+        f_train = lifted_feature_aggregator(
+            train_cut,
+            [ds_train.get_cutout(0), ds_train.get_cutout(2)],
             feature_list_lifted,
             feature_list_local,
-            pLocalTrain,
-            pipelineParam,
-            uvIdsTrain,
-            segIdTrain,
-            with_defects,
-            n_bins,
-            bin_threshold)
+            p_local_train,
+            exp_params,
+            uv_ids_train,
+            seg_id_train,
+            with_defects)
 
-        dsTrain = dsTrain.get_cutout(1)
-        labels = lifted_hard_gt(dsTrain, segIdTrain, uvIdsTrain)
+        labels = lifted_hard_gt(train_cut, seg_id_train, uv_ids_train)
 
-        if pipelineParam.use_ignore_mask:
-            ignoreMask = dsTrain.lifted_ignore_mask(
-                segIdTrain,
-                pipelineParam.lifted_neighborhood,
-                uvIdsTrain)
-            labels[ignoreMask] = 0.5
+        labeled = mask_lifted_edges(train_cut,
+                seg_id_train,
+                labels,
+                uv_ids_train,
+                exp_params)
 
-        # check which of the edges is in plane
-        zU = nzTrain[uvIdsTrain[:,0]]
-        zV = nzTrain[uvIdsTrain[:,1]]
+        features_train.append(f_train[labeled])
+        labels_train.append(labels[labeled])
 
-        #where in plane
-        if pipelineParam.learn_2d:
-            if with_defects:
-                raise AttributeError("2d learning not supported for pipeline with defect correction, yet")
-            ignoreMask = (zU != zV)
-            labels[ignoreMask] = 0.5
+    features_train = np.concatenate(features_train, axis = 0)
+    labels_train = np.concatenate(labels_train, axis = 0)
 
-        labeled = labels != 0.5
+    rf = RandomForest(features_train.astype('float32'),
+            labels_train.astype('uint32'),
+            treeCount = exp_params.n_trees,
+            n_threads = exp_params.n_threads,
+            max_depth = 10 )
 
-        X =  fTrain[labeled,:]
-        labels = labels[labeled].astype('uint8')
+    if cache_folder is not None:
+        rf.writeHDF5(rf_path, 'rf')
+    return rf
 
-        featuresTrain.append(X)
-        labelsTrain.append(labels)
 
-        #YF = fuzzyLiftedGt[whereGt]
-        #Y = numpy.zeros(YF.shape)
-        #Y[YF>0.5] = 1
+def learn_and_predict_lifted_rf(trainsets, ds_test,
+        seg_id_train, seg_id_test,
+        feature_list_lifted, feature_list_local,
+        exp_params, with_defects = False):
 
-    featuresTrain = np.concatenate(featuresTrain, axis = 0)
-    labelsTrain = np.concatenate(labelsTrain, axis = 0)
+    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list), type(trainsets)
+    if not isinstance(trainsets, list):
+        trainsets = [trainsets,]
+
+    # strings for caching
+    # str for all relevant params
+    paramstr = "_".join( ["_".join(lifted_feature_list), "_".join(local_feature_list),
+        str(exp_params.anisotropy_factor), str(exp_params.learn_2d),
+        str(exp_params.use_2d), str(exp_params.lifted_neighborhood),
+        str(exp_params.use_ignore_mask), str(with_defects)] )
+    teststr  = ds_test.ds_name + "_" + str(seg_id_test)
+    trainstr = "_".join([ds.ds_name for ds in trainsets ]) + "_" + str(seg_id_train)
+
+    uv_ids_test = compute_and_save_lifted_nh(ds_test,
+            seg_id_test,
+            exp_params.lifted_neighborhood,
+            with_defects)
+    nz_test = node_z_coord(ds_test, seg_id_test)
+
+    if cache_folder is not None: # cache-folder exists => look if we already have a prediction
+        pred_folder = os.path.join(cache_folder, "lifted_prediction_" + trainstr)
+        pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
+        if with_defects:
+            pred_name =  pred_name[:-3] + "_with_defects.h5"
+        if len(pred_name) >= 256:
+            pred_name = str(hash(pred_name[:-3])) + ".h5"
+        if not os.path.exists(cache_folder):
+            os.mkdir(cache_folder)
+        if not os.path.exists(pred_folder):
+            os.mkdir(pred_folder)
+        pred_path = os.path.join(pred_folder, pred_name)
+        # see if the rf is already learned and predicted, otherwise learn it
+        if os.path.exists(pred_path):
+            return vigra.readHDF5(pred_path, 'data'), uv_ids_test, nz_test
+
+    rf = learn_lifted_rf(cache_folder,
+        trainsets,
+        seg_id_train,
+        feature_list_lifted,
+        feature_list_local,
+        exp_params,
+        trainstr,
+        paramstr,
+        with_defects)
 
     # get edge probabilities from random forest on test set
-    pLocalTest = learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
-        [dsTrain.get_cutout(i) for i in (0,2) for dsTrain in trainsets], dsTest,
-        segIdTrain, segIdTest,
-        feature_list_local, pipelineParam,
-        with_defects, n_bins, bin_threshold)
+    p_local_test = learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
+        [ds_train.get_cutout(i) for i in (0,2) for ds_train in trainsets], ds_test,
+        seg_id_train, seg_id_test,
+        feature_list_local, exp_params,
+        with_defects)
 
-    fTest = lifted_feature_aggregator(dsTest,
-            [dsTrain.get_cutout(i) for i in (0,2) for dsTrain in trainsets],
-                feature_list_lifted, feature_list_local,
-                pLocalTest, pipelineParam, uvIdsTest, segIdTest,
-                with_defects, n_bins, bin_threshold)
+    features_test = lifted_feature_aggregator(ds_test,
+            [ds_train.get_cutout(i) for i in (0,2) for ds_train in trainsets],
+            feature_list_lifted, feature_list_local,
+            p_local_test, exp_params,
+            uv_ids_test, seg_id_test,
+            with_defects)
 
-    pTest = doActualTrainingAndPrediction(trainsets, dsTest, featuresTrain, labelsTrain, fTest, pipelineParam)
-    return pTest, uvIdsTest, nzTest
+    p_test = rf.predictProbabilities(
+            features_test.astype('float32'),
+            n_threads = pipelineParam.n_threads)[:,1]
+    p_test /= rf.treeCount()
+    pTest[np.isnan(pTest)] = .5
+    assert not np.isnan(pTest).any(), str(np.isnan(pTest).sum())
+    if cache_folder is not None:
+        vigra.writeHDF5(p_test, pred_path, 'data')
+
+    return p_test, uv_ids_test, nz_test
 
 
 def optimizeLifted(uvs_local,
