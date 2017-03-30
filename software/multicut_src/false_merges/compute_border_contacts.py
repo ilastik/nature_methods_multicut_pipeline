@@ -101,9 +101,6 @@ def get_faces_with_neighbors(image):
 
 def find_centroids(seg, dt, bounds):
 
-    # TODO FIXME use vigra functionality instead to avoid dependency on skimage
-    from skimage import morphology
-
     centroids = {}
 
     for lbl in np.unique(seg[bounds])[1:]:
@@ -116,8 +113,9 @@ def find_centroids(seg, dt, bounds):
                                                            background_value=0)
 
         # Only these labels will be used for further processing
-        # TODO FIXME use vigra.filters.multiBinaryOpening or vigra.filters.multiGrayscaleOpening (dunno which is appropriate here)
-        opened_labels = np.unique(morphology.opening(conncomp))
+        # FIXME expose radius as parameter
+        opened_labels = np.unique(vigra.filters.discOpening(conncomp.astype(np.uint8), 2))
+
         # unopened_labels = np.unique(conncomp)
         # print 'opened_labels = {}'.format(opened_labels)
         # print 'unopened_labels = {}'.format(unopened_labels)
