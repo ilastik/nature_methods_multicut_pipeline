@@ -58,6 +58,18 @@ class ExperimentSettings(object):
 
         self.pAndMapIterations = 1000
 
+        # parameters for resolving false merges
+        self.feature_image_filter_names = ["gaussianSmoothing",
+                                      "hessianOfGaussianEigenvalues",
+                                      "laplacianOfGaussian"]
+        self.feature_image_sigmas = [1.6, 4.2, 8.3]
+        self.feature_stats = ["Mean", "Variance", "Sum", "Maximum", "Minimum", "Kurtosis", "Skewness"]
+        self.paths_penalty_power = 10
+        self.paths_avoid_duplicates = True
+        self.min_nh_range = 5
+        self.max_sample_size = 20
+        self.paths_penalty_power = 10
+
 
     # overloadd str to reliably cache this
     def __str__(self):

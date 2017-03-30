@@ -437,7 +437,6 @@ def lifted_feature_aggregator(ds, trainsets, featureList, featureListLocal,
     return numpy.concatenate( features, axis=1 )
 
 
-
 @cacher_hdf5()
 def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = False, n_bins = 0, bin_threshold = 0):
 
@@ -460,6 +459,47 @@ def compute_and_save_lifted_nh(ds, segId, liftedNeighborhood, with_defects = Fal
     uvIds = lm.liftedGraph().uvIds()
 
     return uvIds[uvs_local.shape[0]:,:]
+
+
+# we assume that uv is consecutive
+#@cacher_hdf5()
+# sample size 0 means we do not sample!
+def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
+    import random
+    import itertools
+
+    originalGraph = agraph.Graph(uvIds.max()+1)
+    originalGraph.insertEdges(uvIds)
+
+    uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
+
+    lm_short = agraph.liftedMcModel(originalGraph)
+    agraph.addLongRangeNH(lm_short, min_range)
+    uvs_short = lm_short.liftedGraph().uvIds()
+
+    # Remove uvs_short from uv_long_range
+    # -----------------------------------
+
+    # Concatenate both lists
+    concatenated = np.concatenate((uvs_short, uv_long_range), axis=0)
+
+    # Find unique rows according to
+    # http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
+    b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
+    uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
+
+    # Extract those that have count == 1
+    # TODO this is not tested
+    long_range_idx = idx[counts == 1]
+    uv_long_range = concatenated[long_range_idx]
+
+    # Extract random sample
+    if max_sample_size:
+        sample_size = min(max_sample_size, uv_long_range.shape[0])
+        uv_long_range = np.array(random.sample(uv_long_range, sample_size))
+
+    return uv_long_range
+
 
 
 @cacher_hdf5()
@@ -661,8 +701,27 @@ def learn_and_predict_lifted(trainsets, dsTest,
     return pTest, uvIdsTest, nzTest
 
 
-def optimizeLifted(dsTest, model, starting_point = None):
+def optimizeLifted(uvs_local,
+        uvs_lifted,
+        costs_local,
+        costs_lifted,
+        starting_point = None):
     print "Optimizing lifted model"
+
+    assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
+    assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
+    n_nodes = uvs_local.max() + 1
+    assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
+
+    # build the lifted model
+    graph = agraph.Graph(n_nodes)
+    graph.insertEdges(uvs_local)
+    model = agraph.liftedMcModel(graph)
+
+    # set cost for local edges
+    model.setCosts(uvs_local, costs_local)
+    # set cost for lifted edges
+    model.setCosts(uvs_lifted, costs_lifted)
 
     # if no starting point is given, start with ehc solver
     if starting_point is None:

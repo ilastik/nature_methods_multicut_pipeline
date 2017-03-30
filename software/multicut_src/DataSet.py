@@ -4,6 +4,7 @@ import vigra.graphs as graphs
 import os
 import h5py
 from concurrent import futures
+import itertools
 
 import graph as agraph
 
@@ -323,24 +324,92 @@ class DataSet(object):
         return adjacent_edges
 
 
+    # calculates the eccentricity centers for given seg_id
+    @cacher_hdf5()
+    def eccentricity_centers(self, seg_id, is_2d_stacked):
+        seg = self.seg(seg_id)
+        n_threads = 20 # TODO get this from global params
+        if is_2d_stacked: # if we have a stacked segmentation, we can parallelize over the slices
+
+            # calculate the centers for a 2d slice
+            def centers_2d(z):
+                seg_z = seg[:,:,z]
+                min_label = seg_z.min()
+                # eccentricity centers expect a consecutive labeling -> we only return the relevant part
+                centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
+                return [cent + (z,) for cent in centers] # extend by z coordinate
+
+            with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[2])]
+                centers = [t.result() for t in tasks]
+                # return flattened list
+            centers_list = list(itertools.chain(*centers))
+            n_segs = seg.max() + 1
+            assert len(centers_list) == n_segs, "%i, %i" % (len(centers_list), n_segs)
+            return centers_list
+        else:
+            return vigra.filters.eccentricityCenters(seg)
+
+
     #
     # Feature Calculation
     #
 
-    # TODO for large datasets, the way we calculate features
-    # (i.e. first calculate all filters, cache them and then reload them for the accumulation )
-    # becomes pretty ineffective, because writing and loading the files becomes the bottleneck
-    # however the way cutouts are implemented right now, we need to do it like this...
+    # FIXME: Apperently the cacher does not accept keyword arguments
+    # this will be ignorant of using a different segmentation
+    @cacher_hdf5(ignoreNumpyArrays=True)
+    def distance_transform(self, segmentation, anisotropy):
 
+        # # if that does what I think it does (segmentation to edge image), we can use vigra...
+        # def pixels_at_boundary(image, axes=[1, 1, 1]):
+        #    return axes[0] * ((np.concatenate((image[(0,), :, :], image[:-1, :, :]))
+        #                       - np.concatenate((image[1:, :, :], image[(-1,), :, :]))) != 0) \
+        #           + axes[1] * ((np.concatenate((image[:, (0,), :], image[:, :-1, :]), 1)
+        #                         - np.concatenate((image[:, 1:, :], image[:, (-1,), :]), 1)) != 0) \
+        #           + axes[2] * ((np.concatenate((image[:, :, (0,)], image[:, :, :-1]), 2)
+        #                         - np.concatenate((image[:, :, 1:], image[:, :, (-1,)]), 2)) != 0)
+        #
+        # anisotropy = np.array(anisotropy).astype(np.float32)
+        # image = image.astype(np.float32)
+        # # Compute boundaries
+        # # FIXME why ?!
+        # axes = (anisotropy ** -1).astype(np.uint8)
+        # image = pixels_at_boundary(image, axes)
+
+        edge_volume = np.concatenate(
+                [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
+                axis = 2)
+        dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
+        return dt
 
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
     # if it is higher, the features are calculated purely in 2d
     # TODO make sigmas accessible in a clever way
-    def make_filters(self, inp_id, anisotropy_factor):
-        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
+    def make_filters(self,
+            inp_id,
+            anisotropy_factor,
+            filter_names = [ "gaussianSmoothing",
+                             "hessianOfGaussianEigenvalues",
+                             "laplacianOfGaussian"],
+            sigmas = [1.6, 4.2, 8.3],
+            use_fastfilters = True
+            ):
+
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
+        print "Calculating filters for input id:", inp_id
+
+        # FIXME dirty hack to calculate features on the ditance trafo
+        # FIXME the dt must be pre-computed for this to work
+        if inp_id == 'distance_transform':
+            fake_seg = np.zeros((10,10))
+            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
+            input_name = 'distance_transform'
+        else:
+            assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
+            inp = self.inp(inp_id)
+            input_name = "inp_" + str(inp_id)
 
         top_folder = os.path.join(self.cache_folder, "filters")
         if not os.path.exists(top_folder):
@@ -361,27 +430,27 @@ class DataSet(object):
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
 
-        sigmas = [1.6, 4.2, 8.3]
+        if not calculation_2d and anisotropy_factor > 1. and use_fastfilters:
+            print "WARNING: Anisotropic feature calculation not supported in fastfilters yet."
+            print "Using vigra filters instead."
+            use_fastfilters = False
 
-        filter_names = [ "vigra.filters.gaussianSmoothing",
-                         "vigra.filters.hessianOfGaussianEigenvalues",
-                         "vigra.filters.laplacianOfGaussian"]
+        if use_fastfilters:
+            import fastfilters
+            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
+        else:
+            filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
 
-        #import fastfilters
-        #filter_names = [ "fastfilters.gaussianSmoothing",
-        #                 "fastfilters.hessianOfGaussianEigenvalues",
-        #                 "fastfilters.laplacianOfGaussian"]
-
-        inp = self.inp(inp_id)
         # update the filter folder to the input
-        filter_folder = os.path.join( filter_folder, "inp_" + str(inp_id) )
+        filter_folder = os.path.join( filter_folder, input_name )
         if not os.path.exists(filter_folder):
             os.mkdir(filter_folder)
         filter_key    = "data"
 
         # list of paths to the filters, that will be calculated
-
         return_paths = []
+        # TODO set max_workers with ppl param value!
+        n_workers = 8
 
         # for pure 2d calculation, we only take into account the slices individually
         if calculation_2d:
@@ -395,45 +464,48 @@ class DataSet(object):
                     return_paths.append(filt_path)
 
                     if not os.path.exists(filt_path):
-                        # code parallelized
 
-                        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+                        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                             tasks = []
                             for z in xrange(inp.shape[2]):
                                 tasks.append( executor.submit(filter, inp[:,:,z], sig ) )
 
                         res = [task.result() for task in tasks]
 
-                        # TODO this is not really efficient !
-
                         if res[0].ndim == 2:
                             res = [re[:,:,None] for re in res]
                         elif res[0].ndim == 3:
                             res = [re[:,:,None,:] for re in res]
-
                         res = np.concatenate( res, axis = 2)
-
                         assert res.shape[0:2] == self.shape[0:2]
                         vigra.writeHDF5(res, filt_path, filter_key)
 
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
-            for filt_name in filter_names:
-                filter = eval(filt_name)
-                for sig in sigmas:
+            if anisotropy_factor != 1.:
+                sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
 
-                    if anisotropy_factor != 1.:
-                        sig = (sig, sig, sig / anisotropy_factor)
-                    # check whether this is already there
-                    filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                    return_paths.append(filt_path)
+            def _calc_and_write_filter(filter_function, sigma, filt_path):
+                if not os.path.exists(filt_path):
+                    filter_res = filter_function( inp, sig )
+                    assert filter_res.shape[0:2] == self.shape[0:2]
+                    vigra.writeHDF5(filter_res,
+                            filt_path,
+                            filter_key)
+                    return True
+                else:
+                    return False
 
-                    if not os.path.exists(filt_path):
-                        filter_res = filter( inp, sig )
-                        assert filter_res.shape[0:2] == self.shape[0:2]
-                        vigra.writeHDF5(filter_res,
-                                filt_path,
-                                filter_key)
+            # FIXME this could be too memory hungry for a lot of threads
+            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+                tasks = []
+                for filt_name in filter_names:
+                    filter = eval(filt_name)
+                    for sig in sigmas:
+                        filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
+                        tasks.append( executor.submit(_calc_and_write_filter, filter, sig, filt_path) )
+                        return_paths.append(filt_path)
+                _ = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
@@ -1014,6 +1086,7 @@ class DataSet(object):
 
     # features based on curvature of xy edges
     # FIXME very naive implementation
+    # FIXME this only works for sorted coordinates !!
     @cacher_hdf5("feature_folder")
     def curvature_features(self, seg_id):
         rag = self._rag(seg_id)
