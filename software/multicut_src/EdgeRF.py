@@ -6,7 +6,7 @@ from functools import partial
 from DataSet import DataSet
 from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem
 from ExperimentSettings import ExperimentSettings
-from Tools import edges_to_volume
+from Tools import edges_to_volume, edges_to_volume_from_uvs
 
 RandomForest = vigra.learning.RandomForest3
 
@@ -151,6 +151,36 @@ def view_edges(ds, seg_id, labels, labeled):
             ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
 
 
+def view_edges_with_defects(ds, seg_id, uv_ids, labels, labeled):
+    from volumina_viewer import volumina_n_layer
+
+    labels_debug = np.zeros(labels.shape, dtype = np.uint32)
+    labels_debug[labels == 1]  = 1
+    labels_debug[labels == 0]  = 2
+    labels_debug[np.logical_not(labeled)] = 5
+
+    # split into skip / non-skip edges
+    skip_transition = labels_debug.shape[0]- get_skip_edges(ds, seg_id).shape[0]
+    labels_skip     = labels_debug.copy()
+    labels_skip[:skip_transition] = 0
+    labels_debug[skip_transition:] = 0
+    # split normal labels in xy/z
+    edge_indications = modified_edge_indications(ds, seg_id)
+    assert edge_indications.shape[0] == labels_debug.shape[0]
+    labels_z = labels_debug.copy()
+    labels_debug[edge_indications == 0] = 0
+    labels_z[edge_indications == 1] = 0
+
+    # render the edges
+    seg = ds.seg(seg_id)
+    edge_vol_xy = edges_to_volume_from_uvs(seg, uv_ids, labels_debug)
+    edge_vol_z  = edges_to_volume_from_uvs(seg, uv_ids, labels_z)
+    edge_vol_skip = edges_to_volume_from_uvs(seg, uv_ids, labels_skip)
+
+    volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
+            ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z', 'labels_skip'])
+
+
 def learn_rf(cache_folder,
         trainsets,
         seg_id,
@@ -212,14 +242,17 @@ def learn_rf(cache_folder,
                 uv_ids,
                 with_defects)
 
-        # inspect the edges FIXME this has dependencies outside of conda
-        if False:
-            view_edges(cutout, seg_id, labels, labeled)
+        # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
+        if True:
+            if with_defects and cutout.defect_slices:
+                view_edges_with_defects(cutout, seg_id, uv_ids, labels_cut, labeled)
+            else:
+                view_edges(cutout, seg_id, labels, labeled)
 
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint32')
 
-        # FIXME this won't work if we have any of the masking things activated
+        # FIXME this won't work if we have ingnore_mask or learn_2d activated
         # TODO !!!
         if with_defects and cutout.defect_slices:
             skip_transition = n_edges - get_skip_edges(cutout,

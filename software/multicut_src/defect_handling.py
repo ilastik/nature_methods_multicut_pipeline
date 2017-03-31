@@ -314,12 +314,16 @@ def modified_adjacency(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_indications(ds, seg_id):
     modified_indications = ds.edge_indications(seg_id)
+    n_edges = modified_indications.shape[0]
     if not ds.defect_slices:
         return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
     delete_edges = get_delete_edges(ds, seg_id)
     modified_indications = np.delete(modified_indications, delete_edges)
-    return np.concatenate( [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
+    modified_indications = np.concatenate(
+            [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
+    assert modified_indications.shape[0] == n_edges - delete_edges.shape[0] + skip_edges.shape[0]
+    return modified_indications
 
 
 @cacher_hdf5()

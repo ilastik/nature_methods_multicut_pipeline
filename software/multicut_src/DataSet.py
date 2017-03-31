@@ -394,7 +394,7 @@ class DataSet(object):
                              "hessianOfGaussianEigenvalues",
                              "laplacianOfGaussian"],
             sigmas = [1.6, 4.2, 8.3],
-            use_fastfilters = True
+            use_fastfilters = False
             ):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -892,7 +892,7 @@ class DataSet(object):
         return n_ccs
 
 
-    # find the edget-type indications
+    # find the edge-type indications
     # 0 for z-edges, 1 for xy-edges
     @cacher_hdf5()
     def edge_indications(self, seg_id):
@@ -902,7 +902,25 @@ class DataSet(object):
         edge_indications = np.zeros(n_edges, dtype = 'uint8')
         uv_ids = rag.uvIds()
 
-        def _edge_indication(edge_id):
+        # TODO premature optimization ftw
+        # vectorized version, TODO debug
+        #z_coords = np.array([np.unique(rag.edgeCoordinates(edge_id)[:,2]) for edge_id in xrange(n_edges)])
+        #z_sizes  = np.array([z_co.size for z_co in z_coords], dtype = 'uint32')
+        ## check that coords with more than one z coordinate (== non-flat edges) have at least one ignore label
+        #non_flat = (z_sizes > 1)
+        #flat     = (z_sizes == 1)
+        #non_flat_uvs = uv_ids[non_flat]
+        #assert non_flat_uvs.shape[1] == 2, str(non_flat_uvs.shape)
+        #if not np.all( (non_flat_uvs == 0).any(axis=1) ):
+        #    assert False, "Edge indications can only be calculated for flat superpixel (except ignore label)"
+        ## only keep the flat z - coords
+        #z_diff = np.subtract( z_coords[flat], z_coords[flat].astype('uint8') )
+        #xy_edges = z_diff == 0
+        #z_edges  = z_diff > 0
+        #edge_indications[flat][xy_edges] = 1 # xy edges are set to 1
+        #edge_indications[flat][z_edges] = 0  # z edges are set to 0
+
+        for edge_id in xrange(n_edges):
             edge_coords = rag.edgeCoordinates(edge_id)
             z = np.unique(edge_coords[:,2])
             if z.size > 1:
@@ -910,15 +928,11 @@ class DataSet(object):
                 if not 0 in uv:
                     assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
                 else:
-                    return False
+                    continue
+            z = z[0]
             # check whether we have a z (-> 0) or a xy edge (-> 1)
             edge_indications[edge_id] = 1 if (z - int(z) == 0.) else 0
-            return True
 
-        # TODO num workers from global params
-        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
-            tasks = [executor.submit(_edge_indication, edge_id) for edge_id in xrange( n_edges )]
-        results = [t.result() for t in tasks]
         return edge_indications
 
 

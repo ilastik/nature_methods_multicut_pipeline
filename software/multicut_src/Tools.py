@@ -4,7 +4,8 @@ import cPickle as pickle
 import numpy as np
 
 from functools import wraps
-from itertools import combinations
+from itertools import combinations, product
+from concurrent import futures
 
 #
 # Implementation of a disjoint-set forest
@@ -216,6 +217,108 @@ def edges_to_volume(rag, edges, ignore_z = False):
         volume[edge_coords_up] = edges[edge_id]
 
     return volume
+
+
+# for visualizing edges
+# FIXME this could be way to slow ... if it is move to cython
+def edges_to_volume_from_uvs(seg, uv_ids, edge_labels, ignore_zeros = True):
+
+    print "Computing edge volume from uv ids"
+    assert uv_ids.shape[0] == edge_labels.shape[0]
+    volume = np.zeros(seg.shape, dtype = np.uint32)
+    n_edges = len(uv_ids)
+
+    #for e_id, uv in enumerate(uv_ids):
+    def _write_coords(e_id, uv):
+        print e_id, '/', n_edges
+        val = edge_labels[e_id]
+        if val == 0: # 0 labels are ignored
+            return False
+        if 0 in uv and ignore_zeros: # if ignore zeros, we assume that the zero seg-id is ignored
+            return False
+        u, v = uv
+        coords_u = np.where(seg == u)
+        coords_v = np.where(seg == v)
+        coords_u = np.concatenate( [coords_u[0][:,None], coords_u[1][:,None], coords_u[2][:,None]], axis = 1 )
+        coords_v = np.concatenate( [coords_v[0][:,None], coords_v[1][:,None], coords_v[2][:,None]], axis = 1 )
+        z_u = np.unique(coords_u[:,2])
+        z_v = np.unique(coords_v[:,2])
+        assert z_u.size == 1
+        assert z_v.size == 1
+        z_u, z_v = z_u[0], z_v[0]
+        # for z-edges find the intersection in plane
+        if z_u != z_v:
+            # get the intersecting coordinates:
+            # cf: http://stackoverflow.com/questions/8317022/get-intersecting-rows-across-two-2d-numpy-arrays
+            intersect = np.array([x for x in ( set(tuple(x) for x in coords_u[:,:2]) & set(tuple(x) for x in coords_v[:,:2]) ) ])
+            intersect_u = np.concatenate( [intersect, z_u * np.ones( (intersect.shape[0],1), intersect.dtype )], axis = 1 )
+            intersect_v = np.concatenate( [intersect, z_v * np.ones( (intersect.shape[0],1), intersect.dtype )], axis = 1 )
+            volume[intersect_u] = val
+            volume[intersect_v] = val
+        # for xy-edges find the border pixels
+        else:
+            # how do we do this most efficiently ?!?
+            # - diff between all coordinates and all that are in 4 nh get added ?!
+            coords_plain_u = coords_u[:,:2]
+            coords_plain_v = coords_v[:,:2]
+            # make product of all indices
+            indices_u = range(coords_plain_u.shape[0])
+            indices_v = range(coords_plain_v.shape[0])
+            indices_combinations = np.array( list( product(indices_u, indices_v) ) )
+            # find the diff of the corresponding coordinates
+            diff = coords_plain_u[indices_combinations[:,0]]  - coords_plain_v[indices_combinations[:,1]]
+            # coordinates in 4 nh have a diff of 0 in 1 of the coordinates -> find them
+            intersect_indices = (diff == 0).any(axis = 1)
+            # get the corresponding indices of the coordinate arrays for u and v
+            intersect_indices_u = np.unique(
+                    [indices_u[index_u] for i, index_u in enumerate(indices_combinations[:,0]) if intersect_indices[i]] )
+            intersect_indices_v = np.unique(
+                    [indices_v[index_v] for i, index_v in enumerate(indices_combinations[:,1]) if intersect_indices[i]] )
+            # get the corresponding coordinates and write into out volume
+            intersect = np.concatenate([
+                np.array([coords_u[index] for index in intersect_indices_u]),
+                np.array([coords_v[index] for index in intersect_indices_v]) ])
+            volume[intersect] = val
+        return True
+
+    # serial for debugging
+    #res = [ _write_coords(e_id, uv) for e_id, uv in enumerate(uv_ids) ]
+
+    # parallel
+    with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+        tasks = [ executor.submit(_write_coords, e_id, uv) for e_id, uv in enumerate(uv_ids) ]
+        res = [t.result() for t in tasks]
+
+    return volume
+
+
+
+#
+#    assert rag.edgeNum == edges.shape[0], str(rag.edgeNum) + " , " + str(edges.shape[0])
+#
+#    print rag.baseGraph.shape
+#    volume = np.zeros(rag.baseGraph.shape, dtype = np.uint32)
+#
+#    for edge_id in rag.edgeIds():
+#        # don't write the ignore label!
+#        if edges[edge_id] == 0:
+#            continue
+#        edge_coords = rag.edgeCoordinates(edge_id)
+#        if ignore_z:
+#            if edge_coords[0,2] - int(edge_coords[0,2]) != 0:
+#                continue
+#
+#        edge_coords_up = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
+#                np.ceil(edge_coords[:,1]).astype(np.uint32),
+#                np.ceil(edge_coords[:,2]).astype(np.uint32) )
+#        edge_coords_dn = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
+#                np.ceil(edge_coords[:,1]).astype(np.uint32),
+#                np.ceil(edge_coords[:,2]).astype(np.uint32) )
+#
+#        volume[edge_coords_dn] = edges[edge_id]
+#        volume[edge_coords_up] = edges[edge_id]
+#
+#    return volume
 
 
 def edges_to_binary(rag, edges, project_2d = True):
