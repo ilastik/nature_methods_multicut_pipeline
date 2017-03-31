@@ -174,7 +174,8 @@ def lifted_multicut_workflow(ds_train, ds_test,
     #) step one, train a random forest
     print "Start learning"
 
-    pTestLifted, uvIds, nzTest = learn_and_predict_lifted(
+    pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+            mc_params.rf_cache_folder,
             ds_train, ds_test,
             seg_id_train, seg_id_test,
             feature_list_lifted, feature_list_local,
@@ -249,6 +250,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
     print "Start learning"
 
     pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+            mc_params.rf_cache_folder,
             trainsets, ds_test,
             seg_id_train, seg_id_test,
             feature_list_lifted, feature_list_local,

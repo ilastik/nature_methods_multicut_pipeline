@@ -717,7 +717,8 @@ def learn_lifted_rf(cache_folder,
     return rf
 
 
-def learn_and_predict_lifted_rf(trainsets, ds_test,
+def learn_and_predict_lifted_rf(cache_folder,
+        trainsets, ds_test,
         seg_id_train, seg_id_test,
         feature_list_lifted, feature_list_local,
         exp_params, with_defects = False):
@@ -728,7 +729,7 @@ def learn_and_predict_lifted_rf(trainsets, ds_test,
 
     # strings for caching
     # str for all relevant params
-    paramstr = "_".join( ["_".join(lifted_feature_list), "_".join(local_feature_list),
+    paramstr = "_".join( ["_".join(feature_list_lifted), "_".join(feature_list_local),
         str(exp_params.anisotropy_factor), str(exp_params.learn_2d),
         str(exp_params.use_2d), str(exp_params.lifted_neighborhood),
         str(exp_params.use_ignore_mask), str(with_defects)] )
