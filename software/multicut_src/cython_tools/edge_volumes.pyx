@@ -1,8 +1,17 @@
 import numpy as np
 cimport cython
 cimport numpy as np
+from libcpp cimport bool
 
-# TODO typedefs
+# typedefs
+ctypedef np.uint32_t LabelType
+PyLabelType = np.uint32
+
+ctypedef np.int32_t CoordType
+PyCoordType = np.int32
+
+ctypedef np.uint32_t ValueType
+PyValueType = np.uint32
 
 # 
 def fast_edge_volume_from_uvs(
@@ -31,7 +40,7 @@ def fast_edge_volume_from_uvs(
                 # check all nbrs in 6 nh
                 for d in range(3):
                     coords_v[0],coords_v[1],coords_v[2] = x, y, z
-                    if coords_u[d] + 1 < shape[d]
+                    if coords_u[d] + 1 < shape[d]:
                         coords_v[d] += 1
                         l_v = seg[coords_v]
                     if l_u != l_v:
