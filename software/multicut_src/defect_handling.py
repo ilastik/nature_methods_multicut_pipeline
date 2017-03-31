@@ -703,7 +703,7 @@ def _get_replace_slices(defected_slices, shape):
 
 
 def postprocess_segmentation(ds, seg_id, seg_result):
-    defect_nodes = defects_to_nodes(ds, seg_id)
+    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
     mid = defect_nodes.shape[0] / 2
     defect_slices = np.unique(defect_nodes[mid:])
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)

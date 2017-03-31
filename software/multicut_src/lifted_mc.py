@@ -668,15 +668,15 @@ def learn_lifted_rf(cache_folder,
             exp_params.rf_cache_folder,
             [ds_train.get_cutout(0), ds_train.get_cutout(2)],
             train_cut,
-            seg_id_train,
-            seg_id_train,
+            seg_id,
+            seg_id,
             feature_list_local,
             exp_params,
             with_defects)
 
         uv_ids_train = compute_and_save_lifted_nh(
             train_cut,
-            seg_id_train,
+            seg_id,
             exp_params.lifted_neighborhood,
             with_defects)
 
@@ -689,13 +689,13 @@ def learn_lifted_rf(cache_folder,
             p_local_train,
             exp_params,
             uv_ids_train,
-            seg_id_train,
+            seg_id,
             with_defects)
 
-        labels = lifted_hard_gt(train_cut, seg_id_train, uv_ids_train)
+        labels = lifted_hard_gt(train_cut, seg_id, uv_ids_train)
 
         labeled = mask_lifted_edges(train_cut,
-                seg_id_train,
+                seg_id,
                 labels,
                 uv_ids_train,
                 exp_params)
