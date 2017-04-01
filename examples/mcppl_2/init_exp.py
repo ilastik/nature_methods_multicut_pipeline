@@ -22,14 +22,25 @@ def init_trainset(train_name):
     gt_path = '/path/to/gt.h5' # path to groundtruth. For anisotropic data, must be in axis order x,y,z
     assert os.path.exists(seg_path)
 
+    # in addition you can add a mask for parts of the segmentation that should not be learned / infered on:
+    #mask_path = '/path/to/mask.h5'
+    #assert os.path.exists(mask_path)
+
     # add the data from filepaths to the groundtruth
     # alternatively, you can also produce the inputs on the fly and add with '.add_*_from_data'
     ds.add_raw(raw_path, 'data') # here we assume that everything has the key 'data', change accordingly
+
+    # you can also add a list of slices with defects, that will be treated differently, only makes sense for flat superpixel
+    #ds.add_defect_slices([3,19,33]) # insert meaningful slice numbers...
     ds.add_input(pmap_path, 'data') # here we assume that everything has the key 'data', change accordingly
+
+    #ds.add_seg_mask(mask_path, 'data') # THIS HAS TO BE ADDED BEFORE THE SEGMENTATION TO BE USED!
     ds.add_seg(seg_path, 'data') # here we assume that everything has the key 'data', change accordingly
+
     ds.add_gt(gt_path, 'data') # here we assume that everything has the key 'data', change accordingly
 
     # in addition, you can make cutouts here that can be used e.g. for validation
+    #ds.make_cutout(bounds)
 
     # add the dataset to the metaset
     meta.add_dataset(train_name, ds)
@@ -48,10 +59,19 @@ def init_testset(test_name):
     seg_path = '/path/to/seg.h5' # path to oversegmentation. For anisotropic data, must be in axis order x,y,z
     assert os.path.exists(seg_path)
 
+    # in addition you can add a mask for parts of the segmentation that should not be learned / infered on:
+    #mask_path = '/path/to/mask.h5'
+    #assert os.path.exists(mask_path)
+
     # add the data from filepaths to the groundtruth
     # alternatively, you can also produce the inputs on the fly and add with '.add_*_from_data'
     ds.add_raw(raw_path, 'data') # here we assume that everything has the key 'data', change accordingly
+    # you can also add a list of slices with defects, that will be treated differently, only makes sense for flat superpixel
+    #ds.add_defect_slices([3,19,33]) # insert meaningful slice numbers...
+
     ds.add_input(pmap_path, 'data') # here we assume that everything has the key 'data', change accordingly
+
+    #ds.add_seg_mask(mask_path, 'data') # THIS HAS TO BE ADDED BEFORE THE SEGMENTATION TO BE USED!
     ds.add_seg(seg_path, 'data') # here we assume that everything has the key 'data', change accordingly
 
     # in addition, you can make cutouts here that can be used e.g. for validation

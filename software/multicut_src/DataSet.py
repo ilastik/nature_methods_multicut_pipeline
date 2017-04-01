@@ -78,7 +78,10 @@ class DataSet(object):
         return self.ds_name
 
     def add_defect_slices(self, defect_slice_list):
+        assert self.has_raw
         assert isinstance(defect_slice_list, list)
+        for z in defect_slices:
+            assert z < self.shape[2]
         self.defect_slices = defect_slice_list
 
     def add_false_split_gt_id(self, gt_id):
@@ -121,7 +124,7 @@ class DataSet(object):
             raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         self.shape = raw.shape
         save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data")
+        vigra.writeHDF5(raw, save_path, "data", chunks = True)
         self.has_raw = True
         self.n_inp = 1
 
@@ -151,7 +154,7 @@ class DataSet(object):
             pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert pixmap.shape[:3] == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
         save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data")
+        vigra.writeHDF5(pixmap, save_path, "data", chunks = True)
         self.n_inp += 1
 
 
@@ -382,11 +385,11 @@ class DataSet(object):
         dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
         return dt
 
+
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
     # if it is higher, the features are calculated purely in 2d
-    # TODO make sigmas accessible in a clever way
     def make_filters(self,
             inp_id,
             anisotropy_factor,
@@ -450,9 +453,12 @@ class DataSet(object):
 
         # for pure 2d calculation, we only take into account the slices individually
         if calculation_2d:
+
+            def _calc_filter_2d(z, out, filter_fu, sig):
+                out[:,:,z] = filter_fu(inp[:,:,z], sig)
+
             print "Calculating Filter in 2d"
             for filt_name in filter_names:
-                filter = eval(filt_name)
                 for sig in sigmas:
 
                     # check whether this is already there
@@ -460,48 +466,40 @@ class DataSet(object):
                     return_paths.append(filt_path)
 
                     if not os.path.exists(filt_path):
-
-                        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
-                            tasks = []
-                            for z in xrange(inp.shape[2]):
-                                tasks.append( executor.submit(filter, inp[:,:,z], sig ) )
-
-                        res = [task.result() for task in tasks]
-
-                        if res[0].ndim == 2:
-                            res = [re[:,:,None] for re in res]
-                        elif res[0].ndim == 3:
-                            res = [re[:,:,None,:] for re in res]
-                        res = np.concatenate( res, axis = 2)
-                        assert res.shape[0:2] == self.shape[0:2]
-                        vigra.writeHDF5(res, filt_path, filter_key)
+                        filter_fu = eval(filt_name)
+                        # determine if filter is single channel (!= hessian of gaussian EV)
+                        is_singlechannel = True if filt_name.split(".")[-1] != "hessianOfGaussianEigenvalues" else False
+                        with h5py.File(filt_path) as f:
+                            # determine correct shape  and chunks
+                            f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
+                            chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) + (2,)
+                            out = f.create_dataset(filter_key, shape = f_shape, dtype = 'float32', chunks = chunks)
+                            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+                                tasks = [executor.submit(_calc_filter_2d, z, out, filter_fu, sig) for z in xrange(inp.shape[2])]
+                                res = [task.result() for task in tasks]
 
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
             if anisotropy_factor != 1.:
                 sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
 
-            def _calc_and_write_filter(filter_function, sigma, filt_path):
-                if not os.path.exists(filt_path):
-                    filter_res = filter_function( inp, sig )
-                    assert filter_res.shape[0:2] == self.shape[0:2]
-                    vigra.writeHDF5(filter_res,
-                            filt_path,
-                            filter_key)
-                    return True
-                else:
-                    return False
+            def _calc_filter_3d(filter_function, sigma, filt_path):
+                filter_res = filter_function( inp, sig )
+                vigra.writeHDF5(filter_res,
+                        filt_path,
+                        filter_key,
+                        chunks = True)
 
-            # FIXME this could be too memory hungry for a lot of threads
             with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                 tasks = []
                 for filt_name in filter_names:
-                    filter = eval(filt_name)
                     for sig in sigmas:
-                        filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                        tasks.append( executor.submit(_calc_and_write_filter, filter, sig, filt_path) )
+                        if not os.path.exists(filt_path):
+                            filter_fu = eval(filt_name)
+                            filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
+                            tasks.append( executor.submit(_calc_filter_3d, filter_fu, sig, filt_path) )
                         return_paths.append(filt_path)
-                _ = [t.result() for t in tasks]
+                res = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
