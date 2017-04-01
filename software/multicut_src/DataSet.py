@@ -393,12 +393,12 @@ class DataSet(object):
             filter_names = [ "gaussianSmoothing",
                              "hessianOfGaussianEigenvalues",
                              "laplacianOfGaussian"],
-            sigmas = [1.6, 4.2, 8.3],
-            use_fastfilters = False
+            sigmas = [1.6, 4.2, 8.3]
             ):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
+        import fastfilters
 
         # FIXME dirty hack to calculate features on the ditance trafo
         # FIXME the dt must be pre-computed for this to work
@@ -430,16 +430,12 @@ class DataSet(object):
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
 
-        if not calculation_2d and anisotropy_factor > 1. and use_fastfilters:
+        if not calculation_2d and anisotropy_factor > 1.:
             print "WARNING: Anisotropic feature calculation not supported in fastfilters yet."
             print "Using vigra filters instead."
-            use_fastfilters = False
-
-        if use_fastfilters:
-            import fastfilters
-            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
-        else:
             filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
+        else:
+            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
 
         # update the filter folder to the input
         filter_folder = os.path.join( filter_folder, input_name )

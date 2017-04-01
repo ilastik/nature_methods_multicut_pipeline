@@ -157,14 +157,13 @@ def get_skip_starts(ds, seg_id):
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
 
-# FIXME this won't really parallelize due to GIL
-# TODO debug and use cython
-def modified_adjacency_z(
+# this should be fast enough for now
+def compute_skip_edges_z(
         z,
         seg,
         defect_node_dict):
 
-    def modified_adjacency_node(z_up, z_dn, nodes_dn, mask):
+    def skip_edges_for_nodes(z_up, z_dn, nodes_dn, mask):
         skip_range = z_up - z_dn
         skip_edges, skip_ranges = [], []
 
@@ -177,7 +176,7 @@ def modified_adjacency_z(
             # if any of the connected nodes are defected go to the next slice
             if defect_nodes_up.size:
                 if np.intersect1d(connected_nodes, defect_nodes_up).size: # check if any of upper nodes is defected
-                    skip_edges, skip_ranges = modified_adjacency_node(z_up+1, z_dn, nodes_dn, mask)
+                    skip_edges, skip_ranges = skip_edges_for_nodes(z_up+1, z_dn, nodes_dn, mask)
                     break
             skip_edges.extend( [(node_dn, conn_node) for conn_node in connected_nodes] )
             skip_ranges.extend( len(connected_nodes) * [skip_range] )
@@ -188,8 +187,6 @@ def modified_adjacency_z(
     skip_ranges_z = []
     defect_nodes_z = defect_node_dict[z]
 
-    #mask = np.zeros(seg.shape[:2], dtype = bool)
-
     for defect_node in defect_nodes_z:
         # get the mask
         mask = seg[:,:,z] == defect_node
@@ -199,7 +196,7 @@ def modified_adjacency_z(
         nodes_dn = np.array([n_dn for n_dn in nodes_dn if n_dn not in defect_nodes_z])
         # if we have lower nodes left, we look for skip edges
         if nodes_dn.size:
-            skip_edges_u, skip_ranges_u = modified_adjacency_node(z+1, z-1, nodes_dn, mask)
+            skip_edges_u, skip_ranges_u = skip_edges_for_nodes(z+1, z-1, nodes_dn, mask)
             skip_edges_z.extend(skip_edges_u)
             skip_ranges_z.extend(skip_ranges_u)
 
@@ -240,7 +237,6 @@ def modified_adjacency(ds, seg_id):
     skip_edges   = [] # the skip edges that run over the defects in z
     skip_ranges  = [] # z-distance of the skip edges
     skip_starts  = [] # starting slices of the skip edges
-    #from cython_tools import modified_adjacency_z
 
     # sequential for now
     #with futures.ThreadPoolExecutor(max_workers = 8) as executor:
@@ -271,7 +267,7 @@ def modified_adjacency(ds, seg_id):
         if z == 0 or z == seg.shape[2] - 1 or has_lower_defect:
             continue
 
-        skip_edges_z, skip_ranges_z = modified_adjacency_z(
+        skip_edges_z, skip_ranges_z = compute_skip_edges_z(
                 z,
                 seg,
                 defect_node_dict)
