@@ -6,10 +6,9 @@ from functools import partial
 from DataSet import DataSet
 from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem
 from ExperimentSettings import ExperimentSettings
-from Tools import edges_to_volume, edges_to_volume_from_uvs
+from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
 RandomForest = vigra.learning.RandomForest3
-
 
 # toplevel convenience function for features
 # aggregates all the features given in feature list:
@@ -129,56 +128,46 @@ def mask_edges(ds,
 
 
 # TODO make volumina viewer conda package and ship this too
-def view_edges(ds, seg_id, labels, labeled):
-    from volumina_viewer import volumina_n_layer
-
-    labels_for_vol = np.zeros(labels.shape, dtype = np.uint32)
-    labels_for_vol[labels == 1.]  = 1
-    labels_for_vol[labels == 0.]  = 2
-    labels_for_vol[np.logical_not(labeled)] = 5
-
-    # xy - and z - labels
-    labels_for_vol_z = labels_for_vol.copy()
-    edge_indications = ds.edge_indications(seg_id_train)
-    labels_for_vol[edge_indications == 0] = 0
-    labels_for_vol_z[edge_indications == 1] = 0
-
-    rag = ds._rag(seg_id)
-    edge_vol_xy = edges_to_volume(rag, labels_for_vol)
-    edge_vol_z = edges_to_volume(rag, labels_for_vol_z)
-
-    volumina_n_layer([ds.inp(0), ds.seg(seg_id), ds.gt(), edge_vol_xy, edge_vol_z],
-            ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
-
-
-def view_edges_with_defects(ds, seg_id, uv_ids, labels, labeled):
+def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
+    assert uv_ids.shape[0] == labels.shape[0]
+    assert labels.shape[0] == labeled.shape[0]
     from volumina_viewer import volumina_n_layer
 
     labels_debug = np.zeros(labels.shape, dtype = np.uint32)
-    labels_debug[labels == 1]  = 1
-    labels_debug[labels == 0]  = 2
+    labels_debug[labels == 1.]  = 1
+    labels_debug[labels == 0.]  = 2
     labels_debug[np.logical_not(labeled)] = 5
 
-    # split into skip / non-skip edges
-    skip_transition = labels_debug.shape[0]- get_skip_edges(ds, seg_id).shape[0]
-    labels_skip     = labels_debug.copy()
-    labels_skip[:skip_transition] = 0
-    labels_debug[skip_transition:] = 0
-    # split normal labels in xy/z
-    edge_indications = modified_edge_indications(ds, seg_id)
-    assert edge_indications.shape[0] == labels_debug.shape[0]
-    labels_z = labels_debug.copy()
-    labels_debug[edge_indications == 0] = 0
-    labels_z[edge_indications == 1] = 0
+    if with_defects:
+        skip_transition = labels_debug.shape[0] - get_skip_edges(ds, seg_id).shape[0]
+        edge_indications = modified_edge_indications(ds, seg_id)[:skip_transition]
+        labels_skip = labels_debug[skip_transition:]
+        uv_skip     = uv_ids[skip_transition:]
+        labes_debug = labels_debug[:skip_transition]
+        uv_ids      = uv_ids[:skip_transition]
+    else:
+        edge_indications = ds.edge_indications(seg_id)
 
-    # render the edges
+    # xy - and z - labels
+    labels_xy = labels_debug[edge_indications == 1]
+    labels_z  = labels_debug[edge_indications == 0]
+    uv_xy = uv_ids[edge_indications == 1]
+    # TODO if we were completely correct, we would need to volumes for the z-edges, one for to upper, one for to lower
+    # this would be easy to integrate in the cython function
+    uv_z  = uv_ids[edge_indications == 0]
+
     seg = ds.seg(seg_id)
-    edge_vol_xy = edges_to_volume_from_uvs(seg, uv_ids, labels_debug)
-    edge_vol_z  = edges_to_volume_from_uvs(seg, uv_ids, labels_z)
-    edge_vol_skip = edges_to_volume_from_uvs(seg, uv_ids, labels_skip)
+    edge_vol_xy = edges_to_volume_from_uvs_in_plane(seg, uv_xy, labels_xy)
+    edge_vol_z  = edges_to_volume_from_uvs_between_plane(seg, uv_z, labels_z)
 
-    volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
-            ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z', 'labels_skip'])
+    if with_defects:
+        edge_vol_skip = edges_to_volumes_for_skip_edges(seg, uv_skip, labels_skip)
+        volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
+                ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z', 'labels_skip'])
+    else:
+        volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z],
+                ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
+    quit()
 
 
 def learn_rf(cache_folder,
@@ -243,11 +232,7 @@ def learn_rf(cache_folder,
                 with_defects)
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
-        if True:
-            if with_defects and cutout.defect_slices:
-                view_edges_with_defects(cutout, seg_id, uv_ids, labels_cut, labeled)
-            else:
-                view_edges(cutout, seg_id, labels, labeled)
+        view_edges(cutout, seg_id, uv_ids, labels_cut, labeled, with_defects)
 
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint32')

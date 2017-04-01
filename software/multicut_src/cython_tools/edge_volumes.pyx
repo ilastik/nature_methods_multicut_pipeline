@@ -1,7 +1,8 @@
 import numpy as np
 cimport cython
 cimport numpy as np
-from libcpp cimport bool
+
+from concurrent import futures
 
 # typedefs
 ctypedef np.uint32_t LabelType
@@ -14,37 +15,67 @@ ctypedef np.uint32_t ValueType
 PyValueType = np.uint32
 
 # 
-def fast_edge_volume_from_uvs(
+def fast_edge_volume_from_uvs_in_plane(
         np.ndarray[LabelType, ndim=3] seg,
         np.ndarray[LabelType, ndim=2] uv_ids,
-        np.ndarray[ValueType, ndim=1] edge_labels,
-        bool ignore_zeros = True):
+        np.ndarray[ValueType, ndim=1] edge_labels):
 
     cdef np.ndarray[ValueType, ndim=3] volume = np.zeros_like(seg, dtype = PyValueType)
     cdef int x, y, z, i, d
-    cdef np.ndarray[CoordType, ndim=1] coords_u = np.zeros(3, dtype = PyCoordType)
-    cdef np.ndarray[CoordType, ndim=1] coords_v = np.zeros(3, dtype = PyCoordType)
+    cdef LabelType l_u, l_v
+    cdef np.ndarray[CoordType, ndim=1] coords_v = np.zeros(2, dtype = PyCoordType)
 
     # make a uv-> id to edge label dict
-    uv_id_dict = {(u,v) : i for i, u, v in enumerate(uv_ids) }
+    uv_id_dict = { (uv[0],uv[1]) : i for i, uv in enumerate(uv_ids) }
 
     shape = volume.shape
+
+    # dunno if this is a good idea in terms of cache locality (violating C-order!)
+    # seems fast enough!
+    for z in xrange(shape[2]):
+        for x in xrange(shape[0]):
+            for y in xrange(shape[1]):
+                l_u = seg[x,y,z]
+                # check all nbrs in 4 nh
+                for d in range(2):
+                    coords_v[0],coords_v[1] = x, y
+                    if coords_v[d] + 1 < shape[d]:
+                        coords_v[d] += 1
+                        l_v = seg[coords_v[0],coords_v[1],z]
+                        if l_u != l_v:
+                            try: # we may not have a corresponding edge-id due to defects
+                                e_id = uv_id_dict[ (min(l_u,l_v), max(l_u,l_v)) ]
+                                volume[x,y,z] = edge_labels[e_id]
+                                volume[coords_v[0],coords_v[1],z] = edge_labels[e_id]
+                            except KeyError:
+                                continue
+    return volume
+
+# 
+def fast_edge_volume_from_uvs_between_plane(
+        np.ndarray[LabelType, ndim=3] seg,
+        np.ndarray[LabelType, ndim=2] uv_ids,
+        np.ndarray[ValueType, ndim=1] edge_labels):
+
+    cdef np.ndarray[ValueType, ndim=3] volume = np.zeros_like(seg, dtype = PyValueType)
+    cdef int x, y, z, i, d
+    cdef LabelType l_u, l_v
+
+    # make a uv-> id to edge label dict
+    uv_id_dict = { (uv[0],uv[1]) : i for i, uv in enumerate(uv_ids) }
+
+    shape = volume.shape
+
     for x in xrange(shape[0]):
         for y in xrange(shape[1]):
             for z in xrange(shape[2]):
-
-                l_u = seg[x,y,z]
-                # this should be possibe in a less ug
-                coords_u[0],coords_u[1],coords_u[2] = x, y, z
-
-                # check all nbrs in 6 nh
-                for d in range(3):
-                    coords_v[0],coords_v[1],coords_v[2] = x, y, z
-                    if coords_u[d] + 1 < shape[d]:
-                        coords_v[d] += 1
-                        l_v = seg[coords_v]
-                    if l_u != l_v:
+                if z + 1 < shape[2]:
+                    l_u = seg[x,y,z]
+                    l_v = seg[x,y,z+1]
+                    try: # we may not have a corresponding edge-id due to defects
                         e_id = uv_id_dict[ (min(l_u,l_v), max(l_u,l_v)) ]
-                        volume[coords_u] = edge_labels[e_id]
-                        volume[coords_v] = edge_labels[e_id]
+                        volume[x,y,z] = edge_labels[e_id]
+                        volume[x,y,z+1] = edge_labels[e_id]
+                    except KeyError:
+                        continue
     return volume
