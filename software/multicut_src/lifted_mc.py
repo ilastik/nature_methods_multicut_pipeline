@@ -492,8 +492,9 @@ def lifted_feature_aggregator(ds,
     if pipelineParam.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
         nz_train = node_z_coord(ds, segId)
         lifted_distance = np.abs(
-                np.subtract( nz_train[uv_ids_train[:,0]],
-                        nz_train[uv_ids_train[:,1]]) )
+                np.subtract(
+                        nz_train[uvIds[:,0]],
+                        nz_train[uvIds[:,1]]) )
         features.append(lifted_distance[:,None])
 
     return numpy.concatenate( features, axis=1 )
