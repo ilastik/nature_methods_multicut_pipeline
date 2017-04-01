@@ -168,7 +168,6 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
     else:
         volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z],
                 ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
-    quit()
 
 
 def learn_rf(cache_folder,
