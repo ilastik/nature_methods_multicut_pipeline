@@ -32,6 +32,7 @@ def init_trainset(train_name):
 
     # you can also add a list of slices with defects, that will be treated differently, only makes sense for flat superpixel
     #ds.add_defect_slices([3,19,33]) # insert meaningful slice numbers...
+
     ds.add_input(pmap_path, 'data') # here we assume that everything has the key 'data', change accordingly
 
     #ds.add_seg_mask(mask_path, 'data') # THIS HAS TO BE ADDED BEFORE THE SEGMENTATION TO BE USED!
@@ -40,7 +41,11 @@ def init_trainset(train_name):
     ds.add_gt(gt_path, 'data') # here we assume that everything has the key 'data', change accordingly
 
     # in addition, you can make cutouts here that can be used e.g. for validation
-    #ds.make_cutout(bounds)
+    # here, we add three cutouts that are used during the lifted multicut training
+    shape = ds.shape
+    ds.make_cutout([0,shape[0],0,shape[1],0,15])
+    ds.make_cutout([0,shape[0],0,shape[1],15,shape[2]-15])
+    ds.make_cutout([0,shape[0],0,shape[1],shape[2]-15,shape[2]])
 
     # add the dataset to the metaset
     meta.add_dataset(train_name, ds)
@@ -66,6 +71,7 @@ def init_testset(test_name):
     # add the data from filepaths to the groundtruth
     # alternatively, you can also produce the inputs on the fly and add with '.add_*_from_data'
     ds.add_raw(raw_path, 'data') # here we assume that everything has the key 'data', change accordingly
+
     # you can also add a list of slices with defects, that will be treated differently, only makes sense for flat superpixel
     #ds.add_defect_slices([3,19,33]) # insert meaningful slice numbers...
 

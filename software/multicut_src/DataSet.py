@@ -753,6 +753,7 @@ class DataSet(object):
         return extractor, statistics
 
 
+    # TODO if we have a segmentation mask, restrict to it, otherewise this is horribly expensive for lifted edges
     @cacher_hdf5(folder = "feature_folder", ignoreNumpyArrays=True)
     def region_features(self, seg_id, inp_id, uv_ids, lifted_nh):
 

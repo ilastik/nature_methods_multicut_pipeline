@@ -14,7 +14,7 @@ from defect_handling import modified_mc_problem
 
 RandomForest = vigra.learning.RandomForest3
 
-
+# TODO if we have a seg mask restrict to it !
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds,
         segId,
