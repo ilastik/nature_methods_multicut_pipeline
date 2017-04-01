@@ -672,6 +672,11 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_
         max_repulsive = 2 * edge_energies.min()
         edge_energies[ignore_indices] = max_repulsive
 
+    # set the edges within the segmask to be maximally repulsive
+    if ds.has_seg_mask:
+        ignore_mask = (uv_ids == 0).any(axis = 1)
+        edge_energies[ ignore_mask ] = 2 * edge_energies.min()
+
     assert not np.isnan(edge_energies).any()
     return edge_energies
 

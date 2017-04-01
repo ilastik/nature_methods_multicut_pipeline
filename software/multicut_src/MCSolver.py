@@ -192,15 +192,16 @@ def lifted_multicut_workflow(ds_train, ds_test,
     edge_energies_local = probs_to_energies(ds_test,
             pTestLocal, seg_id_test, mc_params, _get_feat_str(feature_list_local))
 
-    # lifted energies
-    if weight_z_lifted:
-        # node z to edge z distance
-        edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, edgeZdistance, gamma = gamma, betaGlobal = mc_params.beta_global)
-    else:
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, None, gamma = gamma, betaGlobal = mc_params.beta_global)
+    # node z to edge z distance
+    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edge_energies_lifted = lifted_probs_to_energies(
+            ds_test,
+            pTestLifted,
+            seg_id_test,
+            edgeZdistance,
+            mc_params.lifted_nh,
+            gamma = gamma,
+            betaGlobal = mc_params.beta_global)
 
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
@@ -273,14 +274,17 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
     assert not np.isnan(edge_energies_local).any()
 
     # lifted energies
-    if weight_z_lifted:
-        # node z to edge z distance
-        edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, edgeZdistance, gamma = gamma, betaGlobal = mc_params.beta_global)
-    else:
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, None, gamma = gamma, betaGlobal = mc_params.beta_global)
+    # node z to edge z distance
+    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edge_energies_lifted = lifted_probs_to_energies(
+            ds_test,
+            pTestLifted,
+            seg_id_test,
+            edgeZdistance,
+            mc_params.lifted_nh,
+            gamma = gamma,
+            betaGlobal = mc_params.beta_global,
+            with_defects = True)
     assert not np.isnan(edge_energies_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling

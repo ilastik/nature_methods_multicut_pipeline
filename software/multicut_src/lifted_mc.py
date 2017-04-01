@@ -14,7 +14,6 @@ from defect_handling import modified_mc_problem
 
 RandomForest = vigra.learning.RandomForest3
 
-# TODO if we have a seg mask restrict to it !
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds,
         segId,
@@ -32,10 +31,22 @@ def clusteringFeatures(ds,
 
     if with_defects:
         n_nodes, uvs_local = modified_mc_problem(ds, segId)
-        originalGraph = vgraph.listGraph(n_nodes)
-        originalGraph.addEdges(uvs_local)
     else:
-        originalGraph = ds._rag(segId)
+        uvs_local = ds._adjacent_segments(segId)
+        n_nodes = uvs_local.max() + 1
+    assert edgeIndicator.shape[0] == uvs_local.shape[0]
+
+    # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
+    if ds.has_seg_mask:
+        where_uv_local = (uvs_local != 0).all(axis = 1)
+        uvs_local      = uvs_local[where_uv_local]
+        edgeIndicator  = edgeIndicator[where_uv_local]
+        where_uv_extra = (extraUV != 0).all(axis = 1)
+        extraUV = extraUV[where_uv_extra]
+
+    originalGraph = vgraph.listGraph(n_nodes)
+    originalGraph.addEdges(uvs_local)
+
     extraUV = numpy.require(extraUV,dtype='uint32')
     uvOriginal = originalGraph.uvIds()
     liftedGraph =  vgraph.listGraph(originalGraph.nodeNum)
@@ -67,9 +78,7 @@ def clusteringFeatures(ds,
         nodeFeatures = vgraph.graphMap(liftedGraph,'node',addChannelDim=True)
         nodeFeatures[:]=0
 
-
         outWeight=vgraph.graphMap(liftedGraph,item='edge',dtype=numpy.float32)
-
 
         mg = vgraph.mergeGraph(liftedGraph)
         clusterOp = vgraph.minEdgeWeightNodeDist(mg,
@@ -84,9 +93,7 @@ def clusteringFeatures(ds,
             outWeight=outWeight
         )
 
-
         clusterOp.setLiftedEdges(whereLifted)
-
 
         hc = vgraph.hierarchicalClustering(clusterOp,nodeNumStopCond=1,
                                             buildMergeTreeEncoding=False)
@@ -106,9 +113,24 @@ def clusteringFeatures(ds,
     weights = numpy.concatenate(allFeat,axis=1)
     mean = numpy.mean(weights,axis=1)[:,None]
     stddev = numpy.std(weights,axis=1)[:,None]
-    allFeat = numpy.concatenate([weights,mean,stddev],axis=1)
+    allFeat = numpy.nan_to_num(
+            numpy.concatenate([weights,mean,stddev],axis=1) )
+    allFeat = numpy.require(allFeat, dtype = 'float32')
+    assert allFeat.shape[0] == extraUV.shape[0]
 
-    return numpy.nan_to_num(allFeat)
+    # if we have excluded the ignore segments before, we need to reintroduce
+    # them now to keep edge numbering consistent
+    if ds.has_seg_mask:
+        where_ignore = numpy.logical_not( where_uv_extra )
+        n_ignore = numpy.sum(where_ignore)
+        newFeat = numpy.zeros(
+                (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
+                dtype = 'float32' )
+        newFeat[where_uv_extra] = allFeat
+        allFeat = newFeat
+        assert allFeat.shape[0] == extraUV.shape[0] + n_ignore
+
+    return allFeat
 
 #
 # Multicut features
