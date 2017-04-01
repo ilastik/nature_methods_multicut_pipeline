@@ -8,7 +8,7 @@ import itertools
 
 import graph as agraph
 
-from Tools import cacher_hdf5
+from Tools import cacher_hdf5, cache_name
 
 
 # TODO Flag that tells us, if we have flat or 3d superpixel
@@ -80,7 +80,7 @@ class DataSet(object):
     def add_defect_slices(self, defect_slice_list):
         assert self.has_raw
         assert isinstance(defect_slice_list, list)
-        for z in defect_slices:
+        for z in defect_slice_list:
             assert z < self.shape[2]
         self.defect_slices = defect_slice_list
 
@@ -735,6 +735,7 @@ class DataSet(object):
 
 
     # get region statistics with the vigra region feature extractor
+    @cacher_hdf5(folder = "feature_folder")
     def _region_statistics(self, seg_id, inp_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
@@ -750,10 +751,38 @@ class DataSet(object):
                 self.seg(seg_id).astype(np.uint32),
                 features = statistics )
 
-        return extractor, statistics
+        regStats = []
+        regStatNames = []
+
+        for regStatName in statistics[:9]:
+            regStat = extractor[regStatName].astype('float32')
+            if regStat.ndim == 1:
+                regStats.append(regStat[:,None])
+            else:
+                regStats.append(regStat)
+            regStatNames.extend([regStatName for _ in xrange(regStats[-1].shape[1])])
+        regStats = np.concatenate(regStats, axis=1)
+
+        regCenters = []
+        regCenterNames = []
+        for regStatName in  statistics[9:]:
+            regCenter = extractor[regStatName].astype('float32')
+            if regCenter.ndim == 1:
+                regCenters.append(regCenter[:,None])
+            else:
+                regCenters.append(regCenter)
+            regCenterNames.extend([regStatName for _ in xrange(regCenters[-1].shape[1])])
+        regCenters = np.concatenate(regCenters, axis=1)
+
+        save_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
+        vigra.writeHDF5(regStats, save_path, "region_statistics")
+        vigra.writeHDF5(regStatNames, save_path, "region_statistics_names")
+        vigra.writeHDF5(regCenters, save_path, "region_centers")
+        vigra.writeHDF5(regCenterNames, save_path, "region_center_names")
+
+        return statistics
 
 
-    # TODO if we have a segmentation mask, restrict to it, otherewise this is horribly expensive for lifted edges
     @cacher_hdf5(folder = "feature_folder", ignoreNumpyArrays=True)
     def region_features(self, seg_id, inp_id, uv_ids, lifted_nh):
 
@@ -766,35 +795,21 @@ class DataSet(object):
 
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
-        region_statistics, region_statistics_names = self._region_statistics(seg_id, inp_id)
 
-        regStats = []
-        regStatNames = []
+        # make sure the region statistics are calcuulated
+        self._region_statistics(seg_id, inp_id)
+        region_statistics_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
 
-        for regStatName in region_statistics_names[:9]:
-            regStat = region_statistics[regStatName]
-            if regStat.ndim == 1:
-                regStats.append(regStat[:,None])
-            else:
-                regStats.append(regStat)
-            regStatNames.extend([regStatName for _ in xrange(regStats[-1].shape[1])])
-        regStats = np.concatenate(regStats, axis=1)
+        # if we have a segmentation mask, we don't calculate features for uv-ids which
+        # include 0 (== everything outside of the mask)
+        # otherwise the ram consumption for the lmc can blow up...
+        if self.has_seg_mask:
+            where_uv = (uv_ids != 0).all(axis = 1)
+            uv_ids   = uv_ids[where_uv]
 
-        regCenters = []
-        regCenterNames = []
-        for regStatName in  region_statistics_names[9:]:
-            regCenter = region_statistics[regStatName]
-            if regCenter.ndim == 1:
-                regCenters.append(regCenter[:,None])
-            else:
-                regCenters.append(regCenter)
-            regCenterNames.extend([regStatName for _ in xrange(regCenters[-1].shape[1])])
-        regCenters = np.concatenate(regCenters, axis=1)
-
-        # we actively delete stuff we don't need to free memory
-        # because this may become memory consuming for lifted edges
-        del region_statistics
-        gc.collect()
+        # compute feature from region statistics
+        regStats = vigra.readHDF5(region_statistics_path, 'region_statistics')
+        regStatNames = vigra.readHDF5(region_statistics_path, 'region_statistics_names')
 
         fU = regStats[uv_ids[:,0],:]
         fV = regStats[uv_ids[:,1],:]
@@ -807,13 +822,22 @@ class DataSet(object):
             ]
 
         feat_names = []
-        feat_names.extend(["RegionFeatures_" + name + combine for combine in  ("_min", "_max", "_absdiff", "_sum") for name in regStatNames  ])
+        feat_names.extend(
+                ["RegionFeatures_" + name + combine for combine in  ("_min", "_max", "_absdiff", "_sum") for name in regStatNames  ])
 
+        # we actively delete stuff we don't need to free memory
+        # because this may become memory consuming for lifted edges
         fV = fV.resize((1,1))
         fU = fU.resize((1,1))
+        regStats = regStats.resize((1,))
         del fU
         del fV
+        del regStats
         gc.collect()
+
+        # compute features from region centers
+        regCenters = vigra.readHDF5(region_statistics_path, 'region_centers')
+        regCenterNames = vigra.readHDF5(region_statistics_path, 'region_center_names')
 
         sU = regCenters[uv_ids[:,0],:]
         sV = regCenters[uv_ids[:,1],:]
@@ -823,13 +847,29 @@ class DataSet(object):
 
         sV = sV.resize((1,1))
         sU = sU.resize((1,1))
+        regCenters = regCenters.resize((1,1))
         del sU
         del sV
+        del regCenters
         gc.collect()
 
-        allFeat = np.concatenate(allFeat, axis = 1)
+        allFeat = np.nan_to_num(
+                np.concatenate(allFeat, axis = 1) )
 
+        assert allFeat.shape[0] == uv_ids.shape[0]
         assert len(feat_names) == allFeat.shape[1], str(len(feat_names)) + " , " + str(allFeat.shape[1])
+
+        # if we have excluded the ignore segments before, we need to reintroduce
+        # them now to keep edge numbering consistent
+        if self.has_seg_mask:
+            where_ignore = np.logical_not( where_uv )
+            n_ignore = np.sum(where_ignore)
+            newFeat = np.zeros(
+                    (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
+                    dtype = 'float32' )
+            newFeat[where_uv] = allFeat
+            allFeat = newFeat
+            assert allFeat.shape[0] == uv_ids.shape[0] + n_ignore
 
         # save feature names
         save_folder = os.path.join(self.cache_folder, "features")
@@ -840,7 +880,7 @@ class DataSet(object):
         vigra.writeHDF5(feat_names, save_file, "region_features_names")
         print "writing feat_names to", save_file
 
-        return np.nan_to_num(allFeat)
+        return allFeat
 
 
     # get the names of the region features
