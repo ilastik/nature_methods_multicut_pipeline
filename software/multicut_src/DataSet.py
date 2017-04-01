@@ -78,7 +78,10 @@ class DataSet(object):
         return self.ds_name
 
     def add_defect_slices(self, defect_slice_list):
+        assert self.has_raw
         assert isinstance(defect_slice_list, list)
+        for z in defect_slices:
+            assert z < self.shape[2]
         self.defect_slices = defect_slice_list
 
     def add_false_split_gt_id(self, gt_id):
@@ -121,7 +124,7 @@ class DataSet(object):
             raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         self.shape = raw.shape
         save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data")
+        vigra.writeHDF5(raw, save_path, "data", chunks = True)
         self.has_raw = True
         self.n_inp = 1
 
@@ -151,7 +154,7 @@ class DataSet(object):
             pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert pixmap.shape[:3] == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
         save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data")
+        vigra.writeHDF5(pixmap, save_path, "data", chunks = True)
         self.n_inp += 1
 
 
@@ -382,23 +385,23 @@ class DataSet(object):
         dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
         return dt
 
+
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
     # if it is higher, the features are calculated purely in 2d
-    # TODO make sigmas accessible in a clever way
     def make_filters(self,
             inp_id,
             anisotropy_factor,
             filter_names = [ "gaussianSmoothing",
                              "hessianOfGaussianEigenvalues",
                              "laplacianOfGaussian"],
-            sigmas = [1.6, 4.2, 8.3],
-            use_fastfilters = True
+            sigmas = [1.6, 4.2, 8.3]
             ):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
+        import fastfilters
 
         # FIXME dirty hack to calculate features on the ditance trafo
         # FIXME the dt must be pre-computed for this to work
@@ -430,16 +433,12 @@ class DataSet(object):
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
 
-        if not calculation_2d and anisotropy_factor > 1. and use_fastfilters:
+        if not calculation_2d and anisotropy_factor > 1.:
             print "WARNING: Anisotropic feature calculation not supported in fastfilters yet."
             print "Using vigra filters instead."
-            use_fastfilters = False
-
-        if use_fastfilters:
-            import fastfilters
-            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
-        else:
             filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
+        else:
+            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
 
         # update the filter folder to the input
         filter_folder = os.path.join( filter_folder, input_name )
@@ -454,9 +453,12 @@ class DataSet(object):
 
         # for pure 2d calculation, we only take into account the slices individually
         if calculation_2d:
+
+            def _calc_filter_2d(z, out, filter_fu, sig):
+                out[:,:,z] = filter_fu(inp[:,:,z], sig)
+
             print "Calculating Filter in 2d"
             for filt_name in filter_names:
-                filter = eval(filt_name)
                 for sig in sigmas:
 
                     # check whether this is already there
@@ -464,48 +466,40 @@ class DataSet(object):
                     return_paths.append(filt_path)
 
                     if not os.path.exists(filt_path):
-
-                        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
-                            tasks = []
-                            for z in xrange(inp.shape[2]):
-                                tasks.append( executor.submit(filter, inp[:,:,z], sig ) )
-
-                        res = [task.result() for task in tasks]
-
-                        if res[0].ndim == 2:
-                            res = [re[:,:,None] for re in res]
-                        elif res[0].ndim == 3:
-                            res = [re[:,:,None,:] for re in res]
-                        res = np.concatenate( res, axis = 2)
-                        assert res.shape[0:2] == self.shape[0:2]
-                        vigra.writeHDF5(res, filt_path, filter_key)
+                        filter_fu = eval(filt_name)
+                        # determine if filter is single channel (!= hessian of gaussian EV)
+                        is_singlechannel = True if filt_name.split(".")[-1] != "hessianOfGaussianEigenvalues" else False
+                        with h5py.File(filt_path) as f:
+                            # determine correct shape  and chunks
+                            f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
+                            chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) + (2,)
+                            out = f.create_dataset(filter_key, shape = f_shape, dtype = 'float32', chunks = chunks)
+                            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+                                tasks = [executor.submit(_calc_filter_2d, z, out, filter_fu, sig) for z in xrange(inp.shape[2])]
+                                res = [task.result() for task in tasks]
 
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
             if anisotropy_factor != 1.:
                 sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
 
-            def _calc_and_write_filter(filter_function, sigma, filt_path):
-                if not os.path.exists(filt_path):
-                    filter_res = filter_function( inp, sig )
-                    assert filter_res.shape[0:2] == self.shape[0:2]
-                    vigra.writeHDF5(filter_res,
-                            filt_path,
-                            filter_key)
-                    return True
-                else:
-                    return False
+            def _calc_filter_3d(filter_function, sigma, filt_path):
+                filter_res = filter_function( inp, sig )
+                vigra.writeHDF5(filter_res,
+                        filt_path,
+                        filter_key,
+                        chunks = True)
 
-            # FIXME this could be too memory hungry for a lot of threads
             with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                 tasks = []
                 for filt_name in filter_names:
-                    filter = eval(filt_name)
                     for sig in sigmas:
-                        filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                        tasks.append( executor.submit(_calc_and_write_filter, filter, sig, filt_path) )
+                        if not os.path.exists(filt_path):
+                            filter_fu = eval(filt_name)
+                            filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
+                            tasks.append( executor.submit(_calc_filter_3d, filter_fu, sig, filt_path) )
                         return_paths.append(filt_path)
-                _ = [t.result() for t in tasks]
+                res = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
@@ -676,26 +670,31 @@ class DataSet(object):
             print "Accumulating features:", n, "/", N
             print "From:", path
 
-            filt = vigra.readHDF5(path, filter_key)
-            # check whether the shapes match, otherwise cutout the correct shape
-            # this happens in cutouts!
-            if filt.shape[0:3] != self.shape[0:3]:
-                assert self.is_subvolume, "This should only happen in cutouts!"
-                p = self.block_coordinates
-                o = self.block_offsets
-                filt = filt[p[0]+o[0]:p[1]+o[0],p[2]+o[1]:p[3]+o[1],p[4]+o[2]:p[5]+o[2]]
-            # now it gets hacky...
-            # for InverseCutouts, we have to remove the not covered part from the filter
-            if isinstance(self, InverseCutout):
-                p = self.cut_coordinates
-                filt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
+            # load the precomputed filter from file
+            with h5py.File(path) as f:
+                f_shape = f[filter_key].shape
 
-            # get the name (string magic....)
-            filt_name = os.path.split(path)[1][len("fastfilters."):]
+            # check whether the shapes match, otherwise get the correct shape
+            if f_shape[0:3] != self.shape:
+                assert isinstance(self, Cutout), "This should only happen in cutouts!"
+                with h5py.File(path) as f:
+                    filt = f[filter_key][self.bb]
+            else:
+                filt = vigra.readHDF5(path, filter_key)
+
+            # FIXME deprecated
+            ## now it gets hacky...
+            ## for InverseCutouts, we have to remove the not covered part from the filter
+            #if isinstance(self, InverseCutout):
+            #    p = self.cut_coordinates
+            #    filt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
 
             # accumulate over the edge
-            feats_acc, names_acc = self._accumulate_filter_over_edge(seg_id, filt,
-                    filt_name, rag)
+            feats_acc, names_acc = self._accumulate_filter_over_edge(
+                    seg_id,
+                    filt,
+                    os.path.split(path)[1],
+                    rag)
             edge_features.extend(feats_acc)
             edge_features_names.extend(names_acc)
 
@@ -754,6 +753,7 @@ class DataSet(object):
         return extractor, statistics
 
 
+    # TODO if we have a segmentation mask, restrict to it, otherewise this is horribly expensive for lifted edges
     @cacher_hdf5(folder = "feature_folder", ignoreNumpyArrays=True)
     def region_features(self, seg_id, inp_id, uv_ids, lifted_nh):
 
@@ -892,7 +892,7 @@ class DataSet(object):
         return n_ccs
 
 
-    # find the edget-type indications
+    # find the edge-type indications
     # 0 for z-edges, 1 for xy-edges
     @cacher_hdf5()
     def edge_indications(self, seg_id):
@@ -902,7 +902,25 @@ class DataSet(object):
         edge_indications = np.zeros(n_edges, dtype = 'uint8')
         uv_ids = rag.uvIds()
 
-        def _edge_indication(edge_id):
+        # TODO premature optimization ftw
+        # vectorized version, TODO debug
+        #z_coords = np.array([np.unique(rag.edgeCoordinates(edge_id)[:,2]) for edge_id in xrange(n_edges)])
+        #z_sizes  = np.array([z_co.size for z_co in z_coords], dtype = 'uint32')
+        ## check that coords with more than one z coordinate (== non-flat edges) have at least one ignore label
+        #non_flat = (z_sizes > 1)
+        #flat     = (z_sizes == 1)
+        #non_flat_uvs = uv_ids[non_flat]
+        #assert non_flat_uvs.shape[1] == 2, str(non_flat_uvs.shape)
+        #if not np.all( (non_flat_uvs == 0).any(axis=1) ):
+        #    assert False, "Edge indications can only be calculated for flat superpixel (except ignore label)"
+        ## only keep the flat z - coords
+        #z_diff = np.subtract( z_coords[flat], z_coords[flat].astype('uint8') )
+        #xy_edges = z_diff == 0
+        #z_edges  = z_diff > 0
+        #edge_indications[flat][xy_edges] = 1 # xy edges are set to 1
+        #edge_indications[flat][z_edges] = 0  # z edges are set to 0
+
+        for edge_id in xrange(n_edges):
             edge_coords = rag.edgeCoordinates(edge_id)
             z = np.unique(edge_coords[:,2])
             if z.size > 1:
@@ -910,15 +928,11 @@ class DataSet(object):
                 if not 0 in uv:
                     assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
                 else:
-                    return False
+                    continue
+            z = z[0]
             # check whether we have a z (-> 0) or a xy edge (-> 1)
             edge_indications[edge_id] = 1 if (z - int(z) == 0.) else 0
-            return True
 
-        # TODO num workers from global params
-        with futures.ThreadPoolExecutor(max_workers = 8) as executor:
-            tasks = [executor.submit(_edge_indication, edge_id) for edge_id in xrange( n_edges )]
-        results = [t.result() for t in tasks]
         return edge_indications
 
 
@@ -1385,11 +1399,14 @@ class Cutout(DataSet):
         # we need it for make_filters
         self.ancestor_folder = ancestor_folder
 
-        # we need to copy the ignore masks
+        self.bb = np.s_[
+                self.block_coordinates[0]+self.block_offsets[0]:self.block_coordinates[1]+self.block_offsets[0],
+                self.block_coordinates[2]+self.block_offsets[1]:self.block_coordinates[3]+self.block_offsets[1],
+                self.block_coordinates[4]+self.block_offsets[2]:self.block_coordinates[5]+self.block_offsets[2]
+                ]
 
 
-    # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
-
+        # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
     # add path to the raw data from original ds
     # expects hdf5 input
     def add_raw(self, raw_path):
@@ -1423,9 +1440,8 @@ class Cutout(DataSet):
         if inp_id >= self.n_inp:
             raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
         inp_path = self.inp_path[inp_id]
-        p = self.block_coordinates
-        o = self.block_offsets
-        return vigra.readHDF5(inp_path, "data")[p[0]+o[0]:p[1]+o[0],p[2]+o[1]:p[3]+o[1],p[4]+o[2]:p[5]+o[2]]
+        with h5py.File(inp_path) as f:
+            return f['data'][self.bb]
 
 
     # seg and gt can't be reimplemented that way, because they need to be connected!

@@ -2,7 +2,6 @@ from MetaSet import MetaSet
 from DataSet import DataSet
 from MCSolver import multicut_workflow, lifted_multicut_workflow, multicut_workflow_with_defect_correction, lifted_multicut_workflow_with_defect_correction
 from ExperimentSettings import ExperimentSettings
-from Tools import edges_to_binary
 from Postprocessing import merge_small_segments, remove_small_segments
 from lifted_mc import compute_and_save_long_range_nh, optimizeLifted
 

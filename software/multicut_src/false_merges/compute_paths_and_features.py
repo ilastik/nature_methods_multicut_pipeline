@@ -117,7 +117,7 @@ def path_features_from_feature_images(
         params):
 
     # FIXME for now we don't use fastfilters here
-    feat_paths = ds.make_filters(inp_id, anisotropy_factor, use_fastfilters = False)
+    feat_paths = ds.make_filters(inp_id, anisotropy_factor)
     #print feat_paths
     # TODO sort the feat_path correctly
     # load the feature images ->

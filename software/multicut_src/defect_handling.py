@@ -157,6 +157,52 @@ def get_skip_starts(ds, seg_id):
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
 
+# this should be fast enough for now
+def compute_skip_edges_z(
+        z,
+        seg,
+        defect_node_dict):
+
+    def skip_edges_for_nodes(z_up, z_dn, nodes_dn, mask):
+        skip_range = z_up - z_dn
+        skip_edges, skip_ranges = [], []
+
+        defect_nodes_up = np.array( defect_node_dict.get(z_up,[]) )
+        for node_dn in nodes_dn:
+            # find the connected nodes in the upper slice
+            mask_dn = seg[:,:,z_dn][mask] == node_dn
+            seg_up = seg[:,:,z_up][mask]
+            connected_nodes = np.unique( seg_up[mask_dn] )
+            # if any of the connected nodes are defected go to the next slice
+            if defect_nodes_up.size:
+                if np.intersect1d(connected_nodes, defect_nodes_up).size: # check if any of upper nodes is defected
+                    skip_edges, skip_ranges = skip_edges_for_nodes(z_up+1, z_dn, nodes_dn, mask)
+                    break
+            skip_edges.extend( [(node_dn, conn_node) for conn_node in connected_nodes] )
+            skip_ranges.extend( len(connected_nodes) * [skip_range] )
+
+        return skip_edges, skip_ranges
+
+    skip_edges_z = []
+    skip_ranges_z = []
+    defect_nodes_z = defect_node_dict[z]
+
+    for defect_node in defect_nodes_z:
+        # get the mask
+        mask = seg[:,:,z] == defect_node
+        # find the lower nodes overlapping with the defect in the lower slice
+        nodes_dn = np.unique( seg[:,:,z-1][mask] )
+        # discard defected nodes in lower slice (if present) because they were already taken care of
+        nodes_dn = np.array([n_dn for n_dn in nodes_dn if n_dn not in defect_nodes_z])
+        # if we have lower nodes left, we look for skip edges
+        if nodes_dn.size:
+            skip_edges_u, skip_ranges_u = skip_edges_for_nodes(z+1, z-1, nodes_dn, mask)
+            skip_edges_z.extend(skip_edges_u)
+            skip_ranges_z.extend(skip_ranges_u)
+
+    return skip_edges_z, skip_ranges_z
+
+
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id):
     if not ds.defect_slices:
@@ -170,10 +216,11 @@ def modified_adjacency(ds, seg_id):
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(nodes_z.astype(int)) >= 0), "Defected slice index is not increasing monotonically!"
     defect_slices = np.unique(nodes_z)
-    defect_node_dict = {int(z) : list(defect_nodes[nodes_z == z].astype(int)) for z in defect_slices}
+    defect_node_dict = {int(z) : defect_nodes[nodes_z == z].astype('uint32').tolist() for z in defect_slices}
 
     # FIXME TODO can't do this here once we have individual defect patches
-    consecutive_defect_slices = np.split(defect_slices, np.where(np.diff(defect_slices) != 1)[0] + 1)
+    consecutive_defect_slices = np.split(
+            defect_slices, np.where(np.diff(defect_slices) != 1)[0] + 1)
     has_lower_defect_list = []
     for consec in consecutive_defect_slices:
         if len(consec) > 1:
@@ -183,78 +230,6 @@ def modified_adjacency(ds, seg_id):
     rag = ds._rag(seg_id)
     seg = ds.seg(seg_id)
     edge_indications = ds.edge_indications(seg_id)
-
-    def modified_adjacency_node(z_up, z_dn, nodes_dn, mask):
-        skip_range = z_up - z_dn
-        skip_edges, skip_ranges = [], []
-
-        for node_dn in nodes_dn:
-            # find the connected nodes in the upper slice
-            coords_dn = np.where(seg[:,:,z_dn][mask] == node_dn)
-            seg_up = seg[:,:,z_up][mask]
-            connected_nodes = np.unique( seg_up[coords_dn] )
-            # if any of the connected nodes are defected go to the next slice
-            has_upper_defect = False
-            for conn_node in connected_nodes:
-                if conn_node in defect_node_dict.get(z_up,[]):
-                    has_upper_defect = True
-                    break
-            if has_upper_defect:
-                skip_edges, skip_ranges = modified_adjacency_node(z_up+1, z_dn, nodes_dn, mask)
-                break
-            else:
-                for conn_node in connected_nodes:
-                    skip_edges.append((node_dn, conn_node))
-                    skip_ranges.append(skip_range)
-        return skip_edges, skip_ranges
-
-    # FIXME this won't really parallelize due to GIL
-    def modified_adjacency_z(z, has_lower_defect):
-        defect_nodes_z = defect_node_dict[z]
-        delete_edges_z = []
-        ignore_edges_z = []
-
-        # get delete and ignore edges in slice
-        for defect_node in defect_nodes_z:
-            rag_node = rag.nodeFromId(defect_node)
-            for nn_node in rag.neighbourNodeIter(rag_node):
-                edge_id = rag.findEdge(rag_node, nn_node).id
-                if edge_indications[edge_id]: # we have a in-plane edge -> add this to the ignore edges, if the neighbouring node is also defected
-                    if nn_node.id in defect_nodes_z:
-                        # we store the uv-ids for ignore edges, because the actual edge id will change due to skip and delete edges
-                        ignore_edges_z.append( (rag_node.id, nn_node.id) )
-                else: # we have a in-between-planes edge -> add this to the delete edges
-                    delete_edges_z.append(edge_id)
-
-        # get the skip edges between adjacent slices
-        # skip for first or last slice or slice with lower defect
-        if z == 0 or z == seg.shape[2] - 1 or has_lower_defect:
-            return delete_edges_z, ignore_edges_z, [], []
-
-        skip_edges_z = []
-        skip_ranges_z = []
-
-        mask = np.zeros(seg.shape[:2], dtype = bool)
-        coords_u_prev = []
-
-        for defect_node in defect_nodes_z:
-            # reset the mask
-            if coords_u_prev:
-                mask[coords_u_prev] = False
-            # get the coords of this node
-            coords_u = np.where(seg[:,:,z] == defect_node)
-            # set the mask
-            mask[coords_u] = True
-            # find the lower nodes overlapping with the defect in the lower slice
-            nodes_dn = np.unique( seg[:,:,z-1][mask] )
-            # discard defected nodes in lower slice (if present) because they were already taken care of
-            nodes_dn = np.array([n_dn for n_dn in nodes_dn if n_dn not in defect_nodes_z])
-            # if we have lower nodes left, we look for skip edges
-            if nodes_dn.size:
-                skip_edges_u, skip_ranges_u = modified_adjacency_node(z+1, z-1, nodes_dn, mask)
-                skip_edges_z.extend(skip_edges_u)
-                skip_ranges_z.extend(skip_ranges_u)
-        return delete_edges_z, ignore_edges_z, skip_edges_z, skip_ranges_z
 
     delete_edges = [] # the z-edges between defected and non-defected nodes that are deleted from the graph
     ignore_edges = [] # the xy-edges between defected and non-defected nodes, that will be set to maximally repulsive weights
@@ -268,10 +243,35 @@ def modified_adjacency(ds, seg_id):
     #    tasks = []
     for i,z in enumerate(defect_slices):
         print "Processing slice %i: %i / %i" % (z,i,len(defect_slices))
-        has_lower_defect = True if z in has_lower_defect_list else False
-        delete_edges_z, ignore_edges_z, skip_edges_z, skip_ranges_z = modified_adjacency_z( z, has_lower_defect)
+
+        # get delete and ignore edges in slice
+        delete_edges_z, ignore_edges_z = [], []
+        defect_nodes_z = defect_node_dict[z]
+        for defect_node in defect_nodes_z:
+            rag_node = rag.nodeFromId(defect_node)
+            for nn_node in rag.neighbourNodeIter(rag_node):
+                edge_id = rag.findEdge(rag_node, nn_node).id
+                if edge_indications[edge_id]: # we have a in-plane edge -> add this to the ignore edges, if the neighbouring node is also defected
+                    if nn_node.id in defect_nodes_z:
+                        # we store the uv-ids for ignore edges, because the actual edge id will change due to skip and delete edges
+                        ignore_edges_z.append( (rag_node.id, nn_node.id) )
+                else: # we have a in-between-planes edge -> add this to the delete edges
+                    delete_edges_z.append(edge_id)
+
         delete_edges.extend(delete_edges_z)
         ignore_edges.extend(ignore_edges_z)
+
+        # get the skip edges between adjacent slices
+        # skip for first or last slice or slice with lower defect
+        has_lower_defect = True if z in has_lower_defect_list else False
+        if z == 0 or z == seg.shape[2] - 1 or has_lower_defect:
+            continue
+
+        skip_edges_z, skip_ranges_z = compute_skip_edges_z(
+                z,
+                seg,
+                defect_node_dict)
+
         assert len(skip_edges_z) == len(skip_ranges_z)
         skip_edges.extend(skip_edges_z)
         skip_ranges.extend(skip_ranges_z)
@@ -314,12 +314,16 @@ def modified_adjacency(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_indications(ds, seg_id):
     modified_indications = ds.edge_indications(seg_id)
+    n_edges = modified_indications.shape[0]
     if not ds.defect_slices:
         return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
     delete_edges = get_delete_edges(ds, seg_id)
     modified_indications = np.delete(modified_indications, delete_edges)
-    return np.concatenate( [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
+    modified_indications = np.concatenate(
+            [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
+    assert modified_indications.shape[0] == n_edges - delete_edges.shape[0] + skip_edges.shape[0]
+    return modified_indications
 
 
 @cacher_hdf5()
@@ -613,10 +617,12 @@ def modified_mc_problem(ds, seg_id):
         return nvar, uvs
 
     modified_uv_ids = ds._adjacent_segments(seg_id)
+    n_edges = modified_uv_ids.shape[0]
     delete_edges = get_delete_edges(ds, seg_id)
     modified_uv_ids = np.delete(modified_uv_ids, delete_edges, axis = 0)
     skip_edges   = get_skip_edges(ds, seg_id)
     modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
+    assert modified_uv_ids.shape[0] == n_edges - delete_edges.shape[0] + skip_edges.shape[0]
     assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
     # assume consecutive segmentation here
     n_var = ds.seg(seg_id).max() + 1

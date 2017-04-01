@@ -28,6 +28,7 @@ requirements:
         - nifty-with-cplex
         - h5py >=2.7
         - futures
+        - fastfilters >=0.2.4.post3
 
 test:
     imports:
