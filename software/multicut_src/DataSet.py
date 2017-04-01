@@ -676,26 +676,31 @@ class DataSet(object):
             print "Accumulating features:", n, "/", N
             print "From:", path
 
-            filt = vigra.readHDF5(path, filter_key)
-            # check whether the shapes match, otherwise cutout the correct shape
-            # this happens in cutouts!
-            if filt.shape[0:3] != self.shape[0:3]:
-                assert self.is_subvolume, "This should only happen in cutouts!"
-                p = self.block_coordinates
-                o = self.block_offsets
-                filt = filt[p[0]+o[0]:p[1]+o[0],p[2]+o[1]:p[3]+o[1],p[4]+o[2]:p[5]+o[2]]
-            # now it gets hacky...
-            # for InverseCutouts, we have to remove the not covered part from the filter
-            if isinstance(self, InverseCutout):
-                p = self.cut_coordinates
-                filt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
+            # load the precomputed filter from file
+            with h5py.File(path) as f:
+                f_shape = f[filter_key].shape
 
-            # get the name (string magic....)
-            filt_name = os.path.split(path)[1][len("fastfilters."):]
+            # check whether the shapes match, otherwise get the correct shape
+            if f_shape[0:3] != self.shape:
+                assert isinstance(self, Cutout), "This should only happen in cutouts!"
+                with h5py.File(path) as f:
+                    filt = f[filter_key][self.bb]
+            else:
+                filt = vigra.readHDF5(path, filter_key)
+
+            # FIXME deprecated
+            ## now it gets hacky...
+            ## for InverseCutouts, we have to remove the not covered part from the filter
+            #if isinstance(self, InverseCutout):
+            #    p = self.cut_coordinates
+            #    filt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
 
             # accumulate over the edge
-            feats_acc, names_acc = self._accumulate_filter_over_edge(seg_id, filt,
-                    filt_name, rag)
+            feats_acc, names_acc = self._accumulate_filter_over_edge(
+                    seg_id,
+                    filt,
+                    os.path.split(path)[1],
+                    rag)
             edge_features.extend(feats_acc)
             edge_features_names.extend(names_acc)
 
@@ -1399,11 +1404,14 @@ class Cutout(DataSet):
         # we need it for make_filters
         self.ancestor_folder = ancestor_folder
 
-        # we need to copy the ignore masks
+        self.bb = np.s_[
+                self.block_coordinates[0]+self.block_offsets[0]:self.block_coordinates[1]+self.block_offsets[0],
+                self.block_coordinates[2]+self.block_offsets[1]:self.block_coordinates[3]+self.block_offsets[1],
+                self.block_coordinates[4]+self.block_offsets[2]:self.block_coordinates[5]+self.block_offsets[2]
+                ]
 
 
-    # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
-
+        # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
     # add path to the raw data from original ds
     # expects hdf5 input
     def add_raw(self, raw_path):
@@ -1437,9 +1445,8 @@ class Cutout(DataSet):
         if inp_id >= self.n_inp:
             raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
         inp_path = self.inp_path[inp_id]
-        p = self.block_coordinates
-        o = self.block_offsets
-        return vigra.readHDF5(inp_path, "data")[p[0]+o[0]:p[1]+o[0],p[2]+o[1]:p[3]+o[1],p[4]+o[2]:p[5]+o[2]]
+        with h5py.File(inp_path) as f:
+            return f['data'][self.bb]
 
 
     # seg and gt can't be reimplemented that way, because they need to be connected!

@@ -143,11 +143,12 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
         edge_indications = modified_edge_indications(ds, seg_id)[:skip_transition]
         labels_skip = labels_debug[skip_transition:]
         uv_skip     = uv_ids[skip_transition:]
-        labes_debug = labels_debug[:skip_transition]
+        labels_debug = labels_debug[:skip_transition]
         uv_ids      = uv_ids[:skip_transition]
     else:
         edge_indications = ds.edge_indications(seg_id)
 
+    assert edge_indications.shape[0] == labels_debug.shape[0], "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
     # xy - and z - labels
     labels_xy = labels_debug[edge_indications == 1]
     labels_z  = labels_debug[edge_indications == 0]
@@ -232,7 +233,13 @@ def learn_rf(cache_folder,
                 with_defects)
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
-        view_edges(cutout, seg_id, uv_ids, labels_cut, labeled, with_defects)
+        if True:
+            view_edges(cutout,
+                    seg_id,
+                    uv_ids,
+                    labels_cut,
+                    labeled,
+                    with_defects and cutout.defect_slices)
 
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint32')

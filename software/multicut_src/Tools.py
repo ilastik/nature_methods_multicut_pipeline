@@ -230,14 +230,14 @@ def edges_to_volume_from_uvs_in_plane(seg, uv_ids, edge_labels):
 # for visualizing edges
 def edges_to_volume_from_uvs_between_plane(seg, uv_ids, edge_labels):
     from cython_tools import fast_edge_volume_from_uvs_between_plane
-    print "Computing edge volume from uv ids in plane"
+    print "Computing edge volume from uv ids between planes"
     assert uv_ids.shape[0] == edge_labels.shape[0]
     return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels)
 
 
 def edges_to_volumes_for_skip_edges(seg, uv_ids, edge_labels):
-    print "Computing edge volume from uv ids"
-    volume = np.zeros(seg.shape, dtype = np.uint32)
+    print "Computing edge volume for skip edges"
+    volume = np.zeros(seg.shape, dtype = edge_labels.dtype)
     n_edges = len(uv_ids)
 
     #for e_id, uv in enumerate(uv_ids):
@@ -251,8 +251,12 @@ def edges_to_volumes_for_skip_edges(seg, uv_ids, edge_labels):
         u, v = uv
         coords_u = np.where(seg == u)
         coords_v = np.where(seg == v)
-        coords_u = np.concatenate( [coords_u[0][:,None], coords_u[1][:,None], coords_u[2][:,None]], axis = 1 )
-        coords_v = np.concatenate( [coords_v[0][:,None], coords_v[1][:,None], coords_v[2][:,None]], axis = 1 )
+        coords_u = np.concatenate(
+                [coords_u[0][:,None], coords_u[1][:,None], coords_u[2][:,None]],
+                axis = 1 )
+        coords_v = np.concatenate(
+                [coords_v[0][:,None], coords_v[1][:,None], coords_v[2][:,None]],
+                axis = 1 )
         z_u = np.unique(coords_u[:,2])
         z_v = np.unique(coords_v[:,2])
         assert z_u.size == 1
@@ -264,8 +268,14 @@ def edges_to_volumes_for_skip_edges(seg, uv_ids, edge_labels):
         # get the intersecting coordinates:
         # cf: http://stackoverflow.com/questions/8317022/get-intersecting-rows-across-two-2d-numpy-arrays
         intersect = np.array([x for x in ( set(tuple(x) for x in coords_u[:,:2]) & set(tuple(x) for x in coords_v[:,:2]) ) ])
-        intersect_u = np.concatenate( [intersect, z_u * np.ones( (intersect.shape[0],1), intersect.dtype )], axis = 1 )
-        intersect_v = np.concatenate( [intersect, z_v * np.ones( (intersect.shape[0],1), intersect.dtype )], axis = 1 )
+        intersect_u = (
+                intersect[:,0],
+                intersect[:,1],
+                z_u * np.ones(intersect.shape[0], intersect.dtype) )
+        intersect_v = (
+                intersect[:,0],
+                intersect[:,1],
+                z_v * np.ones(intersect.shape[0], intersect.dtype) )
         volume[intersect_u] = val
         volume[intersect_v] = val
 
