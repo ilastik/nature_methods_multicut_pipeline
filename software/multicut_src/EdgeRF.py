@@ -5,7 +5,7 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
@@ -154,15 +154,25 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
     uv_z  = uv_ids[edge_indications == 0]
 
     seg = ds.seg(seg_id)
-    edge_vol_xy = edges_to_volume_from_uvs_in_plane(seg, uv_xy, labels_xy)
-    edge_vol_z  = edges_to_volume_from_uvs_between_plane(seg, uv_z, labels_z)
+    edge_vol_xy = edges_to_volume_from_uvs_in_plane(ds, seg, uv_xy, labels_xy)
+    edge_vol_z  = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z)
+
+    raw  = ds.inp(0).astype('float32')
 
     if with_defects:
-        edge_vol_skip = edges_to_volumes_for_skip_edges(seg, uv_skip, labels_skip)
-        volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
+        skip_ranges = get_skip_ranges(ds, seg_id)
+        skip_starts = get_skip_starts(ds, seg_id)
+        edge_vol_skip = edges_to_volumes_for_skip_edges(
+                ds,
+                seg,
+                uv_skip,
+                labels_skip,
+                skip_starts,
+                skip_ranges)
+        volumina_n_layer([raw, seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
                 ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z', 'labels_skip'])
     else:
-        volumina_n_layer([ds.inp(0), seg, ds.gt(), edge_vol_xy, edge_vol_z],
+        volumina_n_layer([raw, seg, ds.gt(), edge_vol_xy, edge_vol_z],
                 ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
 
 
@@ -233,7 +243,7 @@ def learn_rf(cache_folder,
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspect the skip edges
-        if False:
+        if True:
             view_edges(cutout,
                     seg_id,
                     uv_ids,

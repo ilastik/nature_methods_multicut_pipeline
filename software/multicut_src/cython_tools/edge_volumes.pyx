@@ -72,10 +72,38 @@ def fast_edge_volume_from_uvs_between_plane(
                 if z + 1 < shape[2]:
                     l_u = seg[x,y,z]
                     l_v = seg[x,y,z+1]
-                    try: # we may not have a corresponding edge-id due to defects
+                    try: # we may not have a corresponding edge-id due to defects and ignore mask
                         e_id = uv_id_dict[ (min(l_u,l_v), max(l_u,l_v)) ]
                         volume[x,y,z] = edge_labels[e_id]
                         volume[x,y,z+1] = edge_labels[e_id]
                     except KeyError:
                         continue
     return volume
+
+
+def fast_edge_volume_for_skip_edges_slice(
+        np.ndarray[LabelType, ndim=2] seg_dn,
+        np.ndarray[LabelType, ndim=2] seg_up,
+        np.ndarray[LabelType, ndim=2] skip_uv_ids,
+        np.ndarray[ValueType, ndim=1] edge_labels
+        ):
+    
+    cdef np.ndarray[ValueType, ndim=2] volume_dn = np.zeros_like(seg_dn, dtype = PyValueType)
+    cdef np.ndarray[ValueType, ndim=2] volume_up = np.zeros_like(seg_dn, dtype = PyValueType)
+    
+    # make a uv-> id to edge label dict
+    uv_id_dict = { (uv[0],uv[1]) : i for i, uv in enumerate(skip_uv_ids) }
+    
+    for x in xrange(volume_dn.shape[0]):
+        for y in xrange(volume_dn.shape[1]):
+            l_u = volume_dn[x,y]
+            l_v = volume_up[x,y]
+            
+            try: # we may not have a corresponding edge-id due to ignore mask
+                e_id = uv_id_dict[ (min(l_u,l_v), max(l_u,l_v)) ]
+                volume_dn[x,y] = edge_labels[e_id]
+                volume_up[x,y] = edge_labels[e_id]
+            except KeyError:
+                continue
+
+    return volume_dn, volume_up
