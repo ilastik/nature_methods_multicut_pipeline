@@ -15,7 +15,7 @@ from Tools import cacher_hdf5, cache_name
 #      -> we can assert this every time we need flat superpix for a specific function
 class DataSet(object):
 
-    def __init__(self, meta_folder, ds_name, block_coordinates = None):
+    def __init__(self, meta_folder, ds_name):
         if not os.path.exists(meta_folder):
             os.mkdir(meta_folder)
 
@@ -38,12 +38,6 @@ class DataSet(object):
         self.n_seg = 0
 
         self.has_gt = False
-
-        self.is_subvolume = False
-        if block_coordinates is not None:
-            assert len(block_coordinates) == 6
-            self.block_coordinates = block_coordinates
-            self.is_subvolume = True
 
         # cutouts, tesselations and inverse cutouts
         self.cutouts   = []
@@ -98,10 +92,8 @@ class DataSet(object):
         self.has_seg_mask = True
         if self.n_seg > 0:
             print "WARNING: Adding a segmentation mask does not change existing segmentations."
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert mask.shape[0] >= p[1] and mask.shape[1] >= p[3] and mask.shape[2] >= p[5]
-            mask = mask[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
+        if isinstance(self, Cutout):
+            mask = mask[self.bb]
         assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
         save_path = os.path.join(self.cache_folder,"seg_mask.h5")
         vigra.writeHDF5(mask, save_path, 'data', compression = self.compression)
@@ -117,11 +109,6 @@ class DataSet(object):
 
     def _add_raw(self, raw):
         assert len(raw.shape) == 3, "Only 3d data supported"
-        # for subvolume make sure that boundaries are included
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert raw.shape[0] >= p[1] and raw.shape[1] >= p[3] and raw.shape[2] >= p[5]
-            raw = raw[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         self.shape = raw.shape
         save_path = os.path.join(self.cache_folder,"inp0.h5")
         vigra.writeHDF5(raw, save_path, "data", chunks = True)
@@ -148,10 +135,6 @@ class DataSet(object):
 
 
     def _add_input(self, pixmap):
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert pixmap.shape[0] >= p[1] and pixmap.shape[1] >= p[3] and pixmap.shape[2] >= p[5]
-            pixmap = pixmap[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
         assert pixmap.shape[:3] == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
         save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
         vigra.writeHDF5(pixmap, save_path, "data", chunks = True)
@@ -185,10 +168,8 @@ class DataSet(object):
 
 
     def _add_seg(self, seg):
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert seg.shape[0] >= p[1] and seg.shape[1] >= p[3] and seg.shape[2] >= p[5]
-            seg = seg[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
+        if isinstance(self, Cutout):
+            seg = seg[self.bb]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
@@ -231,10 +212,8 @@ class DataSet(object):
 
 
     def _add_gt(self, gt):
-        if self.is_subvolume:
-            p = self.block_coordinates
-            assert gt.shape[0] >= p[1] and gt.shape[1] >= p[3] and gt.shape[2] >= p[5]
-            gt = gt[p[0]: p[1], p[2]: p[3], p[4]: p[5]]
+        if isinstance(self, Cutout):
+            gt = gt[self.bb]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
         # also messes up defects in cremi...
@@ -1406,9 +1385,10 @@ class DataSet(object):
 class Cutout(DataSet):
 
     def __init__(self, meta_folder, ds_name, block_coordinates, ancestor_folder, block_offsets):
-        super(Cutout, self).__init__(meta_folder, ds_name, block_coordinates )
+        super(Cutout, self).__init__(meta_folder, ds_name)
 
         self.inp_path = []
+        self.block_coordinates = block_coordinates
         self.shape = (self.block_coordinates[1] - self.block_coordinates[0],
                 self.block_coordinates[3] - self.block_coordinates[2],
                 self.block_coordinates[5] - self.block_coordinates[4])
@@ -1434,7 +1414,8 @@ class Cutout(DataSet):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
         assert os.path.exists(raw_path), raw_path
-        shape = vigra.readHDF5(raw_path, "data").shape
+        with h5py.File(raw_path) as f:
+            shape = f['data'].shape
         assert len(shape) == 3, "Only 3d data supported"
         # for subvolume make sure that boundaries are included
         p = self.block_coordinates
@@ -1449,7 +1430,8 @@ class Cutout(DataSet):
     def add_input(self, inp_path):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        shape = vigra.readHDF5(inp_path, "data").shape
+        with h5py.File(inp_path) as f:
+            shape = f['data'].shape
         p = self.block_coordinates
         assert shape[0] >= p[1] and shape[1] >= p[3] and shape[2] >= p[5]
         self.inp_path.append(inp_path)
@@ -1508,6 +1490,7 @@ class Cutout(DataSet):
 
 # the inverse of a cutout
 # implemented for crossvalidation mc style
+# FIXME this is deprecated
 class InverseCutout(Cutout):
 
     def __init__(self, meta_folder, inv_cut_name, cut_id,
@@ -1515,6 +1498,8 @@ class InverseCutout(Cutout):
         self.cut_id = cut_id
         self.cut_coordinates = cut_coordinates
         self.shape = vol_shape
+
+        print "WARNNG InverseCutout is deprecated!"
 
         self.cache_folder = os.path.join(meta_folder, inv_cut_name)
         self.ds_name = inv_cut_name
