@@ -751,34 +751,26 @@ class DataSet(object):
                 self.seg(seg_id).astype(np.uint32),
                 features = statistics )
 
-        regStats = []
-        regStatNames = []
+        node_features = np.concatenate(
+            [extractor[stat_name][:,None].astype('float32') if extractor[stat_name].ndim == 1 else extractor[stat_name].astype('float32') for stat_name in statistics],
+            axis = 1)
 
-        for regStatName in statistics[:9]:
-            regStat = extractor[regStatName].astype('float32')
-            if regStat.ndim == 1:
-                regStats.append(regStat[:,None])
-            else:
-                regStats.append(regStat)
-            regStatNames.extend([regStatName for _ in xrange(regStats[-1].shape[1])])
-        regStats = np.concatenate(regStats, axis=1)
+        reg_stat_names = list(itertools.chain.from_iterable(
+            [ [stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim>1 else [stat_name] for stat_name in statistics[:9] ] ))
 
-        regCenters = []
-        regCenterNames = []
-        for regStatName in  statistics[9:]:
-            regCenter = extractor[regStatName].astype('float32')
-            if regCenter.ndim == 1:
-                regCenters.append(regCenter[:,None])
-            else:
-                regCenters.append(regCenter)
-            regCenterNames.extend([regStatName for _ in xrange(regCenters[-1].shape[1])])
-        regCenters = np.concatenate(regCenters, axis=1)
+        reg_center_names = list(itertools.chain.from_iterable(
+            [ [stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:] ] ))
+
+        # this is the number of node feats that are combined with min, max, sum, absdiff
+        # in conrast to center feats, which are combined with euclidean distance
+        n_stat_feats = 17 # magic_nu...
 
         save_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
-        vigra.writeHDF5(regStats, save_path, "region_statistics")
-        vigra.writeHDF5(regStatNames, save_path, "region_statistics_names")
-        vigra.writeHDF5(regCenters, save_path, "region_centers")
-        vigra.writeHDF5(regCenterNames, save_path, "region_center_names")
+
+        vigra.writeHDF5(node_features[:,:n_stat_feats], save_path, "region_statistics")
+        vigra.writeHDF5(reg_stat_names, save_path, "region_statistics_names")
+        vigra.writeHDF5(node_features[:,n_stat_feats:], save_path, "region_centers")
+        vigra.writeHDF5(reg_center_names, save_path, "region_center_names")
 
         return statistics
 

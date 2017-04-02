@@ -454,16 +454,10 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     modified_features = np.delete(modified_features, delete_edges, axis = 0)
     modified_features = np.c_[modified_features, np.ones(modified_features.shape[0])]
 
+    ds._region_statistics(seg_id, inp_id)
+    region_statistics_path = cache_name("_region_statistics", "feature_folder", False, False, ds, seg_id, inp_id)
     # add features for the skip edges
-    extracted_features, stat_names  = ds._region_statistics(seg_id, inp_id)
-    node_features = np.concatenate(
-        [extracted_features[stat_name][:,None] if extracted_features[stat_name].ndim == 1 else extracted_features[stat_name] for stat_name in stat_names],
-        axis = 1)
-
-    #del extracted_features
-
-    n_stat_feats = 17 # magic_nu...
-    region_stats = node_features[:,:n_stat_feats]
+    region_stats = vigra.readHDF5(region_statistics_path, 'region_statistics')
 
     fU = region_stats[skip_edges[:,0],:]
     fV = region_stats[skip_edges[:,1],:]
@@ -474,7 +468,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
         fU + fV], axis = 1)
 
     # features based on region center differences
-    region_centers = node_features[:,n_stat_feats:]
+    region_centers = vigra.readHDF5(region_statistics_path, 'region_centers')
     sU = region_centers[skip_edges[:,0],:]
     sV = region_centers[skip_edges[:,1],:]
     skip_center_feats = np.c_[(sU - sV)**2, skip_ranges]
