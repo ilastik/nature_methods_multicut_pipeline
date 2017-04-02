@@ -65,38 +65,6 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
     return edge_energies
 
 
-# TODO weight connections in plane: kappa=20
-def lifted_probs_to_energies(ds,
-        edge_probs,
-        seg_id,
-        edgeZdistance,
-        lifted_nh,
-        betaGlobal=0.5,
-        gamma=1.,
-        with_defects = False):
-
-    p_min = 0.001
-    p_max = 1. - p_min
-    edge_probs = (p_max - p_min) * edge_probs + p_min
-
-    # probabilities to energies, second term is boundary bias
-    e = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - betaGlobal) / betaGlobal )
-
-    # additional weighting
-    e /= gamma
-
-    # weight down the z - edges with increasing distance
-    if edgeZdistance is not None:
-        e /= (edgeZdistance + 1.)
-
-    # set the edges within the segmask to be maximally repulsive
-    # these should all be removed, check !
-    if ds.has_seg_mask:
-        uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
-        assert np.sum((uv_ids == 0).any(axis = 1)) == 0
-
-    return e
-
 
 # weight z edges with their area
 def weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):

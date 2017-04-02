@@ -6,6 +6,7 @@ import sys
 
 from DataSet import DataSet, InverseCutout
 from ExperimentSettings import ExperimentSettings
+# FIXME only import what we need !!!
 from MCSolverImpl import *
 from EdgeRF import *
 from lifted_mc import *
@@ -200,7 +201,7 @@ def lifted_multicut_workflow(ds_train, ds_test,
             pTestLifted,
             seg_id_test,
             edgeZdistance,
-            mc_params.lifted_nh,
+            mc_params.lifted_neighborhood,
             gamma = gamma,
             betaGlobal = mc_params.beta_global)
 
@@ -282,7 +283,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
             pTestLifted,
             seg_id_test,
             edgeZdistance,
-            mc_params.lifted_nh,
+            mc_params.lifted_neighborhood,
             gamma = gamma,
             betaGlobal = mc_params.beta_global,
             with_defects = True)
@@ -312,6 +313,8 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         starting_point = None
 
     print "optimize"
-    nodeLabels = optimizeLifted(ds_test, model, starting_point)
+    nodeLabels = optimizeLifted(uv_ids_local, uvIds,
+            edge_energies_local, edge_energies_lifted,
+            starting_point)
     edgeLabels = nodeLabels[uv_ids_local[:,0]]!=nodeLabels[uv_ids_local[:,1]]
     return nodeLabels, edgeLabels, -14, 100

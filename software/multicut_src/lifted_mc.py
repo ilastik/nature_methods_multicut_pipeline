@@ -6,7 +6,8 @@ import vigra
 import vigra.graphs as vgraph
 import graph as agraph
 
-from MCSolverImpl import *
+from DataSet import DataSet
+from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt
 
@@ -877,3 +878,35 @@ def optimizeLifted(uvs_local,
     nodeLabels = nodeLabels.astype('uint32')
 
     return nodeLabels
+
+# TODO weight connections in plane: kappa=20
+def lifted_probs_to_energies(ds,
+        edge_probs,
+        seg_id,
+        edgeZdistance,
+        lifted_nh,
+        betaGlobal=0.5,
+        gamma=1.,
+        with_defects = False):
+
+    p_min = 0.001
+    p_max = 1. - p_min
+    edge_probs = (p_max - p_min) * edge_probs + p_min
+
+    # probabilities to energies, second term is boundary bias
+    e = numpy.log( (1. - edge_probs) / edge_probs ) + numpy.log( (1. - betaGlobal) / betaGlobal )
+
+    # additional weighting
+    e /= gamma
+
+    # weight down the z - edges with increasing distance
+    if edgeZdistance is not None:
+        e /= (edgeZdistance + 1.)
+
+    # set the edges within the segmask to be maximally repulsive
+    # these should all be removed, check !
+    if ds.has_seg_mask:
+        uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
+        assert numpy.sum((uv_ids == 0).any(axis = 1)) == 0
+
+    return e
