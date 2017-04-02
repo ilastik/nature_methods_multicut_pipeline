@@ -246,8 +246,6 @@ def edges_to_volumes_for_skip_edges(seg, uv_ids, edge_labels):
         val = edge_labels[e_id]
         if val == 0: # 0 labels are ignored
             return False
-        if 0 in uv and ignore_zeros: # if ignore zeros, we assume that the zero seg-id is ignored
-            return False
         u, v = uv
         coords_u = np.where(seg == u)
         coords_v = np.where(seg == v)
