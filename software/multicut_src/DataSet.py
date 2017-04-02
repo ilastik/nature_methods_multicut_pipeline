@@ -451,55 +451,40 @@ class DataSet(object):
         # TODO set max_workers with ppl param value!
         n_workers = 8
 
-        # for pure 2d calculation, we only take into account the slices individually
+        def _calc_filter_2d(filter_fu, sig, filt_path):
+            filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
+            is_singlechannel = True if filt_name != "hessianOfGaussianEigenvalues" else False
+            f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
+            chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1, 2)
+            filter_res = np.zeros(f_shape, dtype = 'float32')
+            for z in xrange(inp.shape[2]):
+                filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
+            vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = chunks)
+
+        def _calc_filter_3d(filter_fu, sig, filt_path):
+            filter_res = filter_fu( inp, sig )
+            vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = True)
+
         if calculation_2d:
-
-            def _calc_filter_2d(z, out, filter_fu, sig):
-                out[:,:,z] = filter_fu(inp[:,:,z], sig)
-
             print "Calculating Filter in 2d"
-            for filt_name in filter_names:
-                for sig in sigmas:
-
-                    # check whether this is already there
-                    filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                    return_paths.append(filt_path)
-
-                    if not os.path.exists(filt_path):
-                        filter_fu = eval(filt_name)
-                        # determine if filter is single channel (!= hessian of gaussian EV)
-                        is_singlechannel = True if filt_name.split(".")[-1] != "hessianOfGaussianEigenvalues" else False
-                        with h5py.File(filt_path) as f:
-                            # determine correct shape  and chunks
-                            f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
-                            chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) + (2,)
-                            out = f.create_dataset(filter_key, shape = f_shape, dtype = 'float32', chunks = chunks)
-                            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
-                                tasks = [executor.submit(_calc_filter_2d, z, out, filter_fu, sig) for z in xrange(inp.shape[2])]
-                                res = [task.result() for task in tasks]
-
+            _calc_filter = _calc_filter_2d
         else:
             print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
             if anisotropy_factor != 1.:
                 sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
+            _calc_filter = _calc_filter_3d
 
-            def _calc_filter_3d(filter_function, sigma, filt_path):
-                filter_res = filter_function( inp, sig )
-                vigra.writeHDF5(filter_res,
-                        filt_path,
-                        filter_key,
-                        chunks = True)
-
-            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
-                tasks = []
-                for filt_name in filter_names:
-                    for sig in sigmas:
-                        if not os.path.exists(filt_path):
-                            filter_fu = eval(filt_name)
-                            filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                            tasks.append( executor.submit(_calc_filter_3d, filter_fu, sig, filt_path) )
-                        return_paths.append(filt_path)
-                res = [t.result() for t in tasks]
+        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+            tasks = []
+            for filt_name in filter_names:
+                filter_fu = eval(filt_name)
+                for sig in sigmas:
+                    # check whether this is already there
+                    filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
+                    if not os.path.exists(filt_path):
+                        tasks.append( executor.submit(_calc_filter, filter_fu, sig, filt_path) )
+                    return_paths.append(filt_path)
+            res = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
