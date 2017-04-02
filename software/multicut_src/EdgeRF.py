@@ -372,7 +372,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     # get the training features
     features_test  = feature_aggregator( ds_test, seg_id_test )
 
-    if with_defects:
+    if with_defects and ds_test.defect_slices:
         skip_transition = features_test.shape[0] - get_skip_edges(
                 ds_test,
                 seg_id_test).shape[0]
@@ -383,7 +383,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     pmem_test = rf.predictProbabilities( features_test.astype('float32'),
         n_threads = exp_params.n_threads)[:,1]
 
-    if with_defects:
+    if with_defects and ds_test.defect_slices:
         pmem_skip = rf_defects.predictProbabilities( features_test_skip.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
