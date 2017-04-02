@@ -1,5 +1,6 @@
 import numpy as np
 import vigra
+import h5py
 import os
 from functools import partial
 
@@ -186,7 +187,11 @@ def learn_rf(cache_folder,
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
-            if with_defects:
+            # we need to check if the defect rf actually exists
+            with h5py.File(rf_path) as f:
+                 has_defect_rf = True if ('rf_defects' in f.keys()) else False
+            if has_defect_rf:
+                assert with_defects
                 return RandomForest(rf_path, 'rf'), RandomForest(rf_path, 'rf_defects')
             else:
                 return RandomForest(rf_path, 'rf')
@@ -356,7 +361,8 @@ def learn_and_predict_rf_from_gt(cache_folder,
         paramstr,
         with_defects)
 
-    if with_defects:
+    if isinstance(rfs, tuple):
+        assert with_defects
         rf = rfs[0]
         rf_defects = rfs[1]
         assert rf_defects.treeCount() == rf.treeCount()
