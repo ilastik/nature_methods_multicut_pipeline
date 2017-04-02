@@ -428,7 +428,7 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 8
+        n_workers = 2
 
         def _calc_filter_2d(filter_fu, sig, filt_path):
             filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
@@ -891,35 +891,40 @@ class DataSet(object):
 
         return n_ccs
 
+    @cacher_hdf5()
+    def node_z_coord(self, seg_id):
+        rag = self._rag(seg_id)
+        labels = rag.labels
+        labels = labels.squeeze()
+        nz = np.zeros(rag.maxNodeId +1, dtype='uint32')
+        for z in range(labels.shape[2]):
+            lz = labels[:,:,z]
+            nz[lz] = z
+        return nz
+
 
     # find the edge-type indications
     # 0 for z-edges, 1 for xy-edges
     @cacher_hdf5()
     def edge_indications(self, seg_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
+
+        # TODO test this and use instead
+        # need to include some of the checks from below, too
+        #node_z = self.node_z_coord(seg_id)
+        #uv_ids = self._adjacent_segments(seg_id)
+        #z_u = node_z[uv_ids[:,0]]
+        #z_u = node_z[uv_ids[:,1]]
+        ## xy edges (same z coordinate are) set to 1
+        ## z  edges (different z coordinates) set to 0
+        #return (z_u != z_v).astype('uint8')
+
         rag = self._rag(seg_id)
         n_edges = rag.edgeNum
         edge_indications = np.zeros(n_edges, dtype = 'uint8')
         uv_ids = rag.uvIds()
 
-        # TODO premature optimization ftw
-        # vectorized version, TODO debug
-        #z_coords = np.array([np.unique(rag.edgeCoordinates(edge_id)[:,2]) for edge_id in xrange(n_edges)])
-        #z_sizes  = np.array([z_co.size for z_co in z_coords], dtype = 'uint32')
-        ## check that coords with more than one z coordinate (== non-flat edges) have at least one ignore label
-        #non_flat = (z_sizes > 1)
-        #flat     = (z_sizes == 1)
-        #non_flat_uvs = uv_ids[non_flat]
-        #assert non_flat_uvs.shape[1] == 2, str(non_flat_uvs.shape)
-        #if not np.all( (non_flat_uvs == 0).any(axis=1) ):
-        #    assert False, "Edge indications can only be calculated for flat superpixel (except ignore label)"
-        ## only keep the flat z - coords
-        #z_diff = np.subtract( z_coords[flat], z_coords[flat].astype('uint8') )
-        #xy_edges = z_diff == 0
-        #z_edges  = z_diff > 0
-        #edge_indications[flat][xy_edges] = 1 # xy edges are set to 1
-        #edge_indications[flat][z_edges] = 0  # z edges are set to 0
-
+        # loop over the edges and check whether they are xy or z by checking the edge coords
         for edge_id in xrange(n_edges):
             edge_coords = rag.edgeCoordinates(edge_id)
             z = np.unique(edge_coords[:,2])
@@ -1196,7 +1201,7 @@ class DataSet(object):
     # which are projected to an ignore label
     # -> we don t want to learn on these!
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def ignore_mask(self, seg_id, uv_ids):
+    def ignore_mask(self, seg_id, uv_ids, with_defects = False): # with defects only  for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         #need the node gt to determine the gt val of superpixel
@@ -1491,6 +1496,7 @@ class Cutout(DataSet):
 # the inverse of a cutout
 # implemented for crossvalidation mc style
 # FIXME this is deprecated
+# TODO this is pretty simple to implement with a seg mask now
 class InverseCutout(Cutout):
 
     def __init__(self, meta_folder, inv_cut_name, cut_id,
@@ -1610,30 +1616,6 @@ class InverseCutout(Cutout):
         return artificial_edge_ids
 
 
-    # in addition to the 2 ignore labels, we also ignore all edges
-    # with the artificial boundaries
-    @cacher_hdf5()
-    def ignore2ignorers(self, seg_id):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        assert self.has_gt
-        #need the node gt to determine the gt val of superpixel
-        rag = self._rag(seg_id)
-        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        assert node_gt.shape[0] == self._rag(seg_id).nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
-        uv_ids = self._adjacent_segments(seg_id)
-        artificial_edges = self.get_artificial_edges(seg_id)
-        ignore_mask = np.ones( rag.edgeNum, dtype = bool)
-        for edge_id in xrange(rag.edgeNum):
-            n0 = uv_ids[edge_id][0]
-            n1 = uv_ids[edge_id][1]
-            # if both superpixel have ignore label in the gt
-            # block them in our mask
-            # or if this edge is artificial
-            if (node_gt[n0] == 0 and node_gt[n1] == 0) or edge_id in artificial_edges:
-                ignore_mask[edge_id] = False
-        return ignore_mask
-
-
     # there's a bunch of methods, that cant be called
     # from inverse cutout, cause they don't make sense!
     def make_cutout(self, block_coordinates):
@@ -1646,10 +1628,4 @@ class InverseCutout(Cutout):
         raise AttributeError("Can't be called for InverseCutout")
 
     def get_inverse_cutout(self, cutout_id):
-        raise AttributeError("Can't be called for InverseCutout")
-
-    def make_tesselation(self, block_shape, n_blocks):
-        raise AttributeError("Can't be called for InverseCutout")
-
-    def get_tesselation(self, tesselation_id):
         raise AttributeError("Can't be called for InverseCutout")

@@ -102,15 +102,10 @@ def mask_edges(ds,
         uv_ids,
         with_defects):
 
-    # TODO implement masking for defect ppl
-    if exp_params.use_ignore_mask or exp_params.learn_2d:
-        if with_defects:
-            raise AttributeError("Edge masking not implemented for defect pipeline yet.")
-
     labeled = np.ones_like(labels, dtype = bool)
     # set ignore mask to 0.5
     if exp_params.use_ignore_mask: # ignore mask not yet supported for defect pipeline
-        ignore_mask = ds.ignore_mask(seg_id, uv_ids)
+        ignore_mask = ds.ignore_mask(seg_id, uv_ids, with_defects)
         assert ignore_mask.shape[0] == labels.shape[0]
         labeled[ ignore_mask ] = False
 
@@ -238,7 +233,7 @@ def learn_rf(cache_folder,
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspec the skip edges
-        if False:
+        if True:
             view_edges(cutout,
                     seg_id,
                     uv_ids,

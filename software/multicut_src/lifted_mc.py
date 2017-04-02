@@ -499,7 +499,7 @@ def lifted_feature_aggregator(ds,
                     uvIds,
                     pipelineParam) )
     if pipelineParam.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
-        nz_train = node_z_coord(ds, segId)
+        nz_train = ds.node_z_coord(segId)
         lifted_distance = np.abs(
                 np.subtract(
                         nz_train[uvIds[:,0]],
@@ -580,18 +580,6 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     return uv_long_range
 
 
-@cacher_hdf5()
-def node_z_coord(ds, segId):
-    rag = ds._rag(segId)
-    labels = rag.labels
-    labels = labels.squeeze()
-    nz = numpy.zeros(rag.maxNodeId +1, dtype='uint32')
-    for z in range(labels.shape[2]):
-        lz = labels[:,:,z]
-        nz[lz] = z
-    return nz
-
-
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_fuzzy_gt(ds, segId, uvIds):
     if ds.has_seg_mask:
@@ -631,11 +619,9 @@ def mask_lifted_edges(ds,
 
     # check which of the edges is in plane and mask the others
     if exp_params.learn_2d:
-        nz_train = node_z_coord(ds, seg_id)
+        nz_train = ds.node_z_coord(seg_id)
         zU = nz_train[uv_ids[:,0]]
         zV = nz_train[uv_ids[:,1]]
-        if with_defects:
-            raise AttributeError("2d learning not supported for pipeline with defect correction, yet")
         ignore_mask = (zU != zV)
         labeled[ignore_mask] = False
 
@@ -757,7 +743,7 @@ def learn_and_predict_lifted_rf(cache_folder,
             seg_id_test,
             exp_params.lifted_neighborhood,
             with_defects)
-    nz_test = node_z_coord(ds_test, seg_id_test)
+    nz_test = ds_test.node_z_coord(seg_id_test)
 
     if cache_folder is not None: # cache-folder exists => look if we already have a prediction
         pred_folder = os.path.join(cache_folder, "lifted_prediction_" + trainstr)
