@@ -232,8 +232,8 @@ def learn_rf(cache_folder,
                 with_defects)
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
-        # TODO properly inspec the skip edges
-        if True:
+        # TODO properly inspect the skip edges
+        if False:
             view_edges(cutout,
                     seg_id,
                     uv_ids,
@@ -244,8 +244,6 @@ def learn_rf(cache_folder,
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint32')
 
-        # FIXME this won't work if we have ingnore_mask or learn_2d activated
-        # TODO !!!
         if with_defects and cutout.defect_slices:
             skip_transition = n_edges - get_skip_edges(cutout,
                     seg_id).shape[0]
@@ -261,10 +259,11 @@ def learn_rf(cache_folder,
     labels_train = np.concatenate(labels_train)
 
     if with_defects:
-        if features_skip:
+        if features_skip: # check if any features / labels for skip edges were added
+            assert labels_skip
             features_skip = np.concatenate(features_skip)
             labels_skip = np.concatenate(labels_skip)
-        else:
+        else: # if not set with_defects to false, beacause we can't learn a defect rf
             with_defects = False
 
     assert features_train.shape[0] == labels_train.shape[0]

@@ -34,7 +34,6 @@ def clusteringFeatures(ds,
     else:
         uvs_local = ds._adjacent_segments(segId)
         n_nodes = uvs_local.max() + 1
-    assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
@@ -42,6 +41,7 @@ def clusteringFeatures(ds,
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
         assert np.sum( (extraUV == 0).any(axis = 1) ) == 0
+    assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
     originalGraph.addEdges(uvs_local)
@@ -98,8 +98,9 @@ def clusteringFeatures(ds,
                                             buildMergeTreeEncoding=False)
         hc.cluster()
 
-        assert mg.nodeNum == 1
-        assert mg.edgeNum == 0
+        assert mg.edgeNum == 0, str(mg.edgeNum)
+        if not ds.has_seg_mask: # this fails for the isolated nodes we have with a seg mask
+            assert mg.nodeNum == 1, str(mg.nodeNum)
         tweight = edgeIndicatorNew.copy()
         hc.ucmTransform(tweight)
 
@@ -709,6 +710,7 @@ def learn_lifted_rf(cache_folder,
     features_train = np.concatenate(features_train, axis = 0)
     labels_train = np.concatenate(labels_train, axis = 0)
 
+    print "Start learnin lifted random forest"
     rf = RandomForest(features_train.astype('float32'),
             labels_train.astype('uint32'),
             treeCount = exp_params.n_trees,
@@ -772,7 +774,7 @@ def learn_and_predict_lifted_rf(cache_folder,
         with_defects)
 
     # get edge probabilities from random forest on test set
-    p_local_test = learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
+    p_local_test = learn_and_predict_rf_from_gt(exp_params.rf_cache_folder,
         [ds_train.get_cutout(i) for i in (0,2) for ds_train in trainsets], ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, exp_params,
@@ -787,7 +789,7 @@ def learn_and_predict_lifted_rf(cache_folder,
 
     p_test = rf.predictProbabilities(
             features_test.astype('float32'),
-            n_threads = pipelineParam.n_threads)[:,1]
+            n_threads = exp_params.n_threads)[:,1]
     p_test /= rf.treeCount()
     pTest[np.isnan(pTest)] = .5
     assert not np.isnan(pTest).any(), str(np.isnan(pTest).sum())
