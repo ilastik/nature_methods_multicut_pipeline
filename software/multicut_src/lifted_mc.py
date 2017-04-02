@@ -41,8 +41,7 @@ def clusteringFeatures(ds,
         where_uv_local = (uvs_local != 0).all(axis = 1)
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        where_uv_extra = (extraUV != 0).all(axis = 1)
-        extraUV = extraUV[where_uv_extra]
+        assert np.sum( (extraUV == 0).any(axis = 1) ) == 0
 
     originalGraph = vgraph.listGraph(n_nodes)
     originalGraph.addEdges(uvs_local)
@@ -117,18 +116,6 @@ def clusteringFeatures(ds,
             numpy.concatenate([weights,mean,stddev],axis=1) )
     allFeat = numpy.require(allFeat, dtype = 'float32')
     assert allFeat.shape[0] == extraUV.shape[0]
-
-    # if we have excluded the ignore segments before, we need to reintroduce
-    # them now to keep edge numbering consistent
-    if ds.has_seg_mask:
-        where_ignore = numpy.logical_not( where_uv_extra )
-        n_ignore = numpy.sum(where_ignore)
-        newFeat = numpy.zeros(
-                (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
-                dtype = 'float32' )
-        newFeat[where_uv_extra] = allFeat
-        allFeat = newFeat
-        assert allFeat.shape[0] == extraUV.shape[0] + n_ignore
 
     return allFeat
 
@@ -536,6 +523,9 @@ def compute_and_save_lifted_nh(ds,
 
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
     # should be done if this takes too much time if we have a seg mask
+    if ds.has_seg_mask:
+        where_uv = (uvs_local != 0).all(axis=1)
+        uvs_local = uvs_local[where_uv]
 
     originalGraph = agraph.Graph(n_nodes)
     originalGraph.insertEdges(uvs_local)
@@ -650,10 +640,12 @@ def mask_lifted_edges(ds,
         labeled[ignore_mask] = False
 
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
+    # they should all be removed from the lifted edges -> check
     if ds.has_seg_mask:
         ignore_mask = (uv_ids == 0).any(axis = 1)
-        assert ignore_mask.shape[0] == labels.shape[0]
-        labeled[ ignore_mask ] = False
+        assert np.sum(ignore_mask) == 0
+        #assert ignore_mask.shape[0] == labels.shape[0]
+        #labeled[ ignore_mask ] = False
 
     return labeled
 

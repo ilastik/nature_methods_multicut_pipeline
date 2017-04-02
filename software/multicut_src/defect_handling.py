@@ -281,6 +281,7 @@ def modified_adjacency(ds, seg_id):
     ignore_edges = np.array(ignore_edges).astype('uint32')
 
     skip_edges = np.array(skip_edges, dtype = np.uint32)
+    assert skip_edges.size, "If we are here, we should have skip edges !"
     # make the skip edges unique, keeping rows (see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array):
     skips_view = np.ascontiguousarray(skip_edges).view(np.dtype((np.void, skip_edges.dtype.itemsize * skip_edges.shape[1])))
     _, idx = np.unique(skips_view, return_index=True)

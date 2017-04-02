@@ -90,10 +90,10 @@ def lifted_probs_to_energies(ds,
         e /= (edgeZdistance + 1.)
 
     # set the edges within the segmask to be maximally repulsive
+    # these should all be removed, check !
     if ds.has_seg_mask:
         uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
-        ignore_mask = (uv_ids == 0).any(axis = 1)
-        e[ ignore_mask ] = 2 * e.min()
+        assert np.sum((uv_ids == 0).any(axis = 1)) == 0
 
     return e
 

@@ -782,7 +782,11 @@ class DataSet(object):
         # otherwise the ram consumption for the lmc can blow up...
         if self.has_seg_mask:
             where_uv = (uv_ids != 0).all(axis = 1)
-            uv_ids   = uv_ids[where_uv]
+            # for lifted edges assert that no ignore segments are in lifted uvs
+            if lifted_nh:
+                assert np.sum(where_uv) == where_uv.size
+            else:
+                uv_ids = uv_ids[where_uv]
 
         # compute feature from region statistics
         regStats = vigra.readHDF5(region_statistics_path, 'region_statistics')
@@ -838,7 +842,7 @@ class DataSet(object):
 
         # if we have excluded the ignore segments before, we need to reintroduce
         # them now to keep edge numbering consistent
-        if self.has_seg_mask:
+        if self.has_seg_mask and not lifted_nh:
             where_ignore = np.logical_not( where_uv )
             n_ignore = np.sum(where_ignore)
             newFeat = np.zeros(
