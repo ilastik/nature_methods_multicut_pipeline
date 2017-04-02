@@ -531,9 +531,11 @@ def compute_and_save_lifted_nh(ds,
     if with_defects:
         n_nodes, uvs_local = modified_mc_problem(ds, segId)
     else:
-        rag = ds._rag(segId)
-        n_nodes = rag.nodeNum
-        uvs_local = rag.uvIds()
+        uvs_local = ds._adjacent_segments(seg_id)
+        n_nodes = uvs_local.max() + 1
+
+    # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
+    # should be done if this takes too much time if we have a seg mask
 
     originalGraph = agraph.Graph(n_nodes)
     originalGraph.insertEdges(uvs_local)

@@ -28,7 +28,7 @@ def _get_feat_str(feature_list):
     return feat_str
 
 def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
-    #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
+
     # solve the multicut witht the given solver
     if mc_params.solver == "multicut_exact":
         mc_node, mc_energy, t_inf = multicut_exact(
@@ -47,6 +47,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
     # we dont want zero as a segmentation result
     # because it is the ignore label in many settings
     mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label = 1, keep_zeros = False)
+    assert len(mc_node) == n_var, "%i, %i" % (len(mc_node), n_var)
     return mc_node, mc_edges, mc_energy, t_inf
 
 
