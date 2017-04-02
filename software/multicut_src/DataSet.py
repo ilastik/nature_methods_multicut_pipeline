@@ -428,7 +428,7 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 2
+        n_workers = 8
 
         def _calc_filter_2d(filter_fu, sig, filt_path):
             filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name

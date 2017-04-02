@@ -791,8 +791,8 @@ def learn_and_predict_lifted_rf(cache_folder,
             features_test.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
     p_test /= rf.treeCount()
-    pTest[np.isnan(pTest)] = .5
-    assert not np.isnan(pTest).any(), str(np.isnan(pTest).sum())
+    p_test[np.isnan(p_test)] = .5
+    assert not np.isnan(p_test).any(), str(np.isnan(p_test).sum())
     if cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 
