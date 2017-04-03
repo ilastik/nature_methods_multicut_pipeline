@@ -252,7 +252,7 @@ def learn_rf(cache_folder,
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspect the skip edges
-        if True:
+        if False:
             view_edges(cutout,
                     seg_id,
                     uv_ids,
