@@ -229,7 +229,6 @@ def learn_rf(cache_folder,
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
 
-        n_edges = features_cut.shape[0]
         if exp_params.learn_fuzzy:
             # TODO implement for defects
             if with_defects:
@@ -264,8 +263,7 @@ def learn_rf(cache_folder,
         labels_cut   = labels_cut[labeled].astype('uint32')
 
         if with_defects and cutout.defect_slices:
-            skip_transition = n_edges - get_skip_edges(cutout,
-                    seg_id).shape[0]
+            skip_transition = features_cut.shape[0] - get_skip_edges(cutout, seg_id).shape[0]
             features_skip.append(features_cut[skip_transition:])
             labels_skip.append(labels_cut[skip_transition:])
             features_cut = features_cut[:skip_transition]
