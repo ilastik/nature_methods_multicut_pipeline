@@ -211,7 +211,7 @@ def lifted_multicut_workflow(ds_train, ds_test,
 
     print "build lifted model"
     # remove me in functions
-    uvs_local = ds._adjacent_segments(seg_id)
+    uvs_local = ds_test._adjacent_segments(seg_id_test)
 
     # warmstart with multicut result
     if warmstart:
