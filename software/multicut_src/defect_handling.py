@@ -7,6 +7,11 @@ from Tools import cacher_hdf5, cache_name
 from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 
+# this returns a 2d array with the all the indices of matching rows for a and b
+# cf. http://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
+def find_matching_row_indices(x, y):
+    return np.array(np.all((x[:,None,:]==y[None,:,:]),axis=-1).nonzero()).T.tolist()
+
 #
 # Defect detection
 #
@@ -356,6 +361,7 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         skip_edge_features):
 
     features = []
+
     for z_up in targets:
         seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
         rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
@@ -374,25 +380,22 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
                             rag_local.baseGraph, filt[:,:,:,c] )
                     edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
                     target_features.append(edgeFeats)
+
         target_features = np.concatenate(target_features, axis = 1)
         # keep only the features corresponding to skip edges
         uvs_local = np.sort(rag_local.uvIds(), axis = 1)
         assert uvs_local.shape[0] == target_features.shape[0]
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
-        # FIXME horrible loop....
-        keep_indices = []
-        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
-        found = 0
-        for i, uv in enumerate(uvs_local):
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
-            if where_uv.size:
-                assert where_uv[0].size == 1
-                keep_indices.append(i)
-                to_skip_edges[where_uv[0]] = found
-                found += 1
-        assert len(keep_indices) == skip_edge_pairs.shape[0], "%i, %i" % (len(keep_indices), skip_edge_pairs.shape[0])
-        assert len(to_skip_edges) == skip_edge_pairs.shape[0], "%i, %i" % (len(to_skip_edges), skip_edge_pairs.shape[0])
-        features.append(target_features[keep_indices][to_skip_edges])
+
+        # find the uvs_local that match skip edges
+        matches = find_matching_row_indices(uvs_local, skip_edge_pairs)
+        # make sure that all skip edges were found
+        assert matches.shape[0] == skip_edge_pairs.shape[0]
+        # get the target features corresponding to skip edges
+        target_features = target_features[matches[:,0]]
+        # then append them in the correct oreder
+        features.append( target_features[matches[:,1]])
+
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
 
@@ -544,20 +547,16 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
         uvs_local = np.sort(rag_local.uvIds(), axis = 1)
         assert uvs_local.shape[0] == target_features.shape[0]
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
-        # FIXME horrible loop....
-        keep_indices = []
-        to_skip_edges = np.zeros(skip_edge_pairs.shape[0], dtype = 'uint32')
-        found = 0
-        for i, uv in enumerate(uvs_local):
-            where_uv = np.where(np.all(uv == skip_edge_pairs, axis = 1))[0]
-            if where_uv.size:
-                assert where_uv[0].size == 1
-                keep_indices.append(i)
-                to_skip_edges[where_uv[0]] = found
-                found += 1
-        assert len(keep_indices) == skip_edge_pairs.shape[0]
-        assert len(to_skip_edges) == skip_edge_pairs.shape[0]
-        features.append(target_features[keep_indices][to_skip_edges])
+
+        # find the uvs_local that match skip edges
+        matches = find_matching_row_indices(uvs_local, skip_edge_pairs)
+        # make sure that all skip edges were found
+        assert matches.shape[0] == skip_edge_pairs.shape[0]
+        # get the target features corresponding to skip edges
+        target_features = target_features[matches[:,0]]
+        # then append them in the correct oreder
+        features.append( target_features[matches[:,1]])
+
     features = np.concatenate(features, axis = 0)
     skip_edge_features[skip_edge_indices,:] = features
 
