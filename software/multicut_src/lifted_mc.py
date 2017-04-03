@@ -1,5 +1,6 @@
 import os
 
+# TODO numpy -> np to be consistent with the rest of the ppl
 import numpy
 import vigra
 
@@ -41,7 +42,7 @@ def clusteringFeatures(ds,
         where_uv_local = (uvs_local != 0).all(axis = 1)
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        assert np.sum( (extraUV == 0).any(axis = 1) ) == 0
+        assert numpy.sum( (extraUV == 0).any(axis = 1) ) == 0
     assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
@@ -163,7 +164,7 @@ def compute_lifted_feature_multiple_segmentations(ds,
         p_max = 1. - p_min
         probs = (p_max - p_min) * probs + p_min
         # probs to energies
-        energies = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+        energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
 
         edge_areas = rag.edgeLengths()
 
@@ -171,30 +172,30 @@ def compute_lifted_feature_multiple_segmentations(ds,
         if pipelineParam.weighting_scheme == "z":
             print "Weighting Z edges"
             # z - edges are indicated with 0 !
-            area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
+            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
             # we only weight the z edges !
             w = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = np.multiply(w, energies[edge_indications == 0])
+            energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
 
         elif pipelineParam.weighting_scheme == "xyz":
             print "Weighting xyz edges"
             # z - edges are indicated with 0 !
-            area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
-            len_xy_max = float( np.max( edge_areas[edge_indications == 1] ) )
+            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
+            len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
             # weight the z edges !
             w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = np.multiply(w_z, energies[edge_indications == 0])
+            energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
             # weight xy edges
             w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-            energies[edge_indications == 1] = np.multiply(w_xy, energies[edge_indications == 1])
+            energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
 
         elif pipelineParam.weighting_scheme == "all":
             print "Weighting all edges"
-            area_max = float( np.max( edge_areas ) )
+            area_max = float( numpy.max( edge_areas ) )
             w = weight * edge_areas / area_max
-            energies = np.multiply(w, energies)
+            energies = numpy.multiply(w, energies)
 
-        uv_ids = np.sort(rag.uvIds(), axis = 1)
+        uv_ids = numpy.sort(rag.uvIds(), axis = 1)
         n_var = uv_ids.max() + 1
 
         mc_node, mc_energy, t_inf = multicut_fusionmoves(
@@ -284,34 +285,34 @@ def compute_lifted_feature_multicut(ds,
         p_max = 1. - p_min
         probs = (p_max - p_min) * edge_probs + p_min
         # probs to energies
-        energies = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+        energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
 
         # weight the energies
         if pipelineParam.weighting_scheme == "z":
             print "Weighting Z edges"
             # z - edges are indicated with 0 !
-            area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
+            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
             # we only weight the z edges !
             w = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = np.multiply(w, energies[edge_indications == 0])
+            energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
 
         elif pipelineParam.weighting_scheme == "xyz":
             print "Weighting xyz edges"
             # z - edges are indicated with 0 !
-            area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
-            len_xy_max = float( np.max( edge_areas[edge_indications == 1] ) )
+            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
+            len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
             # weight the z edges !
             w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = np.multiply(w_z, energies[edge_indications == 0])
+            energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
             # weight xy edges
             w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-            energies[edge_indications == 1] = np.multiply(w_xy, energies[edge_indications == 1])
+            energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
 
         elif pipelineParam.weighting_scheme == "all":
             print "Weighting all edges"
-            area_max = float( np.max( edge_areas ) )
+            area_max = float( numpy.max( edge_areas ) )
             w = weight * edge_areas / area_max
-            energies = np.multiply(w, energies)
+            energies = numpy.multiply(w, energies)
 
         # get the energies (need to copy code here, because we can't use caching in threads)
         mc_node, mc_energy, t_inf = multicut_fusionmoves(
@@ -381,34 +382,34 @@ def compute_lifted_feature_pmap_multicut(ds,
     p_max = 1. - p_min
     probs = (p_max - p_min) * edge_probs + p_min
     # probs to energies
-    energies = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+    energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
 
     # weight the energies
     if pipelineParam.weighting_scheme == "z":
         print "Weighting Z edges"
         # z - edges are indicated with 0 !
-        area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
+        area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
         # we only weight the z edges !
         w = weight * edge_areas[edge_indications == 0] / area_z_max
-        energies[edge_indications == 0] = np.multiply(w, energies[edge_indications == 0])
+        energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
 
     elif pipelineParam.weighting_scheme == "xyz":
         print "Weighting xyz edges"
         # z - edges are indicated with 0 !
-        area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
-        len_xy_max = float( np.max( edge_areas[edge_indications == 1] ) )
+        area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
+        len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
         # weight the z edges !
         w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-        energies[edge_indications == 0] = np.multiply(w_z, energies[edge_indications == 0])
+        energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
         # weight xy edges
         w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-        energies[edge_indications == 1] = np.multiply(w_xy, energies[edge_indications == 1])
+        energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
 
     elif pipelineParam.weighting_scheme == "all":
         print "Weighting all edges"
-        area_max = float( np.max( edge_areas ) )
+        area_max = float( numpy.max( edge_areas ) )
         w = weight * edge_areas / area_max
-        energies = np.multiply(w, energies)
+        energies = numpy.multiply(w, energies)
 
     # compute map
     ret, mc_energy, t_inf, obj = multicut_fusionmoves(n_var,
@@ -502,8 +503,8 @@ def lifted_feature_aggregator(ds,
                     pipelineParam) )
     if pipelineParam.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
         nz_train = ds.node_z_coord(segId)
-        lifted_distance = np.abs(
-                np.subtract(
+        lifted_distance = numpy.abs(
+                numpy.subtract(
                         nz_train[uvIds[:,0]],
                         nz_train[uvIds[:,1]]) )
         features.append(lifted_distance[:,None])
@@ -552,7 +553,7 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     originalGraph = agraph.Graph(uvIds.max()+1)
     originalGraph.insertEdges(uvIds)
 
-    uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
+    uv_long_range = numpy.array(list(itertools.combinations(numpy.arange(originalGraph.numberOfVertices), 2)), dtype=numpy.uint64)
 
     lm_short = agraph.liftedMcModel(originalGraph)
     agraph.addLongRangeNH(lm_short, min_range)
@@ -562,12 +563,12 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     # -----------------------------------
 
     # Concatenate both lists
-    concatenated = np.concatenate((uvs_short, uv_long_range), axis=0)
+    concatenated = numpy.concatenate((uvs_short, uv_long_range), axis=0)
 
     # Find unique rows according to
     # http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
-    b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
-    uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
+    b = numpy.ascontiguousarray(concatenated).view(numpy.dtype((numpy.void, concatenated.dtype.itemsize * concatenated.shape[1])))
+    uniques, idx, counts = numpy.unique(b, return_index=True, return_counts=True)
 
     # Extract those that have count == 1
     # TODO this is not tested
@@ -577,7 +578,7 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     # Extract random sample
     if max_sample_size:
         sample_size = min(max_sample_size, uv_long_range.shape[0])
-        uv_long_range = np.array(random.sample(uv_long_range, sample_size))
+        uv_long_range = numpy.array(random.sample(uv_long_range, sample_size))
 
     return uv_long_range
 
@@ -590,7 +591,7 @@ def lifted_fuzzy_gt(ds, segId, uvIds):
     oseg = ds.seg(segId)
     fuzzyLiftedGt = agraph.candidateSegToRagSeg(
     oseg.astype('uint32'), gt.astype('uint32'),
-        uvIds.astype(np.uint64))
+        uvIds.astype(numpy.uint64))
     return fuzzyLiftedGt
 
 
@@ -610,7 +611,7 @@ def mask_lifted_edges(ds,
         exp_params,
         with_defects):
 
-    labeled = np.ones_like(labels, bool)
+    labeled = numpy.ones_like(labels, bool)
 
     # mask edges in ignore mask
     if exp_params.use_ignore_mask:
@@ -639,7 +640,7 @@ def mask_lifted_edges(ds,
     # they should all be removed from the lifted edges -> check
     if ds.has_seg_mask:
         ignore_mask = (uv_ids == 0).any(axis = 1)
-        assert np.sum(ignore_mask) == 0
+        assert numpy.sum(ignore_mask) == 0
         #assert ignore_mask.shape[0] == labels.shape[0]
         #labeled[ ignore_mask ] = False
 
@@ -717,8 +718,8 @@ def learn_lifted_rf(cache_folder,
         features_train.append(f_train[labeled])
         labels_train.append(labels[labeled])
 
-    features_train = np.concatenate(features_train, axis = 0)
-    labels_train = np.concatenate(labels_train, axis = 0)
+    features_train = numpy.concatenate(features_train, axis = 0)
+    labels_train = numpy.concatenate(labels_train, axis = 0)
 
     print "Start learnin lifted random forest"
     rf = RandomForest(features_train.astype('float32'),
@@ -801,8 +802,8 @@ def learn_and_predict_lifted_rf(cache_folder,
             features_test.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
     p_test /= rf.treeCount()
-    p_test[np.isnan(p_test)] = .5
-    assert not np.isnan(p_test).any(), str(np.isnan(p_test).sum())
+    p_test[numpy.isnan(p_test)] = .5
+    assert not numpy.isnan(p_test).any(), str(numpy.isnan(p_test).sum())
     if cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 
