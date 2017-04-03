@@ -7,7 +7,7 @@ This version is not stable yet, we will update the main conda package to this ve
 ## Installation
 
 You can install this package via conda.
-First, make sure that you have the ilastik and defualt channel in your .condarc.
+First, make sure that you have the ilastik and default channel listed in your ~/.condarc.
 In addition, you need CPLEX with a valid license (we are working towards getting rid of this dependency).
 Then, you can insall the package with
 
