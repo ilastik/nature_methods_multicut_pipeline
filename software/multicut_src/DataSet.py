@@ -66,6 +66,12 @@ class DataSet(object):
         # superpixels in this mask
         self.has_seg_mask = False
 
+        #
+        # ignore values, because we don't want to hardcode this
+        # TODO different values for different maskings ?!
+        # TODO move to experiment params, once this is a singleton
+        self.ignore_seg_value = 0 # for now this has to be zero
+
 
     def __str__(self):
         return self.ds_name

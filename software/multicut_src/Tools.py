@@ -246,32 +246,61 @@ def edges_to_volumes_for_skip_edges(
         edge_labels,
         skip_starts,
         skip_ranges):
+
     assert uv_ids.shape[0] == edge_labels.shape[0]
+    assert skip_ranges.shape[0] == uv_ids.shape[0]
+    assert skip_starts.shape[0] == uv_ids.shape[0]
+    assert uv_ids.shape[1] == 2
+
     from cython_tools import fast_edge_volume_for_skip_edges_slice
     print "Computing edge volume for skip edges"
     volume = np.zeros(seg.shape, dtype = edge_labels.dtype)
 
     # find all the slices with defect starts
     lower_slices  = np.unique(skip_starts)
-    ranges_to_slices = {z : skip_ranges[skip_starts == z] for z in lower_slices}
+    skip_masks_to_lower = {z : skip_starts == z for z in lower_slices}
 
     # iterate over the slice pairs with skip edges and get the label volumes from cython
     for lower in lower_slices:
-        ranges = ranges_to_slices[z]
-        unique_ranges = np.unique(ranges)
-        targets = unique_ranges + z_dn
+        print "Slice", lower
+        # get the uvs and ranges for this lower slice
+        mask_lower = skip_masks_to_lower[lower]
+        ranges_lower = skip_ranges[mask_lower]
+        labels_lower = edge_labels[mask_lower]
+        uvs_lower    = uv_ids[mask_lower]
+        # get the target slcies from unique ranges
+        unique_ranges = np.unique(ranges_lower)
+        targets = unique_ranges + lower
         # FIXME this can overwrite some of the lower stuff...
         for i, upper in enumerate(targets):
+            print "to", upper
+
             seg_dn = seg[:,:,lower]
             seg_up = seg[:,:,upper]
-            skip_range = unique_ranges[i]
-            skip_mask = skip_ranges == skip_range
-            assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
+
+            # get the mask for skip edges connecting to this upper slice
+            mask_upper = ranges_lower == unique_ranges[i]
+            uvs_to_upper = np.sort(uvs_lower[mask_upper], axis = 1)
+            assert uvs_to_upper.shape[1] == 2
+            labels_upper = labels_lower[mask_upper]
+
+            # for debugging
+            #uniques_up = np.unique(seg_up)
+            #uniques_dn = np.unique(seg_dn)
+            #unique_uvs = np.unique(uvs_to_upper)
+            ## this should more or less add up (except for bg value)
+            #matches_dn = np.intersect1d(uniques_up, unique_uvs).size
+            #matches_up = np.intersect1d(uniques_dn, unique_uvs).size
+            #print "Matches_up", matches_up, '/', unique_uvs.size
+            #print "Matches_dn", matches_dn, '/', unique_uvs.size
+            #print "Combined:", matches_up + matches_dn, '/', unique_uvs.size
+            #assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
+
             vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
                     seg_dn,
                     seg_up,
-                    uv_ids[skip_mask],
-                    edge_labels[skip_mask])
+                    uvs_to_upper,
+                    labels_upper)
             volume[:,:,lower] = vol_dn
             volume[:,:,upper] = vol_up
 

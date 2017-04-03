@@ -142,10 +142,12 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
     if with_defects:
         skip_transition = labels_debug.shape[0] - get_skip_edges(ds, seg_id).shape[0]
         edge_indications = modified_edge_indications(ds, seg_id)[:skip_transition]
-        labels_skip = labels_debug[skip_transition:]
+        # get  uv ids and labels for the skip edges
         uv_skip     = uv_ids[skip_transition:]
-        labels_debug = labels_debug[:skip_transition]
+        labels_skip = labels_debug[skip_transition:]
+        #get uv ids and labels for the normal edges
         uv_ids      = uv_ids[:skip_transition]
+        labels_debug = labels_debug[:skip_transition]
     else:
         edge_indications = ds.edge_indications(seg_id)
 
@@ -165,8 +167,6 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
     gt  = ds.gt()
 
     if with_defects:
-        print "Labels for skip edges:"
-        print np.unique(labels_skip)
         skip_ranges = get_skip_ranges(ds, seg_id)
         skip_starts = get_skip_starts(ds, seg_id)
         edge_vol_skip = edges_to_volumes_for_skip_edges(
@@ -252,7 +252,7 @@ def learn_rf(cache_folder,
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspect the skip edges
-        if False:
+        if True:
             view_edges(cutout,
                     seg_id,
                     uv_ids,
