@@ -517,7 +517,7 @@ def _get_topo_feats(rag, seg, use_2d_edges):
     if use_2d_edges:
 
         # edge indications -> these are 0 (=z-edge) for all skip edges
-        feats.append(np.zeros(raglocal.edgeNum)[:,None])
+        feats.append(np.zeros(rag.edgeNum)[:,None])
         # region sizes to build some features
         statistics =  [ "Count", "RegionCenter" ]
         extractor = vigra.analysis.extractRegionFeatures(
@@ -588,16 +588,16 @@ def _get_skip_topo_features_for_slices(
 
         # keep only the features corresponding to skip edges
         uvs_local = np.sort(rag_local.uvIds(), axis = 1)
-        assert uvs_local.shape[0] == target_features.shape[0]
+        assert uvs_local.shape[0] == topo_feats.shape[0]
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
         # find the uvs_local that match skip edges
-        matches = find_matching_row_indices(uvs_local, skip_edge_pairs)
+        matches = find_matching_row_indices(uvs_local, skip_pairs_z)
         # make sure that all skip edges were found
-        assert matches.shape[0] == skip_edge_pairs.shape[0]
+        assert matches.shape[0] == skip_pairs_z.shape[0], "%s, %s" % (str(matches.shape), str(skip_edge_pairs.shape))
         # get the target features corresponding to skip edges and order them correctly
-        target_features = topo_feats[matches[:,0]][matches[:,1]]
+        topo_feats = topo_feats[matches[:,0]][matches[:,1]]
         # write the features to the feature array
-        skip_edge_features[skip_indices_z,:] = target_feats
+        skip_edge_features[skip_indices_z,:] = topo_feats
 
 
 @cacher_hdf5(folder="feature_folder")
@@ -618,16 +618,13 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
     seg = ds.seg(seg_id)
     lower_slices  = np.unique(skip_starts)
     skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
-    skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
     skip_edge_ranges_to_slice  = {z : skip_ranges[skip_starts == z] for z in lower_slices}
 
     n_feats = modified_features.shape[1]
     skip_topo_features = np.zeros( (skip_edges.shape[0], n_feats) )
 
     for z in lower_slices:
-        this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
-        this_skip_edge_indices = skip_edge_indices_to_slice[z]
-        target = target_slices[z]
         _get_skip_topo_features_for_slices(
                 z,
                 seg,
@@ -635,7 +632,7 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
                 skip_edge_ranges_to_slice[z],
                 skip_edge_indices_to_slice[z],
                 use_2d_edges,
-                skip_edge_features)
+                skip_topo_features)
 
     skip_topo_features[np.isinf(skip_topo_features)] = 0.
     skip_topo_features[np.isneginf(skip_topo_features)] = 0.

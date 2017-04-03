@@ -940,6 +940,7 @@ class DataSet(object):
         return edge_indications
 
 
+    # TODO refactor the actual calculation to use the same code here and in defect ppl
     # Features from edge_topology
     @cacher_hdf5("feature_folder")
     def topology_features(self, seg_id, use_2d_edges):
@@ -1005,7 +1006,6 @@ class DataSet(object):
             # segment shape features
             seg_coordinates = extractor["RegionCenter"]
             len_bounds      = np.zeros(rag.nodeNum)
-            # TODO no loop ?! or CPP
             # iterate over the nodes, to get the boundary length of each node
             for n in rag.nodeIter():
                 node_z = seg_coordinates[n.id][2]
