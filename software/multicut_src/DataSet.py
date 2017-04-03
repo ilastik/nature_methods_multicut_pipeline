@@ -56,7 +56,8 @@ class DataSet(object):
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
 
-        # FIXME TODO instead copy the defect list (recentered) to cutouts and check if list is empty!
+        # TODO add a defect mask instead -> most general
+        self.defect_slices = []
         # if this is set to true, all defect calculations are ignored
         # dirty hack to make cutouts without defects work...
         #self.ignore_defects = False
@@ -64,8 +65,6 @@ class DataSet(object):
         # segmentation mask -> learning + inference will be restriced to
         # superpixels in this mask
         self.has_seg_mask = False
-
-        self.defect_slices = []
 
 
     def __str__(self):
