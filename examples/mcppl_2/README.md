@@ -12,7 +12,7 @@ In addition, you need CPLEX with a valid license (we are working towards getting
 Then, you can insall the package with
 
 ```
-$ CPLEX_ROOT_DIR=/path/to/cplex conda create -n mc_ppl2 -c cpape multicut_pipeline
+CPLEX_ROOT_DIR=/path/to/cplex conda create -n mc_ppl2 -c cpape multicut_pipeline
 ```
 
 ## Examples
