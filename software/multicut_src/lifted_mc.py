@@ -520,7 +520,7 @@ def compute_and_save_lifted_nh(ds,
     if with_defects:
         n_nodes, uvs_local = modified_mc_problem(ds, segId)
     else:
-        uvs_local = ds._adjacent_segments(seg_id)
+        uvs_local = ds._adjacent_segments(segId)
         n_nodes = uvs_local.max() + 1
 
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
