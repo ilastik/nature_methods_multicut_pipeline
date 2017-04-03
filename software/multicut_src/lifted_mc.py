@@ -653,7 +653,7 @@ def mask_lifted_edges(ds,
 
     # find all lifted edges that touch a defected node and ignore them
     if with_defects and ds.defect_slices:
-        labeled[lifted_ignore_mask(ds, seg_id, uv_ids)] = False
+        labeled[lifted_ignore_ids(ds, seg_id, uv_ids)] = False
 
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
     # they should all be removed from the lifted edges -> check
