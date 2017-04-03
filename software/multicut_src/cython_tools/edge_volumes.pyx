@@ -55,7 +55,8 @@ def fast_edge_volume_from_uvs_in_plane(
 def fast_edge_volume_from_uvs_between_plane(
         np.ndarray[LabelType, ndim=3] seg,
         np.ndarray[LabelType, ndim=2] uv_ids,
-        np.ndarray[ValueType, ndim=1] edge_labels):
+        np.ndarray[ValueType, ndim=1] edge_labels,
+        look_dn):
 
     cdef np.ndarray[ValueType, ndim=3] volume = np.zeros_like(seg, dtype = PyValueType)
     cdef int x, y, z, i, d
@@ -74,8 +75,10 @@ def fast_edge_volume_from_uvs_between_plane(
                     l_v = seg[x,y,z+1]
                     try: # we may not have a corresponding edge-id due to defects and ignore mask
                         e_id = uv_id_dict[ (min(l_u,l_v), max(l_u,l_v)) ]
-                        volume[x,y,z] = edge_labels[e_id]
-                        volume[x,y,z+1] = edge_labels[e_id]
+                        if look_dn:
+                            volume[x,y,z+1] = edge_labels[e_id]
+                        else:
+                            volume[x,y,z] = edge_labels[e_id]
                     except KeyError:
                         continue
     return volume

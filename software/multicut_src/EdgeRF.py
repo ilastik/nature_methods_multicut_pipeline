@@ -5,7 +5,7 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
@@ -120,6 +120,11 @@ def mask_edges(ds,
         edge_indications = modified_edge_indications(ds, seg_id) if with_defects else ds.edge_indications(seg_id)
         labeled[edge_indications == 0] = False
 
+    # mask the ignore edges
+    if with_defects and ds.defect_slices:
+        ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
+        labeled[ignore_edge_ids] = False
+
     return labeled
 
 
@@ -149,17 +154,19 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
     labels_xy = labels_debug[edge_indications == 1]
     labels_z  = labels_debug[edge_indications == 0]
     uv_xy = uv_ids[edge_indications == 1]
-    # TODO if we were completely correct, we would need to volumes for the z-edges, one for to upper, one for to lower
-    # this would be easy to integrate in the cython function
     uv_z  = uv_ids[edge_indications == 0]
 
     seg = ds.seg(seg_id)
-    edge_vol_xy = edges_to_volume_from_uvs_in_plane(ds, seg, uv_xy, labels_xy)
-    edge_vol_z  = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z)
+    edge_vol_xy   = edges_to_volume_from_uvs_in_plane(ds, seg, uv_xy, labels_xy)
+    edge_vol_z_dn = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z, True)
+    edge_vol_z_up = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z, False)
 
-    raw  = ds.inp(0).astype('float32')
+    raw = ds.inp(0).astype('float32')
+    gt  = ds.gt()
 
     if with_defects:
+        print "Labels for skip edges:"
+        print np.unique(labels_skip)
         skip_ranges = get_skip_ranges(ds, seg_id)
         skip_starts = get_skip_starts(ds, seg_id)
         edge_vol_skip = edges_to_volumes_for_skip_edges(
@@ -169,11 +176,13 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
                 labels_skip,
                 skip_starts,
                 skip_ranges)
-        volumina_n_layer([raw, seg, ds.gt(), edge_vol_xy, edge_vol_z, edge_vol_skip],
-                ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z', 'labels_skip'])
+        volumina_n_layer(
+                [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_skip, edge_vol_xy],
+                ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_skip', 'labels_xy'])
     else:
-        volumina_n_layer([raw, seg, ds.gt(), edge_vol_xy, edge_vol_z],
-                ['raw', 'seg', 'groundtruth', 'labels_xy', 'labels_z'])
+        volumina_n_layer(
+                [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_xy],
+                ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_xy',])
 
 
 def learn_rf(cache_folder,
@@ -232,7 +241,7 @@ def learn_rf(cache_folder,
                     cutout,
                     seg_id) if with_defects else cutout.edge_gt(seg_id)
 
-        assert labels_cut.shape[0] == features_cut.shape[0]
+        assert labels_cut.shape[0] == features_cut.shape[0], "%i, %i" % (labels_cut.shape[0], features_cut.shape[0])
 
         labeled = mask_edges(cutout,
                 seg_id,

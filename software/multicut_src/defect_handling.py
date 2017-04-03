@@ -10,7 +10,25 @@ from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 # this returns a 2d array with the all the indices of matching rows for a and b
 # cf. http://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
 def find_matching_row_indices(x, y):
-    return np.array(np.all((x[:,None,:]==y[None,:,:]),axis=-1).nonzero()).T.tolist()
+    assert isinstance(x, np.ndarray)
+    assert isinstance(y, np.ndarray)
+    # using a dictionary, this is faster than the pure np variant
+    indices = []
+    rows_x = { tuple(row) : i  for i, row in enumerate(x) }
+    for i, row in enumerate(y):
+        if tuple(row) in rows_x:
+            indices.append( [ rows_x[tuple(row)], i ] )
+    return np.array(indices)
+
+# return the indices of array which have at least one value from value list
+def find_matching_indices(array, value_list):
+    assert isinstance(array, np.ndarray)
+    assert isinstance(value_list, np.ndarray) or isinstance(value_list, list)
+    indices = []
+    for i, row in enumerate(array):
+        if( np.intersect1d(row, value_list).size ):
+            indices.append(i)
+    return np.array(indices)
 
 #
 # Defect detection
@@ -76,6 +94,7 @@ def defect_slice_detection(ds, seg_id, n_bins, bin_threshold):
 
 @cacher_hdf5()
 def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
+    assert False, "Not ported to new features yet!"
     defects = defect_slice_detection(ds, seg_id, n_bins, bin_threshold)
     seg = ds.seg(seg_id)
     assert seg.shape == defects.shape
@@ -112,8 +131,13 @@ def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
 def defects_to_nodes_from_slice_list(ds, seg_id):
     seg = ds.seg(seg_id)
 
+    # if we have a segmentation mask, we don't want the ignore label to be marked as defected
+    ignore_zero = ds.has_seg_mask
+
     def defects_to_nodes_z(z):
         defect_nodes_slice = np.unique(seg[:,:,z])
+        if ignore_zero and 0 in defect_nodes_slice:
+            defect_nodes_slice = defect_nodes_slice[1:]
         return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
 
     with futures.ThreadPoolExecutor(max_workers = 8) as executor:
@@ -129,22 +153,40 @@ def defects_to_nodes_from_slice_list(ds, seg_id):
                 nodes_z.extend(zz)
 
     assert len(defect_nodes) == len(nodes_z)
+    defect_nodes = np.array(defect_nodes, dtype = 'uint32')
+    nodes_z = np.array(nodes_z, dtype = 'uint32')
+    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+    vigra.writeHDF5(nodes_z, save_path, 'nodes_z')
 
-    # stupid caching... need to concatenate and later retrieve this...
-    return np.concatenate([np.array(defect_nodes,dtype='uint32'), np.array(nodes_z,dtype='uint32')])
+    return defect_nodes
 
 # this is very hacky due to stupid caching...
 # we calculate everything with modified adjacency and then load the things with individual functions
+
+def get_defect_node_z(ds, seg_id):
+    defects_to_nodes_from_slice_list(ds, seg_id)
+    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+    return vigra.readHDF5(save_path, 'nodes_z')
 
 def get_delete_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edges")
 
+def get_delete_edge_ids(ds, seg_id):
+    modified_adjacency(ds, seg_id)
+    mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
+    return vigra.readHDF5(mod_save_path, "delete_edge_ids")
+
 def get_ignore_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edges")
+
+def get_ignore_edge_ids(ds, seg_id):
+    modified_adjacency(ds, seg_id)
+    mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
+    return vigra.readHDF5(mod_save_path, "ignore_edge_ids")
 
 def get_skip_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
@@ -171,8 +213,8 @@ def compute_skip_edges_z(
     def skip_edges_for_nodes(z_up, z_dn, nodes_dn, mask):
         skip_range = z_up - z_dn
         skip_edges, skip_ranges = [], []
-
         defect_nodes_up = np.array( defect_node_dict.get(z_up,[]) )
+
         for node_dn in nodes_dn:
             # find the connected nodes in the upper slice
             mask_dn = seg[:,:,z_dn][mask] == node_dn
@@ -212,11 +254,9 @@ def compute_skip_edges_z(
 def modified_adjacency(ds, seg_id):
     if not ds.defect_slices:
         return np.array([0])
-    node_res = defects_to_nodes_from_slice_list(ds, seg_id)
-    # need to split into defect nodes and node_z
-    mid = node_res.shape[0] / 2
-    defect_nodes = node_res[:mid]
-    nodes_z = node_res[mid:]
+
+    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+    nodes_z      = get_defect_node_z(ds, seg_id)
 
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(nodes_z.astype(int)) >= 0), "Defected slice index is not increasing monotonically!"
@@ -232,39 +272,47 @@ def modified_adjacency(ds, seg_id):
             has_lower_defect_list.extend(consec[1:])
 
     # iterate over the nodes in slices with defects to get delete, ignore and skip edges
-    rag = ds._rag(seg_id)
     seg = ds.seg(seg_id)
     edge_indications = ds.edge_indications(seg_id)
 
     delete_edges = [] # the z-edges between defected and non-defected nodes that are deleted from the graph
+    delete_edge_ids = []
     ignore_edges = [] # the xy-edges between defected and non-defected nodes, that will be set to maximally repulsive weights
 
     skip_edges   = [] # the skip edges that run over the defects in z
     skip_ranges  = [] # z-distance of the skip edges
     skip_starts  = [] # starting slices of the skip edges
 
-    # sequential for now
-    #with futures.ThreadPoolExecutor(max_workers = 8) as executor:
-    #    tasks = []
+    # get the delete and ignore edges by checking which uv-ids have at least one defect node
+    uv_ids = ds._adjacent_segments(seg_id)
+    defect_uv_indices = find_matching_indices(uv_ids, defect_nodes)
+    for defect_index in defect_uv_indices:
+        if edge_indications[defect_index]: # we have a xy edge -> ignore edge
+            ignore_edges.append( uv_ids[defect_index] )
+        else: # z edge -> delete edge
+            delete_edges.append( uv_ids[defect_index] )
+            delete_edge_ids.append(defect_index)
+
+    delete_edges    = np.array(delete_edges, dtype = 'uint32')
+    delete_edge_ids = np.array(delete_edge_ids, dtype = 'uint32')
+
+    ignore_edges = np.array(ignore_edges, dtype = 'uint32')
+    # find the ignore edge ids -> corresponding to the ids after delete edges are removed !
+    # fist, get the uv ids after removal of uv - edges
+    #uv_ids = np.sort(rag.uvIds(), axis = 1)
+    uv_ids = np.delete(uv_ids, delete_edge_ids, axis  = 0)
+
+    assert ignore_edges.shape[1] == uv_ids.shape[1]
+    matching = find_matching_row_indices(uv_ids, ignore_edges)
+    # make sure that all ignore edges were found
+    assert matching.shape[0] == ignore_edges.shape[0]
+    # get the correctly sorted the ids
+    ignore_edge_ids = matching[:,0]
+    ignore_edge_ids = ignore_edge_ids[matching[:,1]]
+
     for i,z in enumerate(defect_slices):
         print "Processing slice %i: %i / %i" % (z,i,len(defect_slices))
-
-        # get delete and ignore edges in slice
-        delete_edges_z, ignore_edges_z = [], []
         defect_nodes_z = defect_node_dict[z]
-        for defect_node in defect_nodes_z:
-            rag_node = rag.nodeFromId(defect_node)
-            for nn_node in rag.neighbourNodeIter(rag_node):
-                edge_id = rag.findEdge(rag_node, nn_node).id
-                if edge_indications[edge_id]: # we have a in-plane edge -> add this to the ignore edges, if the neighbouring node is also defected
-                    if nn_node.id in defect_nodes_z:
-                        # we store the uv-ids for ignore edges, because the actual edge id will change due to skip and delete edges
-                        ignore_edges_z.append( (rag_node.id, nn_node.id) )
-                else: # we have a in-between-planes edge -> add this to the delete edges
-                    delete_edges_z.append(edge_id)
-
-        delete_edges.extend(delete_edges_z)
-        ignore_edges.extend(ignore_edges_z)
 
         # get the skip edges between adjacent slices
         # skip for first or last slice or slice with lower defect
@@ -282,11 +330,9 @@ def modified_adjacency(ds, seg_id):
         skip_ranges.extend(skip_ranges_z)
         skip_starts.extend(len(skip_edges_z) * [z-1])
 
-    delete_edges = np.unique(delete_edges).astype('uint32')
-    ignore_edges = np.array(ignore_edges).astype('uint32')
-
     skip_edges = np.array(skip_edges, dtype = np.uint32)
     assert skip_edges.size, "If we are here, we should have skip edges !"
+
     # make the skip edges unique, keeping rows (see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array):
     skips_view = np.ascontiguousarray(skip_edges).view(np.dtype((np.void, skip_edges.dtype.itemsize * skip_edges.shape[1])))
     _, idx = np.unique(skips_view, return_index=True)
@@ -294,6 +340,18 @@ def modified_adjacency(ds, seg_id):
 
     skip_ranges = np.array(skip_ranges, dtype = np.uint32)[idx]
     skip_starts = np.array(skip_starts, dtype = np.uint32)[idx]
+
+    # if we have a seg mask, the skip edges can have entries connecting the ignore segment with itself, we need to remove these
+    if ds.has_seg_mask:
+        duplicate_mask = skip_edges[:,0] != skip_edges[:,1]
+        if not duplicate_mask.all(): # -> we have entries that will be masked out
+            # make sure that all duplicates have zero value (ignore segment)
+            assert (skip_edges[np.logical_not(duplicate_mask)] == 0).all()
+            print "Removing duplicate skip edges due to ignore segment label"
+            skip_edges = skip_edges[duplicate_mask]
+            skip_ranges = skip_ranges[duplicate_mask]
+            skip_starts = skip_starts[duplicate_mask]
+
     assert skip_edges.shape[0] == skip_ranges.shape[0]
     assert skip_starts.shape[0] == skip_ranges.shape[0]
 
@@ -309,8 +367,13 @@ def modified_adjacency(ds, seg_id):
 
     # save delete, ignore and skip edges, a little hacky due to stupid caching...
     save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
+
     vigra.writeHDF5(delete_edges,save_path, "delete_edges")
+    vigra.writeHDF5(delete_edge_ids,save_path, "delete_edge_ids")
+
     vigra.writeHDF5(ignore_edges,save_path, "ignore_edges")
+    vigra.writeHDF5(ignore_edge_ids,save_path, "ignore_edge_ids")
+
     vigra.writeHDF5(skip_edges,  save_path, "skip_edges")
     vigra.writeHDF5(skip_ranges, save_path, "skip_ranges")
     vigra.writeHDF5(skip_starts, save_path, "skip_starts")
@@ -324,11 +387,11 @@ def modified_edge_indications(ds, seg_id):
     if not ds.defect_slices:
         return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
-    delete_edges = get_delete_edges(ds, seg_id)
-    modified_indications = np.delete(modified_indications, delete_edges)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+    modified_indications = np.delete(modified_indications, delete_edge_ids)
     modified_indications = np.concatenate(
             [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
-    assert modified_indications.shape[0] == n_edges - delete_edges.shape[0] + skip_edges.shape[0]
+    assert modified_indications.shape[0] == n_edges - delete_edge_ids.shape[0] + skip_edges.shape[0]
     return modified_indications
 
 
@@ -338,11 +401,11 @@ def modified_edge_gt(ds, seg_id):
     if not ds.defect_slices:
         return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id  )
-    delete_edges = get_delete_edges(ds, seg_id)
-    modified_edge_gt = np.delete(modified_edge_gt, delete_edges)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+    modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds._rag(seg_id)
     node_gt, _ = rag.projectBaseGraphGt( ds.gt().astype('uint32') )
-    skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('float32')
+    skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
 
 
@@ -355,14 +418,28 @@ def modified_edge_gt(ds, seg_id):
 def modified_edge_features_from_affinity_maps(ds, seg_id, inp_id, anisotropy_factor):
     assert False, "Not implemented yet"
 
-def _get_skip_edge_features_for_slices(filter_paths, z_dn,
-        targets, seg,
-        skip_edge_pairs, skip_edge_indices,
+def _get_skip_edge_features_for_slices(
+        filter_paths,
+        z_dn,
+        seg,
+        skip_edge_pairs,
+        skip_edge_ranges,
+        skip_edge_indices,
         skip_edge_features):
 
     features = []
+    unique_ranges = np.unique(skip_edge_ranges)
+    targets = unique_ranges + z_dn
 
-    for z_up in targets:
+    print "Computing skip edge features from slice ", z_dn
+    for i, z_up in enumerate(targets):
+        print "to", z_up
+
+        which_skip_edges = skip_edge_ranges == unique_ranges[i]
+        skip_pairs_z   = skip_edge_pairs[which_skip_edges]
+        assert skip_pairs_z.shape[1] == 2
+        skip_indices_z = skip_edge_indices[which_skip_edges]
+
         seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
         rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
         target_features = []
@@ -388,16 +465,14 @@ def _get_skip_edge_features_for_slices(filter_paths, z_dn,
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
 
         # find the uvs_local that match skip edges
-        matches = find_matching_row_indices(uvs_local, skip_edge_pairs)
+        matches = find_matching_row_indices(uvs_local, skip_pairs_z)
         # make sure that all skip edges were found
-        assert matches.shape[0] == skip_edge_pairs.shape[0]
-        # get the target features corresponding to skip edges
-        target_features = target_features[matches[:,0]]
-        # then append them in the correct oreder
-        features.append( target_features[matches[:,1]])
+        assert matches.shape[0] == skip_pairs_z.shape[0], "%s, %s" % (str(matches.shape), str(skip_pairs_z.shape))
+        # get the target features corresponding to skip edges and order them correctly
+        target_features = target_features[matches[:,0]][matches[:,1]]
 
-    features = np.concatenate(features, axis = 0)
-    skip_edge_features[skip_edge_indices,:] = features
+        # write the features to the feature array
+        skip_edge_features[skip_indices_z,:] = target_features
 
 
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
@@ -409,17 +484,17 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
-    delete_edges = get_delete_edges(ds, seg_id)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
 
     # delete features for delete edges
-    modified_features = np.delete(modified_features, delete_edges, axis = 0)
+    modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
 
     # get features for skip edges
     seg = ds.seg(seg_id)
     lower_slices  = np.unique(skip_starts)
-    skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
+    skip_edge_pairs_to_slice   = {z : skip_edges[skip_starts == z]  for z in lower_slices}
     skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
-    target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
+    skip_edge_ranges_to_slice  = {z : skip_ranges[skip_starts == z] for z in lower_slices}
 
     # calculate the volume filters for the given input
     if isinstance(ds, Cutout):
@@ -429,13 +504,14 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
 
     skip_edge_features = np.zeros( (skip_edges.shape[0], modified_features.shape[1]) )
     for z in lower_slices:
-        this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
-        this_skip_edge_indices = skip_edge_indices_to_slice[z]
-        target = target_slices[z]
-        _get_skip_edge_features_for_slices(filter_paths,
-                z, target,
-                seg, this_skip_edge_pairs,
-                this_skip_edge_indices, skip_edge_features)
+        _get_skip_edge_features_for_slices(
+                filter_paths,
+                z,
+                seg,
+                skip_edge_pairs_to_slice[z],
+                skip_edge_ranges_to_slice[z],
+                skip_edge_indices_to_slice[z],
+                skip_edge_features)
 
     skip_edge_features = np.nan_to_num(skip_edge_features)
     assert skip_edge_features.shape[1] == modified_features.shape[1]
@@ -452,10 +528,10 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
-    delete_edges = get_delete_edges(ds, seg_id)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
 
     # delete all features corresponding to delete - edges
-    modified_features = np.delete(modified_features, delete_edges, axis = 0)
+    modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
     modified_features = np.c_[modified_features, np.ones(modified_features.shape[0])]
 
     ds._region_statistics(seg_id, inp_id)
@@ -484,6 +560,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     return np.concatenate( [modified_features, skip_features], axis = 0)
 
 
+# FIXME need to change similar to edge feats
 def _get_skip_topo_features_for_slices(z_dn, targets,
         seg, skip_edge_pairs,
         skip_edge_indices, use_2d_edges,
@@ -561,6 +638,7 @@ def _get_skip_topo_features_for_slices(z_dn, targets,
     skip_edge_features[skip_edge_indices,:] = features
 
 
+# FIXME need to change similar to edge feats
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
@@ -570,10 +648,10 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
-    delete_edges = get_delete_edges(ds, seg_id)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
 
     # delete all features corresponding to delete - edges
-    modified_features = np.delete(modified_features, delete_edges, axis = 0)
+    modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
 
     # get topo features for the new skip edges
     seg = ds.seg(seg_id)
@@ -612,11 +690,11 @@ def modified_mc_problem(ds, seg_id):
 
     modified_uv_ids = ds._adjacent_segments(seg_id)
     n_edges = modified_uv_ids.shape[0]
-    delete_edges = get_delete_edges(ds, seg_id)
-    modified_uv_ids = np.delete(modified_uv_ids, delete_edges, axis = 0)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+    modified_uv_ids = np.delete(modified_uv_ids, delete_edge_ids, axis = 0)
     skip_edges   = get_skip_edges(ds, seg_id)
     modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
-    assert modified_uv_ids.shape[0] == n_edges - delete_edges.shape[0] + skip_edges.shape[0]
+    assert modified_uv_ids.shape[0] == n_edges - delete_edge_ids.shape[0] + skip_edges.shape[0]
     assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
     # assume consecutive segmentation here
     n_var = ds.seg(seg_id).max() + 1
@@ -652,19 +730,10 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_
         edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
 
     # set ignore edges to be maximally repulsive
-    ignore_edges = get_ignore_edges(ds, seg_id)
-    if ignore_edges.size:
-        assert uv_ids.shape[1] == ignore_edges.shape[1]
-        # FIXME horrible loop....
-        ignore_indices = []
-        for uv in uv_ids:
-            where_uv = np.where(np.all(uv == ignore_edges, axis = 1))
-            if where_uv[0].size:
-                assert where_uv[0].size == 1
-                ignore_indices.append(where_uv[0][0])
-        ignore_indices = np.sort(ignore_indices)
+    ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
+    if ignore_edge_ids.size:
         max_repulsive = 2 * edge_energies.min()
-        edge_energies[ignore_indices] = max_repulsive
+        edge_energies[ignore_edge_ids] = max_repulsive
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
@@ -708,9 +777,7 @@ def _get_replace_slices(defected_slices, shape):
 
 
 def postprocess_segmentation(ds, seg_id, seg_result):
-    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
-    mid = defect_nodes.shape[0] / 2
-    defect_slices = np.unique(defect_nodes[mid:])
+    defect_slices = np.unique( get_defect_node_z(ds, seg_id) )
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
     for defect_slice in defect_slices:
         replace = replace_slices[defect_slice]

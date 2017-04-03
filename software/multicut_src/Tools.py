@@ -230,11 +230,11 @@ def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
 
 # for visualizing between edges
 @cacher_hdf5(ignoreNumpyArrays=True)
-def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
+def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_up):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
     print "Computing edge volume from uv ids between planes"
-    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels)
+    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_up)
 
 
 # for visualizing skip edges

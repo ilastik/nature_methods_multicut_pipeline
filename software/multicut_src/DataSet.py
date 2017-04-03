@@ -1157,14 +1157,7 @@ class DataSet(object):
 
         assert u_gt.shape == v_gt.shape
         assert u_gt.shape[0] == rag.edgeNum
-
-        edge_gt = np.zeros( rag.edgeNum )
-
-        # look, where the adjacent nodes are different
-        edge_gt[(u_gt != v_gt)] = 1.
-        edge_gt[(u_gt == v_gt)] = 0.
-
-        return edge_gt
+        return (u_gt != v_gt).astype('uint8')
 
 
     # get edge gt from thresholding the overlaps
@@ -1228,7 +1221,7 @@ class DataSet(object):
     # which are projected to an ignore label
     # -> we don t want to learn on these!
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def lifted_ignore_mask(self, seg_id, liftedNh, liftedUvs):
+    def lifted_ignore_mask(self, seg_id, liftedNh, liftedUvs, with_defects = False): # with defects only for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         #need the node gt to determine the gt val of superpixel
@@ -1455,7 +1448,14 @@ class Cutout(DataSet):
     # seg and gt can't be reimplemented that way, because they need to be connected!
 
     # we get the paths to the filters of the top dataset
-    def make_filters(self, inp_id, anisotropy_factor, ancestor_folder):
+    def make_filters(self,
+            inp_id,
+            anisotropy_factor,ancestor_folder,
+            filter_names = [ "gaussianSmoothing",
+                             "hessianOfGaussianEigenvalues",
+                             "laplacianOfGaussian"],
+            sigmas = [1.6, 4.2, 8.3]
+            ):
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is nor supported"
 

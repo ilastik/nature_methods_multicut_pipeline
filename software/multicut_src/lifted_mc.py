@@ -11,7 +11,7 @@ from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt
 
-from defect_handling import modified_mc_problem
+from defect_handling import modified_mc_problem, defects_to_nodes_from_slice_list, find_matching_indices
 
 RandomForest = vigra.learning.RandomForest3
 
@@ -607,7 +607,8 @@ def mask_lifted_edges(ds,
         seg_id,
         labels,
         uv_ids,
-        exp_params):
+        exp_params,
+        with_defects):
 
     labeled = np.ones_like(labels, bool)
 
@@ -616,7 +617,8 @@ def mask_lifted_edges(ds,
         ignore_mask = ds_train.lifted_ignore_mask(
             seg_id,
             exp_params.lifted_neighborhood,
-            uv_ids)
+            uv_ids,
+            with_defects)
         labeled[ignore_mask] = False
 
     # check which of the edges is in plane and mask the others
@@ -626,6 +628,12 @@ def mask_lifted_edges(ds,
         zV = nz_train[uv_ids[:,1]]
         ignore_mask = (zU != zV)
         labeled[ignore_mask] = False
+
+    # find all lifted edges that touch a defected node and ignore them
+    if with_defects and ds.defect_slices:
+        defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+        defect_indices = find_matching_indices(uv_ids, defect_nodes)
+        labeled[defect_nodes] = False
 
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
     # they should all be removed from the lifted edges -> check
@@ -703,7 +711,8 @@ def learn_lifted_rf(cache_folder,
                 seg_id,
                 labels,
                 uv_ids_train,
-                exp_params)
+                exp_params,
+                with_defects)
 
         features_train.append(f_train[labeled])
         labels_train.append(labels[labeled])
@@ -902,6 +911,13 @@ def lifted_probs_to_energies(ds,
     # weight down the z - edges with increasing distance
     if edgeZdistance is not None:
         e /= (edgeZdistance + 1.)
+
+    # find all lifted edges that touch a defected node and ignore them
+    if with_defects and ds.defect_slices:
+        defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+        max_repulsive = 2 * e.min()
+        defect_indices = find_matching_indices(uv_ids, defect_nodes)
+        e[defect_indices] = max_repulsive
 
     # set the edges within the segmask to be maximally repulsive
     # these should all be removed, check !
