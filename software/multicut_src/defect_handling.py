@@ -76,13 +76,10 @@ def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
 def defects_to_nodes_from_slice_list(ds, seg_id):
     seg = ds.seg(seg_id)
 
-    # if we have a segmentation mask, we don't want the ignore label to be marked as defected
-    ignore_zero = ds.has_seg_mask
-
     def defects_to_nodes_z(z):
         defect_nodes_slice = np.unique(seg[:,:,z])
-        if ignore_zero and 0 in defect_nodes_slice:
-            defect_nodes_slice = defect_nodes_slice[1:]
+        if ds.has_seg_mask and ds.ignore_seg_value in defect_nodes_slice:
+            defect_nodes_slice = defect_nodes_slices[defect_nodes_slice != ds.ignore_seg_value]
         return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
 
     with futures.ThreadPoolExecutor(max_workers = 8) as executor:
@@ -290,8 +287,8 @@ def modified_adjacency(ds, seg_id):
     if ds.has_seg_mask:
         duplicate_mask = skip_edges[:,0] != skip_edges[:,1]
         if not duplicate_mask.all(): # -> we have entries that will be masked out
-            # make sure that all duplicates have zero value (ignore segment)
-            assert (skip_edges[np.logical_not(duplicate_mask)] == 0).all()
+            # make sure that all duplicates have ignore segment value
+            assert (skip_edges[np.logical_not(duplicate_mask)] == ds.ignore_seg_value).all()
             print "Removing duplicate skip edges due to ignore segment label"
             skip_edges = skip_edges[duplicate_mask]
             skip_ranges = skip_ranges[duplicate_mask]
@@ -699,7 +696,7 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == 0).any(axis = 1)
+        ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
         edge_energies[ ignore_mask ] = 2 * edge_energies.min()
 
     assert not np.isnan(edge_energies).any()

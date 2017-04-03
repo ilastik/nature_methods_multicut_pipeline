@@ -49,10 +49,10 @@ def clusteringFeatures(ds,
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
-        where_uv_local = (uvs_local != 0).all(axis = 1)
+        where_uv_local = (uvs_local != ds.ignore_seg_value).all(axis = 1)
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        assert numpy.sum( (extraUV == 0).any(axis = 1) ) == 0
+        assert numpy.sum( (extraUV == ds.ignore_seg_value).any(axis = 1) ) == 0
     assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
@@ -543,7 +543,7 @@ def compute_and_save_lifted_nh(ds,
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
     # should be done if this takes too much time if we have a seg mask
     if ds.has_seg_mask:
-        where_uv = (uvs_local != 0).all(axis=1)
+        where_uv = (uvs_local != ds.ignore_seg_value).all(axis=1)
         uvs_local = uvs_local[where_uv]
 
     originalGraph = agraph.Graph(n_nodes)
@@ -653,7 +653,7 @@ def mask_lifted_edges(ds,
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
     # they should all be removed from the lifted edges -> check
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == 0).any(axis = 1)
+        ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
         assert numpy.sum(ignore_mask) == 0
         #assert ignore_mask.shape[0] == labels.shape[0]
         #labeled[ ignore_mask ] = False
@@ -936,6 +936,6 @@ def lifted_probs_to_energies(ds,
     # these should all be removed, check !
     if ds.has_seg_mask:
         uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
-        assert numpy.sum((uv_ids == 0).any(axis = 1)) == 0
+        assert numpy.sum((uv_ids == ds.ignore_seg_value).any(axis = 1)) == 0
 
     return e

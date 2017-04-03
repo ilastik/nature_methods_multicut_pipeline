@@ -70,7 +70,7 @@ class DataSet(object):
         # ignore values, because we don't want to hardcode this
         # TODO different values for different maskings ?!
         # TODO move to experiment params, once this is a singleton
-        self.ignore_seg_value = 0 # for now this has to be zero
+        self.ignore_seg_value = 0 # for now this has to be zero, because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
 
 
     def __str__(self):
@@ -179,7 +179,9 @@ class DataSet(object):
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
             mask = self.get_seg_mask()
-            seg[ np.logical_not(mask) ] = 0
+            assert self.ignore_seg_value == 0, "Only zero ignore value supported for now", # TODO change once we allow more general values
+            seg[ np.logical_not(mask) ] = self.ignore_seg_value
+            # TODO to allow other ignore values than zero, we need to use a different relabeling value here
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
                     start_label = 1,
                     keep_zeros = True)
@@ -765,7 +767,7 @@ class DataSet(object):
         # include 0 (== everything outside of the mask)
         # otherwise the ram consumption for the lmc can blow up...
         if self.has_seg_mask:
-            where_uv = (uv_ids != 0).all(axis = 1)
+            where_uv = (uv_ids != self.ignore_seg_value).all(axis = 1)
             # for lifted edges assert that no ignore segments are in lifted uvs
             if lifted_nh:
                 assert np.sum(where_uv) == where_uv.size
