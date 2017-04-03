@@ -665,23 +665,19 @@ def modified_mc_problem(ds, seg_id):
 
     modified_uv_ids = ds._adjacent_segments(seg_id)
 
-    unique_uvs = get_unique_rows(modified_uv_ids)
-    assert unique_uvs.shape[0] == modified_uv_ids.shape[0]
-
     n_edges = modified_uv_ids.shape[0]
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
     modified_uv_ids = np.delete(modified_uv_ids, delete_edge_ids, axis = 0)
     skip_edges   = get_skip_edges(ds, seg_id)
 
-    unique_skips = get_unique_rows(skip_edges)
-    assert unique_skips.shape[0] == skip_edges.shape[0]
-
     modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
     assert modified_uv_ids.shape[0] == n_edges - delete_edge_ids.shape[0] + skip_edges.shape[0]
     assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
 
+    dupls = modified_uv_ids[:,0] == modified_uv_ids[:,1]
+    print modified_uv_ids[dupls]
+
     unique_uvs, idx = get_unique_rows(modified_uv_ids, return_index = True)
-    print type(idx)
     assert unique_uvs.shape[0] == modified_uv_ids.shape[0]
 
     # we assume consecutive segmentation here
