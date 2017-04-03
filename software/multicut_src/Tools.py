@@ -230,11 +230,11 @@ def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
 
 # for visualizing between edges
 @cacher_hdf5(ignoreNumpyArrays=True)
-def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_up):
+def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_dn):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
     print "Computing edge volume from uv ids between planes"
-    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_up)
+    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_dn)
 
 
 # for visualizing skip edges
@@ -253,27 +253,27 @@ def edges_to_volumes_for_skip_edges(
 
     # find all the slices with defect starts
     lower_slices  = np.unique(skip_starts)
-    skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
-    target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
-    # this only works for a single target slice for now
-    for z in target_slices:
-        assert target_slices[z].size == 1, str(z)
-        target_slices[z] = target_slices[z][0]
+    ranges_to_slices = {z : skip_ranges[skip_starts == z] for z in lower_slices}
 
     # iterate over the slice pairs with skip edges and get the label volumes from cython
     for lower in lower_slices:
-        upper = target_slices[lower]
-        #print "From", lower, "to", upper
-        seg_dn = seg[:,:,lower]
-        seg_up = seg[:,:,upper]
-        assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
-        vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
-                seg_dn,
-                seg_up,
-                uv_ids[skip_edge_indices_to_slice[lower]],
-                edge_labels[skip_edge_indices_to_slice[lower]])
-        volume[:,:,lower] = vol_dn
-        volume[:,:,upper] = vol_up
+        ranges = ranges_to_slices[z]
+        unique_ranges = np.unique(ranges)
+        targets = unique_ranges + z_dn
+        # FIXME this can overwrite some of the lower stuff...
+        for i, upper in enumerate(targets):
+            seg_dn = seg[:,:,lower]
+            seg_up = seg[:,:,upper]
+            skip_range = unique_ranges[i]
+            skip_mask = skip_ranges == skip_range
+            assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
+            vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
+                    seg_dn,
+                    seg_up,
+                    uv_ids[skip_mask],
+                    edge_labels[skip_mask])
+            volume[:,:,lower] = vol_dn
+            volume[:,:,upper] = vol_up
 
     return volume
 
