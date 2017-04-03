@@ -496,27 +496,31 @@ def resolve_merges_with_lifted_edges(
                 min_range,
                 max_sample_size
         )
-        uv_ids_lifted_min_nh_local = np.sort(uv_ids_lifted_min_nh_local, axis = 1)
+        if uv_ids_lifted_min_nh_local.any():
+            uv_ids_lifted_min_nh_local = np.sort(uv_ids_lifted_min_nh_local, axis = 1)
 
-        # TODO: Compute the paths from the centers of mass of the pairs list
-        # -------------------------------------------------------------
-        # Get the distance transform of the current object
 
-        masked_disttransf = deepcopy(disttransf)
-        masked_disttransf[np.logical_not(mask)] = np.inf
+            # TODO: Compute the paths from the centers of mass of the pairs list
+            # -------------------------------------------------------------
+            # Get the distance transform of the current object
 
-        # Turn them to the original labels
-        uv_ids_lifted_min_nh = np.array([ np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_lifted_min_nh_local])
+            masked_disttransf = deepcopy(disttransf)
+            masked_disttransf[np.logical_not(mask)] = np.inf
 
-        # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
-        uv_ids_lifted_min_nh_coords = [[ecc_centers_seg[u] for u in uv] for uv in uv_ids_lifted_min_nh]
+            # Turn them to the original labels
+            uv_ids_lifted_min_nh = np.array([ np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_lifted_min_nh_local])
 
-        # Compute the shortest paths according to the pairs list
-        paths_obj = shortest_paths(
-            masked_disttransf,
-            uv_ids_lifted_min_nh_coords,
-            32) # TODO set n_threads from global params
+            # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
+            uv_ids_lifted_min_nh_coords = [[ecc_centers_seg[u] for u in uv] for uv in uv_ids_lifted_min_nh]
 
+            # Compute the shortest paths according to the pairs list
+            paths_obj = shortest_paths(
+                masked_disttransf,
+                uv_ids_lifted_min_nh_coords,
+                32) # TODO set n_threads from global params
+
+        else:
+            paths_obj = []
 
         # add the paths actually classified as being wrong if not already present
         extra_paths = false_paths[merge_id]
@@ -527,10 +531,14 @@ def resolve_merges_with_lifted_edges(
              mapping[seg[coord[1]]] ]) for coord in extra_coords])
         extra_path_uvs = np.sort(extra_path_uvs, axis = 1)
 
-        for extra_id, extra_uv in enumerate(extra_path_uvs):
-            if not any(np.equal(uv_ids_lifted_min_nh_local, extra_uv).all(1)): # check whether this uv - pair is already present
-                paths_obj.append(extra_paths[extra_id])
-                uv_ids_lifted_min_nh_local = np.append(uv_ids_lifted_min_nh_local, extra_uv[None,:], axis = 0)
+        if uv_ids_lifted_min_nh_local.any():
+            for extra_id, extra_uv in enumerate(extra_path_uvs):
+                if not any(np.equal(uv_ids_lifted_min_nh_local, extra_uv).all(1)): # check whether this uv - pair is already present
+                    paths_obj.append(extra_paths[extra_id])
+                    uv_ids_lifted_min_nh_local = np.append(uv_ids_lifted_min_nh_local, extra_uv[None,:], axis = 0)
+        else:
+            paths_obj = extra_paths
+            uv_ids_lifted_min_nh_local = extra_path_uvs
 
         # Compute the path features
         features = path_feature_aggregator(ds, paths_obj, exp_params)
@@ -572,7 +580,7 @@ def resolve_merges_with_lifted_edges(
 
         # FIXME Changed to older version of vigra
         # resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
-        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0)
+        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
         # project back to global node ids and save
         resolved_objs[merge_id] = {reverse_mapping[i] : node_res for i, node_res in enumerate(resolved_nodes)}
 
