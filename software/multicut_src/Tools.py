@@ -4,7 +4,8 @@ import cPickle as pickle
 import numpy as np
 
 from functools import wraps
-from itertools import combinations
+from itertools import combinations, product
+from concurrent import futures
 
 #
 # Implementation of a disjoint-set forest
@@ -218,34 +219,139 @@ def edges_to_volume(rag, edges, ignore_z = False):
     return volume
 
 
-def edges_to_binary(rag, edges, project_2d = True):
+# for visualizing in plane edges
+@cacher_hdf5(ignoreNumpyArrays=True)
+def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
+    assert uv_ids.shape[0] == edge_labels.shape[0]
+    from cython_tools import fast_edge_volume_from_uvs_in_plane
+    print "Computing edge volume from uv ids in plane"
+    return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels)
 
-    assert rag.edgeNum == edges.shape[0], str(rag.edgeNum) + " , " + str(edges.shape[0])
 
-    binary = 255 * np.ones(rag.baseGraph.shape, dtype = np.uint8)
+# for visualizing between edges
+@cacher_hdf5(ignoreNumpyArrays=True)
+def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_dn):
+    assert uv_ids.shape[0] == edge_labels.shape[0]
+    from cython_tools import fast_edge_volume_from_uvs_between_plane
+    print "Computing edge volume from uv ids between planes"
+    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_dn)
 
-    for edge_id in rag.edgeIds():
-        if edges[edge_id]:
-            edge_coords = rag.edgeCoordinates(edge_id)
-            # if project 2d is set, we only project the xy edges
-            if project_2d:
-                z = edge_coords[:,2]
-                assert np.unique(z).shape[0] == 1
-                z = z[0]
-                if z - int(z) != 0:
-                    continue
 
-            edge_coords_up = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                    np.ceil(edge_coords[:,1]).astype(np.uint32),
-                    np.ceil(edge_coords[:,2]).astype(np.uint32) )
-            edge_coords_dn = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                    np.ceil(edge_coords[:,1]).astype(np.uint32),
-                    np.ceil(edge_coords[:,2]).astype(np.uint32) )
+# for visualizing skip edges
+@cacher_hdf5(ignoreNumpyArrays=True)
+def edges_to_volumes_for_skip_edges(
+        ds,
+        seg,
+        uv_ids,
+        edge_labels,
+        skip_starts,
+        skip_ranges):
 
-            binary[edge_coords_dn] = 0
-            binary[edge_coords_up] = 0
+    assert uv_ids.shape[0] == edge_labels.shape[0]
+    assert skip_ranges.shape[0] == uv_ids.shape[0]
+    assert skip_starts.shape[0] == uv_ids.shape[0]
+    assert uv_ids.shape[1] == 2
 
-    return binary
+    from cython_tools import fast_edge_volume_for_skip_edges_slice
+    print "Computing edge volume for skip edges"
+    volume = np.zeros(seg.shape, dtype = edge_labels.dtype)
+
+    # find all the slices with defect starts
+    lower_slices  = np.unique(skip_starts)
+    skip_masks_to_lower = {z : skip_starts == z for z in lower_slices}
+
+    # iterate over the slice pairs with skip edges and get the label volumes from cython
+    for lower in lower_slices:
+        print "Slice", lower
+        # get the uvs and ranges for this lower slice
+        mask_lower = skip_masks_to_lower[lower]
+        ranges_lower = skip_ranges[mask_lower]
+        labels_lower = edge_labels[mask_lower]
+        uvs_lower    = uv_ids[mask_lower]
+        # get the target slcies from unique ranges
+        unique_ranges = np.unique(ranges_lower)
+        targets = unique_ranges + lower
+        # FIXME this can overwrite some of the lower stuff...
+        for i, upper in enumerate(targets):
+            print "to", upper
+
+            seg_dn = seg[:,:,lower]
+            seg_up = seg[:,:,upper]
+
+            # get the mask for skip edges connecting to this upper slice
+            mask_upper = ranges_lower == unique_ranges[i]
+            uvs_to_upper = np.sort(uvs_lower[mask_upper], axis = 1)
+            assert uvs_to_upper.shape[1] == 2
+            labels_upper = labels_lower[mask_upper]
+
+            # for debugging
+            #uniques_up = np.unique(seg_up)
+            #uniques_dn = np.unique(seg_dn)
+            #unique_uvs = np.unique(uvs_to_upper)
+            ## this should more or less add up (except for bg value)
+            #matches_dn = np.intersect1d(uniques_up, unique_uvs).size
+            #matches_up = np.intersect1d(uniques_dn, unique_uvs).size
+            #print "Matches_up", matches_up, '/', unique_uvs.size
+            #print "Matches_dn", matches_dn, '/', unique_uvs.size
+            #print "Combined:", matches_up + matches_dn, '/', unique_uvs.size
+            #assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
+
+            vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
+                    seg_dn,
+                    seg_up,
+                    uvs_to_upper,
+                    labels_upper)
+            volume[:,:,lower] = vol_dn
+            volume[:,:,upper] = vol_up
+
+    return volume
+
+    ##for e_id, uv in enumerate(uv_ids):
+    #def _write_coords(e_id, uv):
+    #    #print e_id, '/', n_edges
+    #    val = edge_labels[e_id]
+    #    if val == 0: # 0 labels are ignored
+    #        return False
+    #    u, v = uv
+    #    coords_u = np.where(seg == u)
+    #    coords_v = np.where(seg == v)
+    #    coords_u = np.concatenate(
+    #            [coords_u[0][:,None], coords_u[1][:,None], coords_u[2][:,None]],
+    #            axis = 1 )
+    #    coords_v = np.concatenate(
+    #            [coords_v[0][:,None], coords_v[1][:,None], coords_v[2][:,None]],
+    #            axis = 1 )
+    #    z_u = np.unique(coords_u[:,2])
+    #    z_v = np.unique(coords_v[:,2])
+    #    assert z_u.size == 1
+    #    assert z_v.size == 1
+    #    z_u, z_v = z_u[0], z_v[0]
+    #    assert z_u != z_v, "%i, %i" % (z_u, z_v)
+
+    #    # for z-edges find the intersection in plane
+    #    # get the intersecting coordinates:
+    #    # cf: http://stackoverflow.com/questions/8317022/get-intersecting-rows-across-two-2d-numpy-arrays
+    #    intersect = np.array([x for x in ( set(tuple(x) for x in coords_u[:,:2]) & set(tuple(x) for x in coords_v[:,:2]) ) ])
+    #    intersect_u = (
+    #            intersect[:,0],
+    #            intersect[:,1],
+    #            z_u * np.ones(intersect.shape[0], intersect.dtype) )
+    #    intersect_v = (
+    #            intersect[:,0],
+    #            intersect[:,1],
+    #            z_v * np.ones(intersect.shape[0], intersect.dtype) )
+    #    volume[intersect_u] = val
+    #    volume[intersect_v] = val
+
+    ## serial for debugging
+    ##res = [ _write_coords(e_id, uv) for e_id, uv in enumerate(uv_ids) ]
+
+    ## parallel
+    #with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+    #    tasks = [ executor.submit(_write_coords, e_id, uv) for e_id, uv in enumerate(uv_ids) ]
+    #    res = [t.result() for t in tasks]
+
+    #return volume
 
 
 # find the coordinates of all blocks for a tesselation of

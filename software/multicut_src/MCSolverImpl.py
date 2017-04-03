@@ -56,34 +56,14 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
         print "Weighting all edges"
         edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
 
-    # set the edges with the segmask to be maximally repulsive
+    # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
         uv_ids = ds._adjacent_segments(seg_id)
-        ignore_mask = (uv_ids == 0).any(axis = 1)
+        ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
         edge_energies[ ignore_mask ] = 2 * edge_energies.min()
 
     return edge_energies
 
-
-
-def lifted_probs_to_energies(ds, edge_probs, edgeZdistance,
-        betaGlobal=0.5, gamma=1.): # TODO weight connections in plane  kappa=20):
-
-    p_min = 0.001
-    p_max = 1. - p_min
-    edge_probs = (p_max - p_min) * edge_probs + p_min
-
-    # probabilities to energies, second term is boundary bias
-    e = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - betaGlobal) / betaGlobal )
-
-    # additional weighting
-    e /= gamma
-
-    # weight down the z - edges with increasing distance
-    if edgeZdistance is not None:
-        e /= (edgeZdistance + 1.)
-
-    return e
 
 
 # weight z edges with their area
@@ -193,8 +173,8 @@ def multicut_fusionmoves(n_var,
     g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
 
-    assert g.numberOfEdges == edge_energies.shape[0]
-    assert g.numberOfEdges == uv_ids.shape[0]
+    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
+    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
 
     obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
 

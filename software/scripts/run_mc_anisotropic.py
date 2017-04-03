@@ -241,7 +241,7 @@ def main():
         ds_test.make_filters( 0, exp_params.anisotropy_factor)
         ds_test.make_filters( 1, exp_params.anisotropy_factor)
 
-        mc_node, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
+        mc_node, mc_edges, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
            seg_id, seg_id,
            local_feats_list, lifted_feats_list, exp_params,
            gamma = gamma, weight_z_lifted = True)

@@ -6,6 +6,7 @@ import sys
 
 from DataSet import DataSet, InverseCutout
 from ExperimentSettings import ExperimentSettings
+# FIXME only import what we need !!!
 from MCSolverImpl import *
 from EdgeRF import *
 from lifted_mc import *
@@ -28,7 +29,7 @@ def _get_feat_str(feature_list):
     return feat_str
 
 def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
-    #vigra.writeHDF5(edge_energies, "./edge_energies_nproof_train.h5", "data")
+
     # solve the multicut witht the given solver
     if mc_params.solver == "multicut_exact":
         mc_node, mc_energy, t_inf = multicut_exact(
@@ -47,6 +48,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
     # we dont want zero as a segmentation result
     # because it is the ignore label in many settings
     mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label = 1, keep_zeros = False)
+    assert len(mc_node) == n_var, "%i, %i" % (len(mc_node), n_var)
     return mc_node, mc_edges, mc_energy, t_inf
 
 
@@ -112,7 +114,6 @@ def multicut_workflow(ds_train, ds_test,
 def multicut_workflow_with_defect_correction(ds_train, ds_test,
         seg_id_train, seg_id_test,
         feature_list, mc_params,
-        n_bins, bin_threshold,
         use_2_rfs = False):
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
@@ -127,14 +128,14 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
     # get edge probabilities from random forest
     if use_2_rfs:
         print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
+        assert False, "Currently not supported"
         edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
                 ds_train,
                 ds_test,
                 seg_id_train,
                 seg_id_test,
                 feature_list, feature_list,
-                mc_params, True,
-                n_bins, bin_threshold)
+                mc_params, True)
     else:
         print "Learning single random forest with", mc_params.n_trees, "trees"
         edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
@@ -143,18 +144,16 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
                 seg_id_train,
                 seg_id_test,
                 feature_list,
-                mc_params, True,
-                n_bins, bin_threshold)
+                mc_params, True)
     # for an InverseCutout, make sure that the artificial edges will be cut
     if isinstance(ds_test, InverseCutout):
         raise AttributeError("Not supported for defect correction workflow.")
     # get all parameters for the multicut
-    n_var, uv_ids = modified_mc_problem(ds_test, seg_id_test, n_bins, bin_threshold)
+    n_var, uv_ids = modified_mc_problem(ds_test, seg_id_test)
     # energies for the multicut
     edge_energies = modified_probs_to_energies(ds_test,
             edge_probs, seg_id_test, uv_ids,
-            mc_params, n_bins, bin_threshold,
-            _get_feat_str(feature_list))
+            mc_params, _get_feat_str(feature_list))
     return run_mc_solver(n_var, uv_ids, edge_energies, mc_params)
 
 
@@ -177,7 +176,8 @@ def lifted_multicut_workflow(ds_train, ds_test,
     #) step one, train a random forest
     print "Start learning"
 
-    pTestLifted, uvIds, nzTest = learn_and_predict_lifted(
+    pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+            mc_params.rf_cache_folder,
             ds_train, ds_test,
             seg_id_train, seg_id_test,
             feature_list_lifted, feature_list_local,
@@ -194,15 +194,16 @@ def lifted_multicut_workflow(ds_train, ds_test,
     edge_energies_local = probs_to_energies(ds_test,
             pTestLocal, seg_id_test, mc_params, _get_feat_str(feature_list_local))
 
-    # lifted energies
-    if weight_z_lifted:
-        # node z to edge z distance
-        edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, edgeZdistance, gamma = gamma, betaGlobal = mc_params.beta_global)
-    else:
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, None, gamma = gamma, betaGlobal = mc_params.beta_global)
+    # node z to edge z distance
+    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edge_energies_lifted = lifted_probs_to_energies(
+            ds_test,
+            pTestLifted,
+            seg_id_test,
+            edgeZdistance,
+            mc_params.lifted_neighborhood,
+            gamma = gamma,
+            betaGlobal = mc_params.beta_global)
 
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
@@ -210,7 +211,7 @@ def lifted_multicut_workflow(ds_train, ds_test,
 
     print "build lifted model"
     # remove me in functions
-    uvs_local = ds._adjacent_segments(seg_id)
+    uvs_local = ds_test._adjacent_segments(seg_id_test)
 
     # warmstart with multicut result
     if warmstart:
@@ -232,56 +233,60 @@ def lifted_multicut_workflow(ds_train, ds_test,
 
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
-def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
+def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, feature_list_lifted,
-        mc_params, n_bins, bin_threshold,
-        gamma = 1., warmstart = False, weight_z_lifted = True):
+        mc_params, gamma = 1.,
+        warmstart = False, weight_z_lifted = True):
 
     assert isinstance(ds_test, DataSet)
-    assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
+    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(mc_params, ExperimentSettings )
 
     print "Running lifted multicut with defect detection on", ds_test.ds_name
-    if isinstance(ds_train, DataSet):
-        print "Weights learned on", ds_train.ds_name
+    if isinstance(trainsets, DataSet):
+        print "Weights learned on", trainsets.ds_name
     else:
         print "Weights learned on multiple datasets"
 
     #) step one, train a random forest
     print "Start learning"
 
-    pTestLifted, uvIds, nzTest = learn_and_predict_lifted(
-            ds_train, ds_test,
+    pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+            mc_params.rf_cache_folder,
+            trainsets, ds_test,
             seg_id_train, seg_id_test,
             feature_list_lifted, feature_list_local,
-            mc_params, True, n_bins, bin_threshold)
+            mc_params, True)
 
     # get edge probabilities from random forest on the complete training set
     pTestLocal = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
-        ds_train, ds_test,
+        trainsets, ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, mc_params,
-        True, n_bins, bin_threshold)
+        True)
 
     # energies for the multicut
-    n_var_mc, uv_ids_local = modified_mc_problem(ds_test, seg_id_test, n_bins, bin_threshold)
+    n_var_mc, uv_ids_local = modified_mc_problem(ds_test, seg_id_test)
     # energies for the multicut
     edge_energies_local = modified_probs_to_energies(ds_test,
-            pTestLocal, seg_id_test, uv_ids_local,
-            mc_params, n_bins, bin_threshold,
+            pTestLocal, seg_id_test,
+            uv_ids_local, mc_params,
             _get_feat_str(feature_list_local))
     assert not np.isnan(edge_energies_local).any()
 
     # lifted energies
-    if weight_z_lifted:
-        # node z to edge z distance
-        edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] )
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, edgeZdistance, gamma = gamma, betaGlobal = mc_params.beta_global)
-    else:
-        edge_energies_lifted = lifted_probs_to_energies(ds_test,
-            pTestLifted, None, gamma = gamma, betaGlobal = mc_params.beta_global)
+    # node z to edge z distance
+    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edge_energies_lifted = lifted_probs_to_energies(
+            ds_test,
+            pTestLifted,
+            seg_id_test,
+            edgeZdistance,
+            mc_params.lifted_neighborhood,
+            gamma = gamma,
+            betaGlobal = mc_params.beta_global,
+            with_defects = True)
     assert not np.isnan(edge_energies_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling
@@ -308,6 +313,8 @@ def lifted_multicut_workflow_with_defect_correction(ds_train, ds_test,
         starting_point = None
 
     print "optimize"
-    nodeLabels = optimizeLifted(ds_test, model, starting_point)
+    nodeLabels = optimizeLifted(uv_ids_local, uvIds,
+            edge_energies_local, edge_energies_lifted,
+            starting_point)
     edgeLabels = nodeLabels[uv_ids_local[:,0]]!=nodeLabels[uv_ids_local[:,1]]
     return nodeLabels, edgeLabels, -14, 100
