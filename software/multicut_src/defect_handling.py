@@ -7,6 +7,25 @@ from Tools import cacher_hdf5, cache_name
 from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 
+
+# TODO move the numpy tools somewhere else
+
+#
+# numpy tools
+#
+
+# make the rows of array unique
+# see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
+# TODO this could also be done in place
+def get_unique_rows(array, return_index = False):
+    array_view = np.ascontiguousarray(array).view(np.dtype((np.void, array.dtype.itemsize * array.shape[1])))
+    _, idx = np.unique(array_view, return_index=True)
+    unique_rows = array[idx]
+    if return_index:
+        return unique_rows, idx
+    else:
+        return unique_rows
+
 # this returns a 2d array with the all the indices of matching rows for a and b
 # cf. http://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
 def find_matching_row_indices(x, y):
@@ -272,13 +291,10 @@ def modified_adjacency(ds, seg_id):
         skip_ranges.extend(skip_ranges_z)
         skip_starts.extend(len(skip_edges_z) * [z-1])
 
+    assert skip_edges, "If we are here, we should have skip edges !"
     skip_edges = np.array(skip_edges, dtype = np.uint32)
-    assert skip_edges.size, "If we are here, we should have skip edges !"
-
-    # make the skip edges unique, keeping rows (see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array):
-    skips_view = np.ascontiguousarray(skip_edges).view(np.dtype((np.void, skip_edges.dtype.itemsize * skip_edges.shape[1])))
-    _, idx = np.unique(skips_view, return_index=True)
-    skip_edges = skip_edges[idx]
+    # make the skip edge rows unique
+    skip_edges, idx = get_unique_rows(skip_edges, return_index = True)
 
     skip_ranges = np.array(skip_ranges, dtype = np.uint32)[idx]
     skip_starts = np.array(skip_starts, dtype = np.uint32)[idx]
@@ -648,14 +664,27 @@ def modified_mc_problem(ds, seg_id):
         return nvar, uvs
 
     modified_uv_ids = ds._adjacent_segments(seg_id)
+
+    unique_uvs = get_unique_rows(modified_uv_ids)
+    assert unique_uvs.shape[0] == modified_uv_ids.shape[0]
+
     n_edges = modified_uv_ids.shape[0]
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
     modified_uv_ids = np.delete(modified_uv_ids, delete_edge_ids, axis = 0)
     skip_edges   = get_skip_edges(ds, seg_id)
+
+    unique_skips = get_unique_rows(skip_edges)
+    assert unique_skips.shape[0] == skip_edges.shape[0]
+
     modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
     assert modified_uv_ids.shape[0] == n_edges - delete_edge_ids.shape[0] + skip_edges.shape[0]
     assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
-    # assume consecutive segmentation here
+
+    unique_uvs, idx = get_unique_rows(modified_uv_ids, return_index = True)
+    print type(idx)
+    assert unique_uvs.shape[0] == modified_uv_ids.shape[0]
+
+    # we assume consecutive segmentation here
     n_var = ds.seg(seg_id).max() + 1
     return n_var, modified_uv_ids
 
