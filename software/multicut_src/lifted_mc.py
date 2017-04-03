@@ -16,6 +16,16 @@ from defect_handling import modified_mc_problem, defects_to_nodes_from_slice_lis
 
 RandomForest = vigra.learning.RandomForest3
 
+
+# returns indices of lifted edges that are ignored due to defects
+@cacher_hdf5(ignoreNumpyArrays=True)
+def lifted_ignore_ids(ds,
+        seg_id,
+        uv_ids):
+    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+    return find_matching_indices(uv_ids, defect_nodes)
+
+
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds,
         segId,
@@ -101,8 +111,14 @@ def clusteringFeatures(ds,
         hc.cluster()
 
         assert mg.edgeNum == 0, str(mg.edgeNum)
-        if not ds.has_seg_mask: # this fails for the isolated nodes we have with a seg mask
+        # if we have completely defected slcies, we get a non-connected merge graph
+        # TODO I don't know if this is a problem, if it is, we could first remove them
+        # and then add dummy values later
+        if not with_defects:
             assert mg.nodeNum == 1, str(mg.nodeNum)
+        else:
+            # TODO test hypothesis
+            assert mg.nodeNum == len(ds.defect_slice_list) + 1, "%i, %i" % (mg.nodeNum, len(ds.defect_slice_list) + 1)
         tweight = edgeIndicatorNew.copy()
         hc.ucmTransform(tweight)
 
@@ -632,9 +648,7 @@ def mask_lifted_edges(ds,
 
     # find all lifted edges that touch a defected node and ignore them
     if with_defects and ds.defect_slices:
-        defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
-        defect_indices = find_matching_indices(uv_ids, defect_nodes)
-        labeled[defect_nodes] = False
+        labeled[lifted_ignore_mask(ds, seg_id, uv_ids)] = False
 
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
     # they should all be removed from the lifted edges -> check
@@ -849,7 +863,6 @@ def optimizeLifted(uvs_local,
     kl = agraph.liftedKernighanLin(model, settingsKl)
     ws2 = kl.run(ws)
 
-
     # FM RAND
     # settings for proposal generator
     settingsProposalGen = agraph.settingsProposalsFusionMovesRandomizedProposals(model)
@@ -889,6 +902,7 @@ def optimizeLifted(uvs_local,
 
     return nodeLabels
 
+
 # TODO weight connections in plane: kappa=20
 def lifted_probs_to_energies(ds,
         edge_probs,
@@ -915,10 +929,8 @@ def lifted_probs_to_energies(ds,
 
     # find all lifted edges that touch a defected node and ignore them
     if with_defects and ds.defect_slices:
-        defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
         max_repulsive = 2 * e.min()
-        defect_indices = find_matching_indices(uv_ids, defect_nodes)
-        e[defect_indices] = max_repulsive
+        e[lifted_ignore_ids(ds, seg_id, uv_ids)] = max_repulsive
 
     # set the edges within the segmask to be maximally repulsive
     # these should all be removed, check !
