@@ -372,7 +372,6 @@ def _get_skip_edge_features_for_slices(
         skip_edge_indices,
         skip_edge_features):
 
-    features = []
     unique_ranges = np.unique(skip_edge_ranges)
     targets = unique_ranges + z_dn
 
@@ -505,85 +504,102 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     return np.concatenate( [modified_features, skip_features], axis = 0)
 
 
-# FIXME need to change similar to edge feats
-def _get_skip_topo_features_for_slices(z_dn, targets,
-        seg, skip_edge_pairs,
-        skip_edge_indices, use_2d_edges,
+# TODO move this somewhere else and also use in normal topo_features
+def _get_topo_feats(rag, seg, use_2d_edges):
+
+    feats = []
+
+    # length / area of the edge
+    edge_lens = rag.edgeLengths()
+    feats.append(edge_lens[:,None])
+
+    # extra feats for z-edges in 2,5 d
+    if use_2d_edges:
+
+        # edge indications -> these are 0 (=z-edge) for all skip edges
+        feats.append(np.zeros(raglocal.edgeNum)[:,None])
+        # region sizes to build some features
+        statistics =  [ "Count", "RegionCenter" ]
+        extractor = vigra.analysis.extractRegionFeatures(
+                np.zeros_like(seg, dtype = 'float32'),
+                seg.astype('uint32'),
+                features = statistics )
+
+        sizes = extractor["Count"]
+        uvIds = rag.uvIds()
+        sizes_u = sizes[ uvIds[:,0] ]
+        sizes_v = sizes[ uvIds[:,1] ]
+
+        unions  = sizes_u + sizes_v - edge_lens
+        # Union features
+        feats.append( unions[:,None] )
+        # IoU features
+        feats.append( (edge_lens / unions)[:,None] )
+
+        # segment shape features
+        seg_coordinates = extractor["RegionCenter"]
+        len_bounds      = {n.id : 0. for n in rag.nodeIter()}
+
+        # iterate over the nodes, to get the boundary length of each node
+        for n in rag.nodeIter():
+            node_z = seg_coordinates[n.id][2]
+            for arc in rag.incEdgeIter(n):
+                edge = rag.edgeFromArc(arc)
+                edge_c = rag.edgeCoordinates(edge)
+                # only edges in the same slice!
+                if edge_c[0,2] == node_z:
+                    len_bounds[n.id] += edge_lens[edge.id]
+
+        # shape feature = Area / Circumference
+        shape_feats_u = sizes_u / np.array( [ len_bounds[u] for u in uvIds[:,0] ] )
+        shape_feats_v = sizes_v / np.array( [ len_bounds[v] for v in uvIds[:,1] ] )
+        # combine w/ min, max, absdiff
+        feats.append( np.minimum( shape_feats_u, shape_feats_v)[:,None] )
+        feats.append( np.maximum( shape_feats_u, shape_feats_v)[:,None] )
+        feats.append( np.absolute(shape_feats_u - shape_feats_v)[:,None] )
+
+    return np.concatenate(feats, axis = 1)
+
+
+def _get_skip_topo_features_for_slices(
+        z_dn,
+        seg,
+        skip_edge_pairs,
+        skip_edge_ranges,
+        skip_edge_indices,
+        use_2d_edges,
         skip_edge_features):
 
-    features = []
-    for z_up in targets:
+    unique_ranges = np.unique(skip_edge_ranges)
+    targets = unique_ranges + z_dn
+
+    print "Computing skip edge features from slice ", z_dn
+    for i, z_up in enumerate(targets):
+        print "to", z_up
+
+        which_skip_edges = skip_edge_ranges == unique_ranges[i]
+        skip_pairs_z   = skip_edge_pairs[which_skip_edges]
+        assert skip_pairs_z.shape[1] == 2
+        skip_indices_z = skip_edge_indices[which_skip_edges]
+
         seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
         rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
-        target_features = []
+        topo_feats = _get_topo_feats(rag_local, seg_local, use_2d_edges)
 
-        # length / area of the edge
-        edge_lens = rag_local.edgeLengths()
-        target_features.append(edge_lens[:,None])
-
-        # extra feats for z-edges in 2,5 d
-        if use_2d_edges:
-            # edge indications -> these are 0 (=z-edge) for all skip edges
-            target_features.append(np.zeros(rag_local.edgeNum)[:,None])
-            # region sizes to build some features
-            statistics =  [ "Count", "RegionCenter" ]
-            extractor = vigra.analysis.extractRegionFeatures(
-                    np.zeros_like(seg, dtype = 'float32'),
-                    seg.astype(np.uint32),
-                    features = statistics )
-
-            sizes = extractor["Count"]
-            uvIds = rag_local.uvIds()
-            sizes_u = sizes[ uvIds[:,0] ]
-            sizes_v = sizes[ uvIds[:,1] ]
-
-            unions  = sizes_u + sizes_v - edge_lens
-            # Union features
-            target_features.append( unions[:,None] )
-            # IoU features
-            target_features.append( (edge_lens / unions)[:,None] )
-
-            # segment shape features
-            seg_coordinates = extractor["RegionCenter"]
-            len_bounds      = {n.id : 0. for n in rag_local.nodeIter()}
-            # TODO no loop ?! or CPP
-            # iterate over the nodes, to get the boundary length of each node
-            for n in rag_local.nodeIter():
-                node_z = seg_coordinates[n.id][2]
-                for arc in rag_local.incEdgeIter(n):
-                    edge = rag_local.edgeFromArc(arc)
-                    edge_c = rag_local.edgeCoordinates(edge)
-                    # only edges in the same slice!
-                    if edge_c[0,2] == node_z:
-                        len_bounds[n.id] += edge_lens[edge.id]
-            # shape feature = Area / Circumference
-            shape_feats_u = sizes_u / np.array( [ len_bounds[u] for u in uvIds[:,0] ] )
-            shape_feats_v = sizes_v / np.array( [ len_bounds[v] for v in uvIds[:,1] ] )
-            # combine w/ min, max, absdiff
-            target_features.append( np.minimum( shape_feats_u, shape_feats_v)[:,None] )
-            target_features.append( np.maximum( shape_feats_u, shape_feats_v)[:,None])
-            target_features.append( np.absolute(shape_feats_u - shape_feats_v)[:,None] )
-
-        target_features = np.concatenate(target_features, axis = 1)
         # keep only the features corresponding to skip edges
         uvs_local = np.sort(rag_local.uvIds(), axis = 1)
         assert uvs_local.shape[0] == target_features.shape[0]
         assert uvs_local.shape[1] == skip_edge_pairs.shape[1]
-
         # find the uvs_local that match skip edges
         matches = find_matching_row_indices(uvs_local, skip_edge_pairs)
         # make sure that all skip edges were found
         assert matches.shape[0] == skip_edge_pairs.shape[0]
-        # get the target features corresponding to skip edges
-        target_features = target_features[matches[:,0]]
-        # then append them in the correct oreder
-        features.append( target_features[matches[:,1]])
-
-    features = np.concatenate(features, axis = 0)
-    skip_edge_features[skip_edge_indices,:] = features
+        # get the target features corresponding to skip edges and order them correctly
+        target_features = topo_feats[matches[:,0]][matches[:,1]]
+        # write the features to the feature array
+        skip_edge_features[skip_indices_z,:] = target_feats
 
 
-# FIXME need to change similar to edge feats
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
@@ -603,7 +619,7 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
     lower_slices  = np.unique(skip_starts)
     skip_edge_pairs_to_slice = {z : skip_edges[skip_starts == z] for z in lower_slices}
     skip_edge_indices_to_slice = {z : np.where(skip_starts == z) for z in lower_slices}
-    target_slices = {z : z + np.unique(skip_ranges[skip_starts == z]) for z in lower_slices}
+    skip_edge_ranges_to_slice  = {z : skip_ranges[skip_starts == z] for z in lower_slices}
 
     n_feats = modified_features.shape[1]
     skip_topo_features = np.zeros( (skip_edges.shape[0], n_feats) )
@@ -612,10 +628,14 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
         this_skip_edge_pairs = skip_edge_pairs_to_slice[z]
         this_skip_edge_indices = skip_edge_indices_to_slice[z]
         target = target_slices[z]
-        _get_skip_topo_features_for_slices(z, target,
-                seg, this_skip_edge_pairs,
-                this_skip_edge_indices, use_2d_edges,
-                skip_topo_features)
+        _get_skip_topo_features_for_slices(
+                z,
+                seg,
+                skip_edge_pairs_to_slice[z],
+                skip_edge_ranges_to_slice[z],
+                skip_edge_indices_to_slice[z],
+                use_2d_edges,
+                skip_edge_features)
 
     skip_topo_features[np.isinf(skip_topo_features)] = 0.
     skip_topo_features[np.isneginf(skip_topo_features)] = 0.
