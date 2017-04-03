@@ -5,7 +5,7 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts, get_ignore_edge_ids, modified_edge_features_from_affinity_maps
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
@@ -252,7 +252,7 @@ def learn_rf(cache_folder,
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspect the skip edges
-        if True:
+        if False:
             view_edges(cutout,
                     seg_id,
                     uv_ids,
