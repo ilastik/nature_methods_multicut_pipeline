@@ -79,7 +79,7 @@ def defects_to_nodes_from_slice_list(ds, seg_id):
     def defects_to_nodes_z(z):
         defect_nodes_slice = np.unique(seg[:,:,z])
         if ds.has_seg_mask and ds.ignore_seg_value in defect_nodes_slice:
-            defect_nodes_slice = defect_nodes_slices[defect_nodes_slice != ds.ignore_seg_value]
+            defect_nodes_slice = defect_nodes_slice[defect_nodes_slice != ds.ignore_seg_value]
         return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
 
     with futures.ThreadPoolExecutor(max_workers = 8) as executor:
