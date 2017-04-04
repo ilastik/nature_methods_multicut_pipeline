@@ -3,6 +3,7 @@ import os
 
 from DataSet import DataSet
 
+#FIXME TODO we don't need this any longer !
 # class that holds all the datasets
 class MetaSet(object):
 
@@ -22,10 +23,9 @@ class MetaSet(object):
             with open(self.dict_file, 'r') as f:
                 self.dset_dict = pickle.load(f)
 
-    def add_dataset(self, ds_name, ds):
-        assert isinstance(ds_name, str)
+    def add_dataset(self, ds):
         assert isinstance(ds, DataSet)
-        self.dset_dict[ds_name] = ds
+        self.dset_dict[str(ds)] = ds.obj_save_path
 
     def update_dataset(self, ds_name, ds):
         assert isinstance(ds_name, str)

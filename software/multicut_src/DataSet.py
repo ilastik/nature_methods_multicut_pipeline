@@ -5,11 +5,20 @@ import os
 import h5py
 from concurrent import futures
 import itertools
+import cPicle as pickle
 
 import graph as agraph
 
 from Tools import cacher_hdf5, cache_name
 
+def load_dataset(meta_folder, ds_name):
+    assert os.path.exists(meta_folder)
+    cache_folder = os.path.join(meta_folder, ds_name)
+    assert os.path.exists(cache_folder)
+    ds_obj_path = os.path.join(cache_folder, 'ds_obj.pkl')
+    assert os.path.exists(ds_obj_path)
+    with open(ds_obj_path) as f:
+        return pickle.load(ds_obj_path)
 
 # TODO Flag that tells us, if we have flat or 3d superpixel
 #      -> we can assert this every time we need flat superpix for a specific function
@@ -25,57 +34,96 @@ class DataSet(object):
         if not os.path.exists(self.cache_folder):
             os.mkdir(self.cache_folder)
 
-        # Flag if raw data was added
-        self.has_raw = False
+        # paths to external input data
+        self.external_raw_path  = None
+        self.external_gt_path   = None
+        self.external_inp_paths = []
+        self.external_seg_paths = []
+        # segmentation mask -> learning + inference will be restriced to
+        # superpixels in this mask
+        self.external_seg_mask_path = None
 
-        # Number of input data
-        self.n_inp = 0
+        # keys to external data
+        self.external_raw_key  = None
+        self.external_gt_key   = None
+        self.external_inp_keys = []
+        self.external_seg_keys = []
+        self.external_seg_mask_key = None
 
         # shape of input data
         self.shape = None
 
-        # Number of segmentations
-        self.n_seg = 0
-
-        self.has_gt = False
-
         # cutouts, tesselations and inverse cutouts
+        # paths to cutouts
         self.cutouts   = []
-        self.n_cutouts = 0
 
-        self.inverse_cutouts = {}
-
-        # compression method used
-        self.compression = 'gzip'
-
-        # maximal anisotropy factor for filter calculation
-        self.aniso_max = 20.
+        # TODO add a defect mask instead -> most general
+        self.defect_slices = []
 
         # gt ids to be ignored for positive training examples
         self.gt_false_splits = set()
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
 
-        # TODO add a defect mask instead -> most general
-        self.defect_slices = []
-        # if this is set to true, all defect calculations are ignored
-        # dirty hack to make cutouts without defects work...
-        #self.ignore_defects = False
+        # depreated
+        #self.inverse_cutouts = {}
 
-        # segmentation mask -> learning + inference will be restriced to
-        # superpixels in this mask
-        self.has_seg_mask = False
+        # TODO the following constants should be more global, e.g. in exp_params once it is a singleton
 
-        #
+        # compression method used
+        self.compression = 'gzip'
+        # maximal anisotropy factor for filter calculation
+        self.aniso_max = 20.
         # ignore values, because we don't want to hardcode this
         # TODO different values for different maskings ?!
-        # TODO move to experiment params, once this is a singleton
         self.ignore_seg_value = 0 # for now this has to be zero, because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
 
 
     def __str__(self):
         return self.ds_name
 
+    #
+    # Properties to check for inp-data etc.
+    #
+
+    @property
+    def has_raw(self):
+        return self.external_raw_path != None
+
+    @property
+    def has_gt(self):
+        return self.external_gt_path != None
+
+    @propery
+    def n_inp(self):
+        return len(self.external_inp_paths) + 1
+        # + 1 due to raw data that is counted as inp, but saved seperately
+
+    @property n_seg(self):
+        return len(self.external_seg_paths)
+
+    @property has_seg_mask(self):
+        return self.external_seg_mask_path != None
+
+    @property n_cutouts(self):
+        return len(self.cutouts)
+
+    #
+    # Loading and saving the dataset
+    #
+
+    #  TODO better serialization
+    def save(self):
+        # TODO for now we serialize with pickle, but something else might be better
+        obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
+        with open(self.obj_save_path, 'w') as f:
+            pickle.dump(self, f)
+
+    #
+    # Masking
+    #
+
+    # TODO replace this wit external_defect_mask!
     def add_defect_slices(self, defect_slice_list):
         assert self.has_raw
         assert isinstance(defect_slice_list, list)
@@ -89,90 +137,71 @@ class DataSet(object):
     def add_false_merge_gt_id(self, gt_id):
         self.gt_false_merges.add(gt_id)
 
-    # This needs to be called before add seg!
-    def add_seg_mask(self, mask_path, mask_key):
-        assert self.has_raw
-        mask = vigra.readHDF5(mask_path, mask_key)
-        assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
-        self.has_seg_mask = True
-        if self.n_seg > 0:
-            print "WARNING: Adding a segmentation mask does not change existing segmentations."
-        if isinstance(self, Cutout):
-            mask = mask[self.bb]
-        assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-        save_path = os.path.join(self.cache_folder,"seg_mask.h5")
-        vigra.writeHDF5(mask, save_path, 'data', compression = self.compression)
-
-    def get_seg_mask(self):
-        assert self.has_seg_mask
-        save_path = os.path.join(self.cache_folder,"seg_mask.h5")
-        return vigra.readHDF5(save_path, 'data')
-
     #
-    # Interface for adding inputs, segmentations and groundtruth
+    # Adding and loading external input data
     #
+    # TODO to be more flexible, we should save after every function that changes state:
+    # (add_ ...), however it would be nice to not simple dump the whole thing with that
 
-    def _add_raw(self, raw):
-        assert len(raw.shape) == 3, "Only 3d data supported"
-        self.shape = raw.shape
-        save_path = os.path.join(self.cache_folder,"inp0.h5")
-        vigra.writeHDF5(raw, save_path, "data", chunks = True)
-        self.has_raw = True
-        self.n_inp = 1
+    def _check_input(self, path, key):
+        assert os.path.exists(path, key), path
+        with h5py.File(path) as f:
+            assert key in f.keys(), "%s, %s" % (key, f.keys())
 
+    def _check_shape(self, path, key):
+        with h5py.File(path):
+            assert f[key].shape[:3] == self.shape, "%s, %s" % (str(f[key].shape), str(self.shape))
 
-    # add the raw_data
-    # expects hdf5 input
-    # probably better to do normalization in a way suited to the data!
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
-        raw = vigra.readHDF5(raw_path, raw_key).view(np.ndarray)
-        self._add_raw(raw)
+        self._check_input(raw_path, raw_key)
+        with h5py.File(raw_path, raw_key) as f:
+            assert len(f.shape) == 3, "Only 3d data supported"
+            self.shape = f.shape
+        self.external_raw_path = raw_path
+        self.external_raw_key  = raw_key
 
-
-    # add the raw_data from np.array
     def add_raw_from_data(self, raw):
+        assert isinstance(raw, np.ndarray)
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
-        assert isinstance(raw, np.ndarray)
-        self._add_raw(raw)
+        self.shape = raw.shape
+        internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
+        vigra.writeHDF5(internal_raw_path, 'data')
+        self.external_raw_path = internal_raw_path
+        self.external_raw_key  = 'data'
 
-
-    def _add_input(self, pixmap):
-        assert pixmap.shape[:3] == self.shape, "Pixmap shape " + str(pixmap.shape) + "does not match " + str(self.shape)
-        save_path = os.path.join(self.cache_folder, "inp" + str(self.n_inp) + ".h5" )
-        vigra.writeHDF5(pixmap, save_path, "data", chunks = True)
-        self.n_inp += 1
-
-
-    # add additional input map
-    # expects hdf5 input
     def add_input(self, inp_path, inp_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        pixmap = vigra.readHDF5(inp_path,inp_key)
-        self._add_input(pixmap)
+        self._check_input(inp_path, inp_key)
+        self._check_shape(inp_path, inp_key)
+        self.external_inp_paths.append(inp_path)
+        self.external_inp_keys.append(inp_key)
 
-
-    # add additional input map
-    # expects hdf5 input
     def add_input_from_data(self, pixmap):
+        assert isinstance(pixmap, np.ndarray)
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        assert isinstance(pixmap, np.ndarray)
-        self._add_input(pixmap)
+        assert pixmap.shape[:3] == self.shape
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
+        vigra.writeHDF5(pixmap, internal_inp_path, 'data')
 
-
-    # return input with inp_id (0 corresponds to the raw data)
+    # FIXME TODO we don't really need to cache the raw data at all, but keep this for legacy for now
     def inp(self, inp_id):
-        if inp_id >= self.n_inp:
-            raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
-        inp_path = os.path.join(self.cache_folder,"inp" + str(inp_id) + ".h5")
-        return vigra.readHDF5(inp_path, "data").astype('float32')
+        assert inp_id < self.n_inp, "Trying to read inp_id %i but there are only %i input maps" % (inp_id, self.n_inp)
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
+        if os.path.exists(internal_inp_path): # this is already cached
+            return vigra.readHDF5(internal_inp_path, "data").astype('float32')
+        else: # this is cached for the first time, load from external data
+            external_path = self.external_raw_path if (inp_id == 0) else self.external_raw_path[inp_id]
+            external_key = self.external_raw_key if (inp_id == 0) else self.external_raw_key[inp_id]
+            inp_data = vigra.readHDF5(external_path, external_key)
+            vigra.writeHDF5(inp_data, internal_inp_path, 'data')
+            return inp_data.astype('float32')
 
-
-    def _add_seg(self, seg):
+    def _process_seg(self, seg):
         if isinstance(self, Cutout):
             seg = seg[self.bb]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
@@ -187,38 +216,35 @@ class DataSet(object):
                     keep_zeros = True)
         else:
             seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
-        save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
-        vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
-        self.n_seg += 1
+        return seg
 
-
-    # add segmentation of the volume
-    # expects hdf5 input
     def add_seg(self, seg_path, seg_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before adding a segmentation")
-        seg = vigra.readHDF5(seg_path, seg_key).astype('uint32')
-        self._add_seg(seg)
+        self._check_input(seg_path, seg_key)
+        self.external_seg_paths.append(seg_path)
+        self.external_seg_keys.append(seg_key)
 
-
-    # add segmentation of the volume
-    # expects hdf5 input
     def add_seg_from_data(self, seg):
+        assert isinstance(seg, np.ndarray)
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before adding a segmentation")
-        assert isinstance(seg, np.ndarray)
-        self._add_seg(seg)
+        internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % self.n_seg)
+        seg = self._process_seg(seg)
+        vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
 
-
-    # return segmentation with seg_id
     def seg(self, seg_id):
-        if seg_id >= self.n_seg:
-            raise RuntimeError("Trying to read seg_id " + str(seg_id) + " but there are only " + str(self.n_seg) + " segmentations")
-        seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
-        return vigra.readHDF5(seg_path, "data")
+        assert seg_id < self.n_seg, "Trying to read seg_id %i but there are only %i segmentations" % (seg_ind, self.n_seg)
+        internal_seg_path = os.path.join(self.cache_folder,"seg%i.h5" % seg_id)
+        if os.path.exists(internal_seg_path):
+            return vigra.readHDF5(internal_seg_path, "data")
+        else:
+            seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
+            seg = _process_seg(seg)
+            vigra.writeHDF5(internal_seg_path, 'data', compression = 'gzip')
+            return seg
 
-
-    def _add_gt(self, gt):
+    def _process_gt(self, gt):
         if isinstance(self, Cutout):
             gt = gt[self.bb]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
@@ -226,36 +252,65 @@ class DataSet(object):
         # also messes up defects in cremi...
         #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         #gt -= gt.min()
-        save_path = os.path.join(self.cache_folder,"gt.h5")
-        vigra.writeHDF5(gt, save_path, "data", compression = self.compression)
-        self.has_gt = True
-
+        return gt
 
     # only single gt for now!
     # add grountruth
     def add_gt(self, gt_path, gt_key):
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
-        gt = vigra.readHDF5(gt_path, gt_key)
-        self._add_gt(gt)
-
+        self._check_input(gt_path, gt_key)
+        self.external_gt_path = gt_path
+        self.external_gt_key = gt_key
 
     # only single gt for now!
     # add grountruth
     def add_gt_from_data(self, gt):
+        assert isinstance(gt, np.ndarray)
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
-        assert isinstance(gt, np.ndarray)
-        self._add_gt(gt)
-
+        gt = _process_gt(gt)
+        internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
+        vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
 
     # get the groundtruth
     def gt(self):
         if not self.has_gt:
             raise RuntimeError("Need to add groundtruth first!")
-        gt_path = os.path.join(self.cache_folder, "gt.h5")
-        return vigra.readHDF5(gt_path, "data")
+        internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
+        if os.path.exists(internal_gt_path):
+            return vigra.readHDF5(internal_gt_path, "data")
+        else:
+            gt = vigra.readHDF5(self.external_gt_path, self.external_gt_key)
+            gt = _process_gt(gt)
+            vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
+            return gt
 
+    def add_seg_mask(self, mask_path, mask_key):
+        assert self.has_raw
+        assert not self.has_seg_mask
+        self._check_input(mask_path, mask_key)
+        self.external_seg_mask_path = mask_path
+        self.external_seg_mask_key  = mask_key
+
+    def get_seg_mask(self):
+        assert self.has_seg_mask
+        internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
+        if os.path.exists(internal_mask_path):
+            return vigra.readHDF5(internal_mask_path, 'data')
+        else:
+            mask = vigra.readHDF5(self.external_seg_mask_path, self.external_seg_mask_key)
+            assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
+            # TODO we could chek if any segs are already loaded and then warn
+            if isinstance(self, Cutout):
+                mask = mask[self.bb]
+            assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
+            return mask
+
+    #
+    # General functionality
+    #
 
     # calculate the region adjacency graph of seg_id
     def _rag(self, seg_id):
@@ -1284,9 +1339,12 @@ class DataSet(object):
 
 
     #
-    # Convenience functions for Cutouts and Tesselation
+    # Convenience functions for Cutouts
     #
 
+    # TODO
+    # TODO adjust to new caching, we need to store the path to the cutout and pickle / unpickle it
+    # TODO
 
     # make a cutout of the given block shape
     # need to update the ds in the MetaSet after this!
@@ -1347,6 +1405,7 @@ class DataSet(object):
 
 
     def make_inverse_cutout(self, cut_id):
+        assert False, "Deprecated"
         assert self.has_raw, "Need at least raw data to make a cutout"
         assert cut_id < self.n_cutouts, "Cutout was not done yet!"
         assert not cut_id in self.inverse_cutouts.keys(), "Inverse Cutout is already there!"
@@ -1380,6 +1439,7 @@ class DataSet(object):
 
 
     def get_inverse_cutout(self, cut_id):
+        assert False, "Deprecated"
         assert cut_id in self.inverse_cutouts.keys(), "InverseCutout not produced yet"
         return self.inverse_cutouts[cut_id]
 
