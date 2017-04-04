@@ -71,6 +71,7 @@ def clusteringFeatures(ds,
     assert len(whereLifted) == nAdditionalEdges
     assert foundEdges.sum() == nAdditionalEdges
 
+    # TODO this loop should be parallelized!
     allFeat = []
     eLen = vgraph.getEdgeLengths(originalGraph)
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
@@ -925,6 +926,7 @@ def lifted_probs_to_energies(ds,
 
     # weight down the z - edges with increasing distance
     if edgeZdistance is not None:
+        assert edgeZdistance.shape[0] == e.shape[0]
         e /= (edgeZdistance + 1.)
 
     uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
