@@ -22,7 +22,6 @@ except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
-
 ###
 ### Functions for edgeprobabilities to edge energies
 ###
@@ -131,8 +130,8 @@ def multicut_exact(n_var,
     g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
 
-    assert g.numberOfEdges == edge_energies.shape[0]
-    assert g.numberOfEdges == uv_ids.shape[0]
+    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
+    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
 
     obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
 
@@ -173,8 +172,8 @@ def multicut_fusionmoves(n_var,
     g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
 
-    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
     assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
+    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
 
     obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
 

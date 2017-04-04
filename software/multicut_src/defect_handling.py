@@ -7,6 +7,25 @@ from Tools import cacher_hdf5, cache_name
 from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 
+
+# TODO move the numpy tools somewhere else
+
+#
+# numpy tools
+#
+
+# make the rows of array unique
+# see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
+# TODO this could also be done in place
+def get_unique_rows(array, return_index = False):
+    array_view = np.ascontiguousarray(array).view(np.dtype((np.void, array.dtype.itemsize * array.shape[1])))
+    _, idx = np.unique(array_view, return_index=True)
+    unique_rows = array[idx]
+    if return_index:
+        return unique_rows, idx
+    else:
+        return unique_rows
+
 # this returns a 2d array with the all the indices of matching rows for a and b
 # cf. http://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
 def find_matching_row_indices(x, y):
@@ -272,13 +291,10 @@ def modified_adjacency(ds, seg_id):
         skip_ranges.extend(skip_ranges_z)
         skip_starts.extend(len(skip_edges_z) * [z-1])
 
+    assert skip_edges, "If we are here, we should have skip edges !"
     skip_edges = np.array(skip_edges, dtype = np.uint32)
-    assert skip_edges.size, "If we are here, we should have skip edges !"
-
-    # make the skip edges unique, keeping rows (see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array):
-    skips_view = np.ascontiguousarray(skip_edges).view(np.dtype((np.void, skip_edges.dtype.itemsize * skip_edges.shape[1])))
-    _, idx = np.unique(skips_view, return_index=True)
-    skip_edges = skip_edges[idx]
+    # make the skip edge rows unique
+    skip_edges, idx = get_unique_rows(skip_edges, return_index = True)
 
     skip_ranges = np.array(skip_ranges, dtype = np.uint32)[idx]
     skip_starts = np.array(skip_starts, dtype = np.uint32)[idx]
@@ -304,8 +320,31 @@ def modified_adjacency(ds, seg_id):
     skip_starts = skip_starts[sort_indices]
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(skip_starts.astype(int)) >= 0), "start index of skip edges must increase monotonically."
-    # sort the skip edges
+
+    # sort the uv ids in skip edges
     skip_edges = np.sort(skip_edges, axis = 1)
+
+    # get the modified adjacency
+    # first check if we have any duplicates in the skip edges and uv - ids
+    # this can happen if we have a segmentation mask
+    matches = find_matching_row_indices(uv_ids, skip_edges)
+    if matches.size:
+        assert ds.has_seg_mask, "There should only be duplicates in skip edges and uvs if we have a seg mask"
+        # make sure that all removed edges are ignore edges
+        assert all( (skip_edges[matches[:,1]] == ds.ignore_seg_value).any(axis = 1) ), "All duplicate skip edges should connect to a ignore segment"
+
+        print "Removing %i skip edges that were duplicates of uv ids." % len(matches)
+        # get a mask for the duplicates
+        duplicate_mask = np.ones(len(skip_edges), dtype = np.bool)
+        duplicate_mask[matches[:,1]] = False
+
+        # remove duplicates from skip edges, ranges and starts
+        skip_edges  = skip_edges[duplicate_mask]
+        skip_ranges = skip_ranges[duplicate_mask]
+        skip_starts = skip_starts[duplicate_mask]
+
+    # new modified adjacency
+    modified_adjacency = np.concatenate([uv_ids, skip_edges])
 
     # save delete, ignore and skip edges, a little hacky due to stupid caching...
     save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
@@ -319,7 +358,8 @@ def modified_adjacency(ds, seg_id):
     vigra.writeHDF5(skip_edges,  save_path, "skip_edges")
     vigra.writeHDF5(skip_ranges, save_path, "skip_ranges")
     vigra.writeHDF5(skip_starts, save_path, "skip_starts")
-    return []
+
+    return modified_adjacency
 
 
 @cacher_hdf5()
@@ -636,28 +676,6 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
     skip_topo_features = np.nan_to_num(skip_topo_features)
     assert skip_topo_features.shape[1] == modified_features.shape[1]
     return np.concatenate([modified_features, skip_topo_features],axis = 0)
-
-#
-# Modified Multicut Problem
-#
-
-def modified_mc_problem(ds, seg_id):
-    if not ds.defect_slices:
-        uvs = ds._adjacent_segments(seg_id)
-        nvar= np.max(uvs)+1
-        return nvar, uvs
-
-    modified_uv_ids = ds._adjacent_segments(seg_id)
-    n_edges = modified_uv_ids.shape[0]
-    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
-    modified_uv_ids = np.delete(modified_uv_ids, delete_edge_ids, axis = 0)
-    skip_edges   = get_skip_edges(ds, seg_id)
-    modified_uv_ids = np.concatenate([modified_uv_ids, skip_edges])
-    assert modified_uv_ids.shape[0] == n_edges - delete_edge_ids.shape[0] + skip_edges.shape[0]
-    assert modified_uv_ids.shape[1] == 2, str(modified_uv_ids.shape)
-    # assume consecutive segmentation here
-    n_var = ds.seg(seg_id).max() + 1
-    return n_var, modified_uv_ids
 
 
 # the last argument is only for caching results with different features correctly
