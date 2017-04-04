@@ -201,6 +201,8 @@ def learn_rf(cache_folder,
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
+            print "Loading random forest from"
+            print rf_path
             # we need to check if the defect rf actually exists
             with h5py.File(rf_path) as f:
                  has_defect_rf = True if ('rf_defects' in f.keys()) else False
@@ -360,6 +362,8 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
+            print "Loading prediction from:"
+            print pred_path
             return vigra.readHDF5(pred_path, 'data')
 
     # get the random forest(s)
@@ -391,10 +395,12 @@ def learn_and_predict_rf_from_gt(cache_folder,
         features_test = features_test[:skip_transition]
 
     # predict
+    print "Start predicting random forest"
     pmem_test = rf.predictProbabilities( features_test.astype('float32'),
         n_threads = exp_params.n_threads)[:,1]
 
     if with_defects and ds_test.defect_slices:
+        print "Start predicting defect random forest"
         pmem_skip = rf_defects.predictProbabilities( features_test_skip.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])

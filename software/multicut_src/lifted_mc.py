@@ -740,7 +740,7 @@ def learn_lifted_rf(cache_folder,
     features_train = numpy.concatenate(features_train, axis = 0)
     labels_train = numpy.concatenate(labels_train, axis = 0)
 
-    print "Start learnin lifted random forest"
+    print "Start learning lifted random forest"
     rf = RandomForest(features_train.astype('float32'),
             labels_train.astype('uint32'),
             treeCount = exp_params.n_trees,
@@ -817,6 +817,7 @@ def learn_and_predict_lifted_rf(cache_folder,
             uv_ids_test, seg_id_test,
             with_defects)
 
+    print "Start prediction lifted random forest"
     p_test = rf.predictProbabilities(
             features_test.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
