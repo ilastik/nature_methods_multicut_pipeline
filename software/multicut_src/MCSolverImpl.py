@@ -22,7 +22,6 @@ except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
-
 ###
 ### Functions for edgeprobabilities to edge energies
 ###

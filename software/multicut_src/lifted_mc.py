@@ -12,7 +12,7 @@ from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt
 
-from defect_handling import modified_mc_problem, defects_to_nodes_from_slice_list, find_matching_indices
+from defect_handling import defects_to_nodes_from_slice_list, find_matching_indices, modified_adjacency
 
 RandomForest = vigra.learning.RandomForest3
 
@@ -41,11 +41,8 @@ def clusteringFeatures(ds,
     else:
         print "For normal clustering"
 
-    if with_defects:
-        n_nodes, uvs_local = modified_mc_problem(ds, segId)
-    else:
-        uvs_local = ds._adjacent_segments(segId)
-        n_nodes = uvs_local.max() + 1
+    uvs_local = modified_adjacency(ds, segId) if with_defects else ds._adjacent_segments(segId)
+    n_nodes = uvs_local.max() + 1
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
@@ -539,11 +536,8 @@ def compute_and_save_lifted_nh(ds,
         liftedNeighborhood,
         with_defects = False):
 
-    if with_defects:
-        n_nodes, uvs_local = modified_mc_problem(ds, segId)
-    else:
-        uvs_local = ds._adjacent_segments(segId)
-        n_nodes = uvs_local.max() + 1
+    uvs_local = modified_adjacency if with_defects else ds._adjacent_segments(segId)
+    n_nodes = uvs_local.max() + 1
 
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
     # should be done if this takes too much time if we have a seg mask

@@ -5,7 +5,9 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_indications, modified_edge_gt, get_skip_edges, modified_mc_problem, get_skip_ranges, get_skip_starts, get_ignore_edge_ids, modified_edge_features_from_affinity_maps
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_features_from_affinity_maps
+from defect_handling import modified_edge_indications, modified_edge_gt
+from defect_handling import get_skip_edges, modified_adjacency, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
 from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
@@ -225,7 +227,7 @@ def learn_rf(cache_folder,
         features_cut = feature_aggregator( cutout, seg_id )
 
         if with_defects and cutout.defect_slices:
-            _, uv_ids = modified_mc_problem(cutout, seg_id)
+            uv_ids = modified_adjacency(cutout, seg_id)
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
 
@@ -470,7 +472,7 @@ def learn_and_predict_anisotropic_rf(cache_folder,
         # set ignore mask to 0.5
         if exp_params.use_ignore_mask: # ignore mask not yet supported for defects
             if with_defects:
-                uv_ids, _ = modified_mc_problem(cutout, seg_id_train, n_bins, bin_threshold)
+                uv_ids, _ = modified_adjacency(cutout, seg_id_train, n_bins, bin_threshold)
             else:
                 uv_ids = cutout._adjacent_segments(seg_id_train)
             ignore_mask = cutout.ignore_mask(seg_id_train, uv_ids)

@@ -10,7 +10,7 @@ from ExperimentSettings import ExperimentSettings
 from MCSolverImpl import *
 from EdgeRF import *
 from lifted_mc import *
-from defect_handling import modified_mc_problem, modified_probs_to_energies
+from defect_handling import modified_adjacency, modified_probs_to_energies
 
 import graph as agraph
 
@@ -148,8 +148,11 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
     # for an InverseCutout, make sure that the artificial edges will be cut
     if isinstance(ds_test, InverseCutout):
         raise AttributeError("Not supported for defect correction workflow.")
+
     # get all parameters for the multicut
-    n_var, uv_ids = modified_mc_problem(ds_test, seg_id_test)
+    uv_ids = modified_adjacency(ds_test, seg_id_test)
+    n_var = uv_ids.max() + 1
+
     # energies for the multicut
     edge_energies = modified_probs_to_energies(ds_test,
             edge_probs, seg_id_test, uv_ids,
@@ -266,8 +269,10 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         feature_list_local, mc_params,
         True)
 
-    # energies for the multicut
-    n_var_mc, uv_ids_local = modified_mc_problem(ds_test, seg_id_test)
+    # get all parameters for the multicut
+    uv_ids = modified_adjacency(ds_test, seg_id_test)
+    n_var = uv_ids.max() + 1
+
     # energies for the multicut
     edge_energies_local = modified_probs_to_energies(ds_test,
             pTestLocal, seg_id_test,
