@@ -927,6 +927,7 @@ def lifted_probs_to_energies(ds,
     if edgeZdistance is not None:
         e /= (edgeZdistance + 1.)
 
+    uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
     # find all lifted edges that touch a defected node and ignore them
     if with_defects and ds.defect_slices:
         max_repulsive = 2 * e.min()
@@ -935,7 +936,6 @@ def lifted_probs_to_energies(ds,
     # set the edges within the segmask to be maximally repulsive
     # these should all be removed, check !
     if ds.has_seg_mask:
-        uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
         assert numpy.sum((uv_ids == ds.ignore_seg_value).any(axis = 1)) == 0
 
     return e

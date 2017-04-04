@@ -179,7 +179,7 @@ def lifted_multicut_workflow(ds_train, ds_test,
     #) step one, train a random forest
     print "Start learning"
 
-    pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+    pTestLifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
             mc_params.rf_cache_folder,
             ds_train, ds_test,
             seg_id_train, seg_id_test,
@@ -198,7 +198,7 @@ def lifted_multicut_workflow(ds_train, ds_test,
             pTestLocal, seg_id_test, mc_params, _get_feat_str(feature_list_local))
 
     # node z to edge z distance
-    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edgeZdistance = np.abs( nzTest[uv_ids_lifted[:,0]] - nzTest[uv_ids_lifted[:,1]] ) if weight_z_lifted else None
     edge_energies_lifted = lifted_probs_to_energies(
             ds_test,
             pTestLifted,
@@ -222,12 +222,12 @@ def lifted_multicut_workflow(ds_train, ds_test,
         mc_nodes, mc_energy, _ = multicut_fusionmoves(
             n_var_mc, uvs_local,
             edge_energies_local, mc_params)
-        starting_point = mc_nodes[uvIds[:,0]] != mc_nodes[uvIds[:,1]]
+        starting_point = mc_nodes[uv_ids_lifted[:,0]] != mc_nodes[uv_ids_lifted[:,1]]
     else:
         starting_point = None
 
     print "optimize"
-    nodeLabels = optimizeLifted(uvs_local, uvIds,
+    nodeLabels = optimizeLifted(uvs_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
 
@@ -255,7 +255,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
     #) step one, train a random forest
     print "Start learning"
 
-    pTestLifted, uvIds, nzTest = learn_and_predict_lifted_rf(
+    pTestLifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
             mc_params.rf_cache_folder,
             trainsets, ds_test,
             seg_id_train, seg_id_test,
@@ -270,8 +270,8 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         True)
 
     # get all parameters for the multicut
-    uv_ids = modified_adjacency(ds_test, seg_id_test)
-    n_var = uv_ids.max() + 1
+    uv_ids_local = modified_adjacency(ds_test, seg_id_test)
+    n_var = uv_ids_local.max() + 1
 
     # energies for the multicut
     edge_energies_local = modified_probs_to_energies(ds_test,
@@ -282,7 +282,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
 
     # lifted energies
     # node z to edge z distance
-    edgeZdistance = np.abs( nzTest[uvIds[:,0]] - nzTest[uvIds[:,1]] ) if weight_z_lifted else None
+    edgeZdistance = np.abs( nzTest[uv_ids_lifted[:,0]] - nzTest[uv_ids_lifted[:,1]] ) if weight_z_lifted else None
     edge_energies_lifted = lifted_probs_to_energies(
             ds_test,
             pTestLifted,
@@ -307,7 +307,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
     # set cost for local edges
     model.setCosts(uv_ids_local,edge_energies_local)
     # set cost for lifted edges
-    model.setCosts(uvIds, edge_energies_lifted)
+    model.setCosts(uv_ids_lifted, edge_energies_lifted)
 
     # warmstart with multicut result
     if warmstart:
@@ -318,7 +318,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         starting_point = None
 
     print "optimize"
-    nodeLabels = optimizeLifted(uv_ids_local, uvIds,
+    nodeLabels = optimizeLifted(uv_ids_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
     edgeLabels = nodeLabels[uv_ids_local[:,0]]!=nodeLabels[uv_ids_local[:,1]]
