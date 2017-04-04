@@ -536,7 +536,7 @@ def compute_and_save_lifted_nh(ds,
         liftedNeighborhood,
         with_defects = False):
 
-    uvs_local = modified_adjacency if with_defects else ds._adjacent_segments(segId)
+    uvs_local = modified_adjacency(ds, segId) if with_defects else ds._adjacent_segments(segId)
     n_nodes = uvs_local.max() + 1
 
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
