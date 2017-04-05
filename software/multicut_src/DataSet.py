@@ -427,6 +427,7 @@ class DataSet(object):
     # Feature Calculation
     #
 
+    # TODO:  we should add this as input and not cache it this way
     # FIXME: Apperently the cacher does not accept keyword arguments
     # this will be ignorant of using a different segmentation
     @cacher_hdf5(ignoreNumpyArrays=True)
@@ -472,16 +473,17 @@ class DataSet(object):
         print "Calculating filters for input id:", inp_id
         import fastfilters
 
+        # TODO this is ugly, think of something else, add distance trafo as extra input !
         # FIXME dirty hack to calculate features on the ditance trafo
         # FIXME the dt must be pre-computed for this to work
         if inp_id == 'distance_transform':
             fake_seg = np.zeros((10,10))
-            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor])
             input_name = 'distance_transform'
+            use_dt = True
         else:
             assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
-            inp = self.inp(inp_id)
             input_name = "inp_" + str(inp_id)
+            use_dt = False
 
         top_folder = os.path.join(self.cache_folder, "filters")
         if not os.path.exists(top_folder):
@@ -503,7 +505,7 @@ class DataSet(object):
             os.makedirs(filter_folder)
 
         if not calculation_2d and anisotropy_factor > 1.:
-            print "WARNING: Anisotropic feature calculation not supported in fastfilters yet."
+            print "Anisotropic feature calculation not supported in fastfilters yet."
             print "Using vigra filters instead."
             filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
         else:
@@ -520,40 +522,48 @@ class DataSet(object):
         # TODO set max_workers with ppl param value!
         n_workers = 8
 
-        def _calc_filter_2d(filter_fu, sig, filt_path):
-            filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
-            is_singlechannel = True if filt_name != "hessianOfGaussianEigenvalues" else False
-            f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
-            chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1, 2)
-            filter_res = np.zeros(f_shape, dtype = 'float32')
-            for z in xrange(inp.shape[2]):
-                filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
-            vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = chunks)
+        # first pass over the paths to check if we have to compute anything
+        for filt_name in filter_names:
+            for sig in sigmas:
+                # check whether this is already there
+                filt_path = os.path.join(filter_folder, "%s_%i" % (filt_name, sig) )
+                return_paths.append(filt_path)
+                if not os.path.exists(filt_path):
+                    compute_pairs.append((filt_name, sig))
 
-        def _calc_filter_3d(filter_fu, sig, filt_path):
-            filter_res = filter_fu( inp, sig )
-            vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = True)
+        if compute_pairs:
+            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor]) if use_dt else self.inp(inp_id)
 
-        if calculation_2d:
-            print "Calculating Filter in 2d"
-            _calc_filter = _calc_filter_2d
-        else:
-            print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
-            if anisotropy_factor != 1.:
-                sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
-            _calc_filter = _calc_filter_3d
+            def _calc_filter_2d(filter_fu, sig, filt_path):
+                filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
+                is_singlechannel = True if filt_name != "hessianOfGaussianEigenvalues" else False
+                f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
+                chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1, 2)
+                filter_res = np.zeros(f_shape, dtype = 'float32')
+                for z in xrange(inp.shape[2]):
+                    filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
+                vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = chunks)
 
-        with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
-            tasks = []
-            for filt_name in filter_names:
-                filter_fu = eval(filt_name)
-                for sig in sigmas:
-                    # check whether this is already there
-                    filt_path = os.path.join(filter_folder, filt_name + "_" + str(sig) )
-                    if not os.path.exists(filt_path):
-                        tasks.append( executor.submit(_calc_filter, filter_fu, sig, filt_path) )
-                    return_paths.append(filt_path)
-            res = [t.result() for t in tasks]
+            def _calc_filter_3d(filter_fu, sig, filt_path):
+                filter_res = filter_fu( inp, sig )
+                vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = True)
+
+            if calculation_2d:
+                print "Calculating Filter in 2d"
+                _calc_filter = _calc_filter_2d
+            else:
+                print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
+                if anisotropy_factor != 1.:
+                    sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
+                _calc_filter = _calc_filter_3d
+
+            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+                tasks = []
+                for filt_name, sigmas in compute_pairs:
+                    filter_fu = eval(filt_name)
+                    filt_path = os.path.join(filter_folder, "%s_%i" % (filt_name, sig) )
+                    tasks.append( executor.submit(_calc_filter, filter_fu, sig, filt_path) )
+                res = [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
@@ -566,6 +576,11 @@ class DataSet(object):
     def _accumulate_filter_over_edge(self, seg_id, filt, filt_name, rag = None):
         assert len(filt.shape) in (3,4)
         assert filt.shape[0:3] == self.shape
+
+        # suffixes for the feature names in the correct order
+        suffixes = ["mean", "sum", "min", "max", "variance", "skewness", "kurtosis",
+                "0.1quantile", "0.25quantile", "0.5quantile", "0.75quantile", "0.90quantile"]
+
         if rag == None:
             rag = self._rag(seg_id)
         # split multichannel features
@@ -577,18 +592,7 @@ class DataSet(object):
             #edgeFeat_mean = rag.accumulateEdgeFeatures(gridGraphEdgeIndicator)[:,np.newaxis]
             edgeFeats     = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
             feats_return.append(edgeFeats)
-            names_return.append("EdgeFeature_" + filt_name + "_mean")
-            names_return.append("EdgeFeature_" + filt_name + "_sum")
-            names_return.append("EdgeFeature_" + filt_name + "_min")
-            names_return.append("EdgeFeature_" + filt_name + "_max")
-            names_return.append("EdgeFeature_" + filt_name + "_variance")
-            names_return.append("EdgeFeature_" + filt_name + "_skewness")
-            names_return.append("EdgeFeature_" + filt_name + "_kurtosis")
-            names_return.append("EdgeFeature_" + filt_name + "_0.1quantile")
-            names_return.append("EdgeFeature_" + filt_name + "_0.25quantile")
-            names_return.append("EdgeFeature_" + filt_name + "_0.5quantile")
-            names_return.append("EdgeFeature_" + filt_name + "_0.75quantile")
-            names_return.append("EdgeFeature_" + filt_name + "_0.90quantile")
+            names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
                 print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
@@ -597,95 +601,45 @@ class DataSet(object):
                 #edgeFeat_mean = rag.accumulateEdgeFeatures(gridGraphEdgeIndicator)[:,np.newaxis]
                 edgeFeats     = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
                 feats_return.append(edgeFeats)
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_mean")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_sum")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_min")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_max")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_variance")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_skewness")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_kurtosis")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_0.1quantile")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_0.25quantile")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_0.5quantile")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_0.75quantile")
-                names_return.append("EdgeFeature_" + filt_name + "_c" + str(c)  + "_0.90quantile")
+                names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
         return feats_return, names_return
 
 
-    # Features from different filters, accumulated over the edges
-    # hacked in for features from affinity maps
+    # filters from affinity maps for xy and z edges
     @cacher_hdf5("feature_folder", True)
-    def edge_features_from_affinity_maps(self, seg_id, inp_id, anisotropy_factor):
+    def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
 
-        import fastfilters
-
-        filter_names = [ "fastfilters.gaussianSmoothing",
-                         "fastfilters.hessianOfGaussianEigenvalues",
-                         "fastfilters.laplacianOfGaussian"]
-        sigmas = [1.6, 4.2, 8.3]
-
-        #inp = self.inp(inp_id)
-        #assert inp.ndim == 4, "Need affinity channels"
-        #assert inp.shape[3] == 3, "Need 3 affinity channels"
-
-        #inpXY = np.maximum( inp[:,:,:,0], inp[:,:,:,1] )
-        #inpZ  = inp[:,:,:,2]
+        assert len(inp_ids) == 2
+        assert inp_ids[0] < self.n_inp
+        assert inp_ids[1] < self.n_inp
 
         rag = self._rag(seg_id)
-
-        inpXY = self.inp(inp_id)
-        inpZ = self.inp(inp_id+1)
+        paths_xy = self.make_filters(inp_ids[0], anisotropy_factor)
+        paths_z  = self.make_filters(inp_ids[1], anisotropy_factor)
 
         edge_indications = self.edge_indications(seg_id)
         edge_features = []
 
-        n = 0
-        N = len(filter_names) * len(sigmas)
+        N = len(paths_xy)
+        for ii, path_xy in enumerate(paths_xy):
+            print "Accumulating features:", ii, "/", N
+            path_z = paths_z[ii]
 
-        for fname in filter_names:
-            filter_fu = eval(fname)
-            for sigma in sigmas:
-                print "Accumulating features:", n, "/", N
+            # accumulate over the xy channel
+            filtXY     = vigra.readHDF5(path_xy, 'data')
+            featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag)
+            featsXY    = np.concatenate(featsXY, axis = 1)
 
-                # filters for xy channels
-                with futures.ThreadPoolExecutor(max_workers = 35 ) as executor:
-                    tasks = []
-                    for z in xrange(inpXY.shape[2]):
-                        tasks.append( executor.submit(filter_fu, inpXY[:,:,z], sigma ) )
-                    filtXY = [task.result() for task in tasks]
+            # accumulate over the z channel
+            filtZ      = vigra.readHDF5(path_z, 'data')
+            featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag)
+            featsZ     = np.concatenate(featsZ,  axis = 1)
 
-                if filtXY[0].ndim == 2:
-                    filtXY = np.concatenate([re[:,:,None] for re in filtXY], axis = 2)
-                elif filtXY[0].ndim == 3:
-                    filtXY = np.concatenate([re[:,:,None,:] for re in filtXY], axis = 2)
-
-                # filters for xy channels
-                with futures.ThreadPoolExecutor(max_workers = 20 ) as executor:
-                    tasks = []
-                    for z in xrange(inpZ.shape[2]):
-                        tasks.append( executor.submit(filter_fu, inpZ[:,:,z], sigma ) )
-                    filtZ = [task.result() for task in tasks]
-
-                if filtZ[0].ndim == 2:
-                    filtZ = np.concatenate([re[:,:,None] for re in filtZ], axis = 2)
-                elif filtZ[0].ndim == 3:
-                    filtZ = np.concatenate([re[:,:,None,:] for re in filtZ], axis = 2)
-
-                # accumulate over the edge
-                featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag)
-                featsXY    = np.concatenate(featsXY, axis = 1)
-                featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag)
-                featsZ     = np.concatenate(featsZ,  axis = 1)
-
-                feats = np.zeros_like(featsXY)
-                feats[edge_indications==1] = featsXY[edge_indications==1]
-                feats[edge_indications==0] = featsZ[edge_indications==0]
-
-                edge_features.append(feats)
-                n += 1
+            # merge the feats
+            featsXY[edge_indications==0] = featsZ[edge_indications==0]
+            edge_features.append(featsXY)
 
         edge_features = np.concatenate( edge_features, axis = 1)
         assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
@@ -736,13 +690,6 @@ class DataSet(object):
             else:
                 filt = vigra.readHDF5(path, filter_key)
 
-            # FIXME deprecated
-            ## now it gets hacky...
-            ## for InverseCutouts, we have to remove the not covered part from the filter
-            #if isinstance(self, InverseCutout):
-            #    p = self.cut_coordinates
-            #    filt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
-
             # accumulate over the edge
             feats_acc, names_acc = self._accumulate_filter_over_edge(
                     seg_id,
@@ -755,6 +702,7 @@ class DataSet(object):
         edge_features = np.concatenate( edge_features, axis = 1)
         assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
 
+        # TODO use cache_name function instead
         # save the feature names to file
         save_folder = os.path.join(self.cache_folder, "features")
         if not os.path.exists(save_folder):
@@ -1493,4 +1441,4 @@ class Cutout(DataSet):
         # call make filters of the parent dataset
         parent_ds_path = os.path.join(parent_ds_folder, 'ds_obj.pkl')
         parent_ds = load_dataset(parent_ds_path)
-        return parent_ds.make_filter(inp_id, anisotropy_factor, filter_names, sigmas)
+        return parent_ds.make_filters(inp_id, anisotropy_factor, filter_names, sigmas)
