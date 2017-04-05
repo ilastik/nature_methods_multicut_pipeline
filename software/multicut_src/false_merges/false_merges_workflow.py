@@ -267,7 +267,7 @@ def train_random_forest_for_merges(
                     seg = vigra.readHDF5(seg_path, key)
                     assert seg.shape == gt.shape
                     seg = remove_small_segments(seg)
-                    ds.distance_transform(seg, *dt_args[1:])
+                    current_ds.distance_transform(seg, *dt_args[1:])
 
                 if paths:
 
