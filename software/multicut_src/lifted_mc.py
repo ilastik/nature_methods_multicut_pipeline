@@ -7,6 +7,8 @@ import vigra
 import vigra.graphs as vgraph
 import graph as agraph
 
+from concurrent import futures
+
 from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
@@ -72,10 +74,10 @@ def clusteringFeatures(ds,
     assert len(whereLifted) == nAdditionalEdges
     assert foundEdges.sum() == nAdditionalEdges
 
-    # TODO this loop should be parallelized!
     eLen = vgraph.getEdgeLengths(originalGraph)
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
 
+    # FIXME GIL is not lifted for vigra function (probably cluster)
     def cluster(wardness):
 
         edgeLengthsNew = numpy.concatenate([eLen,numpy.zeros(nAdditionalEdges)]).astype('float32')
@@ -133,7 +135,7 @@ def clusteringFeatures(ds,
 
     wardness_vals = [0.01, 0.1, 0.2, 0.3 ,0.4, 0.5, 0.6, 0.7]
     # TODO set from ppl parameter
-    with ThreadPoolExecutor(max_workers = 8) as executor:
+    with futures.ThreadPoolExecutor(max_workers = 8) as executor:
         tasks = [executor.submit(cluster, w) for w in wardness_vals]
         allFeat = [t.result() for t in tasks]
 
@@ -162,7 +164,6 @@ def compute_lifted_feature_multiple_segmentations(ds,
 
     assert False, "Currently not supported"
     import nifty
-    from concurrent import futures
 
     print "Computing lifted features from multople segmentations from %i segmentations for reference segmentation %i" % (ds.n_seg, referenceSegId)
 
