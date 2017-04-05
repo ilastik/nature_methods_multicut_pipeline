@@ -35,7 +35,6 @@ class DataSet(object):
         if not os.path.exists(self.cache_folder):
             os.mkdir(self.cache_folder)
 
-        self.has_raw = False
         # paths to external input data
         self.external_gt_path   = None
         self.external_inp_paths = []
@@ -43,6 +42,11 @@ class DataSet(object):
         # segmentation mask -> learning + inference will be restriced to
         # superpixels in this mask
         self.external_seg_mask_path = None
+        self.external_defect_mask_path = None
+
+        # additional flags
+        self.has_raw = False
+        self.has_defects
 
         # keys to external data
         self.external_raw_key  = None
@@ -50,15 +54,13 @@ class DataSet(object):
         self.external_inp_keys = []
         self.external_seg_keys = []
         self.external_seg_mask_key = None
+        self.exrernal_defect_mask_key = None
 
         # shape of input data
         self.shape = None
 
         # paths to cutouts
         self.cutouts   = []
-
-        # TODO add a defect mask instead -> most general
-        self.defect_slices = []
 
         # gt ids to be ignored for positive training examples
         self.gt_false_splits = set()
@@ -140,14 +142,6 @@ class DataSet(object):
     # Masking
     #
 
-    # TODO replace this wit external_defect_mask!
-    def add_defect_slices(self, defect_slice_list):
-        assert self.has_raw
-        assert isinstance(defect_slice_list, list)
-        for z in defect_slice_list:
-            assert z < self.shape[2]
-        self.defect_slices = defect_slice_list
-
     def add_false_split_gt_id(self, gt_id):
         self.gt_false_splits.add(gt_id)
 
@@ -157,17 +151,11 @@ class DataSet(object):
     #
     # Adding and loading external input data
     #
-    # TODO to be more flexible, we should save after every function that changes state:
-    # (add_ ...), however it would be nice to not simple dump the whole thing with that
 
     def _check_input(self, path, key):
         assert os.path.exists(path, key), path
         with h5py.File(path) as f:
             assert key in f.keys(), "%s, %s" % (key, f.keys())
-
-    def _check_shape(self, path, key):
-        with h5py.File(path):
-            assert f[key].shape[:3] == self.shape, "%s, %s" % (str(f[key].shape), str(self.shape))
 
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
@@ -180,6 +168,7 @@ class DataSet(object):
         self.external_inp_paths.append(raw_path)
         self.external_inp_keys.append(raw_key)
         self.has_raw = True
+        self.save()
 
     def add_raw_from_data(self, raw):
         assert isinstance(raw, np.ndarray)
@@ -192,6 +181,7 @@ class DataSet(object):
         self.external_inp_paths.append(internal_raw_path)
         self.external_inp_keys.append('data')
         self.has_raw = True
+        self.save()
 
     def add_input(self, inp_path, inp_key):
         if not self.has_raw:
@@ -201,6 +191,7 @@ class DataSet(object):
             self._check_shape(inp_path, inp_key)
         self.external_inp_paths.append(inp_path)
         self.external_inp_keys.append(inp_key)
+        self.save()
 
     def add_input_from_data(self, pixmap):
         assert isinstance(pixmap, np.ndarray)
@@ -211,6 +202,7 @@ class DataSet(object):
         vigra.writeHDF5(pixmap, internal_inp_path, 'data')
         self.external_inp_paths.append(internal_inp_path)
         self.external_inp_keys.append('data')
+        self.save()
 
     # FIXME TODO we don't really need to cache the raw data at all, but keep this for legacy for now
     def inp(self, inp_id):
@@ -231,7 +223,7 @@ class DataSet(object):
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
-            mask = self.get_seg_mask()
+            mask = self.seg_mask()
             assert self.ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
             seg[ np.logical_not(mask) ] = self.ignore_seg_value
             # TODO to allow other ignore values than zero, we need to use a different relabeling value here
@@ -248,6 +240,7 @@ class DataSet(object):
         self._check_input(seg_path, seg_key)
         self.external_seg_paths.append(seg_path)
         self.external_seg_keys.append(seg_key)
+        self.save()
 
     def add_seg_from_data(self, seg):
         assert isinstance(seg, np.ndarray)
@@ -258,6 +251,7 @@ class DataSet(object):
         vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
         self.external_seg_paths.append(internal_seg_path)
         self.external_seg_keys.append(internal_seg_key)
+        self.save()
 
     def seg(self, seg_id):
         assert seg_id < self.n_seg, "Trying to read seg_id %i but there are only %i segmentations" % (seg_ind, self.n_seg)
@@ -288,6 +282,7 @@ class DataSet(object):
         self._check_input(gt_path, gt_key)
         self.external_gt_path = gt_path
         self.external_gt_key = gt_key
+        self.save()
 
     # only single gt for now!
     # add grountruth
@@ -300,6 +295,7 @@ class DataSet(object):
         vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
         self.external_gt_path = internal_gt_path
         self.external_gt_key  = 'data'
+        self.save()
 
     # get the groundtruth
     def gt(self):
@@ -318,10 +314,14 @@ class DataSet(object):
         assert self.has_raw
         assert not self.has_seg_mask
         self._check_input(mask_path, mask_key)
+        if not isinstance(self, Cutout): # don't check for cutouts
+            self._check_shape(mask_path, mask_key)
         self.external_seg_mask_path = mask_path
         self.external_seg_mask_key  = mask_key
+        self.save()
 
-    def get_seg_mask(self):
+
+    def seg_mask(self):
         assert self.has_seg_mask
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         if os.path.exists(internal_mask_path):
@@ -332,9 +332,39 @@ class DataSet(object):
             # TODO we could chek if any segs are already loaded and then warn
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
-            assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
+                assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
             vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
             return mask
+
+    # TODO add_seg_mask_from_data
+
+
+    def add_defect_mask(self, mask_path, mask_key):
+        assert self.external_defect_mask_path == None
+        _check_input(mask_path, mask_key)
+        if not isinstance(self, Cutout): # don't check for cutouts
+            self._check_shape(mask_path, mask_key)
+        self.external_defect_mask_path = mask_path
+        self.external_defect_mask_key  = mask_key
+        self.save()
+
+    # TODO add_defect_mask_from_data
+
+
+    def defect_mask(self):
+        assert self.external_defect_mask_path != None
+        internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
+        if os.path.exists(internal_mask_path):
+            return vigra.readHDF5(internal_mask_path, 'data')
+        else:
+            mask = vigra.readHDF5(self.external_defect_mask_path, self.external_defect_mask_key)
+            assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
+            if isinstance(self, Cutout):
+                mask = mask[self.bb]
+                assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
+            return mask
+
 
     #
     # General functionality
@@ -1350,7 +1380,7 @@ class DataSet(object):
 
         # check if we have a seg mask and copy
         if self.has_seg_mask:
-            self.get_seg_mask()
+            self.seg_mask()
             mask_path = os.path.join(self.cache_folder,"seg_mask.h5")
             cutout.add_seg_mask(mask_path, 'data')
 
@@ -1370,18 +1400,15 @@ class DataSet(object):
         for false_split_gt in self.gt_false_splits:
             cutout.add_false_split_gt_id(false_split_gt)
 
-        # TODO replace by defect mask
-        # copy the defect slices
-        def_slices = []
-        for z in self.defect_slices:
-            if (z >= block_coordinates[4] and z < block_coordinates[5]):
-                def_slices.append(z - block_coordinates[4])
-        cutout.add_defect_slices(def_slices)
+        if self.external_defect_mask_path != None:
+            mask_path = os.path.join(self.cache_folder,"defect_mask.h5")
+            cutout.add_defect_mask(mask_path, "data")
         cutout.save()
 
         cutout_path = os.path.join( self.cache_folder,
                 os.path.join(cutout_name, 'ds_obj.pkl') )
         self.cutouts.append(cutout_path)
+        self.save()
 
 
     def get_cutout(self, cutout_id):

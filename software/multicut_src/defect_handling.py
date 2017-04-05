@@ -54,24 +54,35 @@ def find_matching_indices(array, value_list):
 # Modified Adjacency
 #
 
-# TODO reactivate
 @cacher_hdf5()
-def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
+def defects_to_nodes(ds, seg_id):
     assert False, "Not ported to new features yet!"
-    defects = defect_slice_detection(ds, seg_id, n_bins, bin_threshold)
+    defect_mask = ds.defect_mask()
     seg = ds.seg(seg_id)
-    assert seg.shape == defects.shape
+    assert seg.shape == defect_mask.shape
 
+    # TODO test the heuristics
     def defects_to_nodes_z(z):
-        defect_mask = defects[:,:,z]
-        if 1 in defect_mask:
+        defect_mask_z = defect_mask[:,:,z]
+        where_defect = defect_mask_z > 0
+        n_defect_pix = np.sum(where_defect) > 0
+        completely_defected = False
+        if n_defect_pix > 0:
             seg_z = seg[:,:,z]
-            where_defect = defect_mask == 1
-            defect_nodes_slice = np.unique(seg_z[where_defect])
-            return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
+            # heuristics to determine completely defected slice -> all nodes are set to defected and this slice will be replaced in postprocessing
+            if n_defect_pix > .5 * defect_mask_z.size:
+                defect_nodes_z = np.unique(seg_z)
+                completely_defected = True
+            else:
+                defect_nodes_z = np.unique(seg_z[where_defect])
+            if ds.has_seg_mask ds.ignore_seg_value in defect_nodes_z:
+                defect_nodes_z = defect_nodes_z[defect_nodes_z != ds.ignore_seg_value]
         else:
-            return [], []
+            defect_nodes_slice = []
 
+        return list(defect_nodes_slice), len(defect_nodes_slice) * [z], completely_defected
+
+    completely_defected_slices = []
     with futures.ThreadPoolExecutor(max_workers = 8) as executor:
         tasks = []
         for z in xrange(seg.shape[2]):
@@ -79,55 +90,40 @@ def defects_to_nodes(ds, seg_id, n_bins, bin_threshold):
         defect_nodes = []
         nodes_z      = []
         for fut in tasks:
-            nodes, zz = fut.result()
+            nodes, zz, completely_defected = fut.result()
             if nodes:
                 defect_nodes.extend(nodes)
                 nodes_z.extend(zz)
+                if completely_defected:
+                    completely_defected_slices.append(zz)
 
     assert len(defect_nodes) == len(nodes_z)
+    # only mask the dataset as having defects, if we actually found any defected nodes
+    if defect_nodes:
+        ds.has_defects = True
 
-    # stupid caching... need to concatenate and later retrieve this...
-    return np.concatenate([np.array(defect_nodes,dtype='uint32'), np.array(nodes_z,dtype='uint32')])
-
-
-# TODO change back to using a mask -> most general
-@cacher_hdf5()
-def defects_to_nodes_from_slice_list(ds, seg_id):
-    seg = ds.seg(seg_id)
-
-    def defects_to_nodes_z(z):
-        defect_nodes_slice = np.unique(seg[:,:,z])
-        if ds.has_seg_mask and ds.ignore_seg_value in defect_nodes_slice:
-            defect_nodes_slice = defect_nodes_slice[defect_nodes_slice != ds.ignore_seg_value]
-        return list(defect_nodes_slice), len(defect_nodes_slice) * [z]
-
-    with futures.ThreadPoolExecutor(max_workers = 8) as executor:
-        tasks = []
-        for z in ds.defect_slices:
-            tasks.append(executor.submit(defects_to_nodes_z,z))
-        defect_nodes = []
-        nodes_z      = []
-        for fut in tasks:
-            nodes, zz = fut.result()
-            if nodes:
-                defect_nodes.extend(nodes)
-                nodes_z.extend(zz)
-
-    assert len(defect_nodes) == len(nodes_z)
     defect_nodes = np.array(defect_nodes, dtype = 'uint32')
     nodes_z = np.array(nodes_z, dtype = 'uint32')
-    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+
+    save_path = cache_name("defects_to_nodes", "dset_folder", False, False, ds, seg_id)
     vigra.writeHDF5(nodes_z, save_path, 'nodes_z')
+    vigra.writeHDF5(completely_defected_slices, save_path, "completely_defected_slices")
 
     return defect_nodes
+
 
 # this is very hacky due to stupid caching...
 # we calculate everything with modified adjacency and then load the things with individual functions
 
 def get_defect_node_z(ds, seg_id):
-    defects_to_nodes_from_slice_list(ds, seg_id)
+    defects_to_nodes(ds, seg_id)
     save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(save_path, 'nodes_z')
+
+def get_completely_defected_slices(ds, seg_id):
+    defects_to_nodes(ds, seg_id)
+    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+    return vigra.readHDF5(save_path, "completely_defected_slices")
 
 def get_delete_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
@@ -213,10 +209,10 @@ def compute_skip_edges_z(
 
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id):
-    if not ds.defect_slices:
+    if not ds.has_defects:
         return np.array([0])
 
-    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+    defect_nodes = defects_to_nodes(ds, seg_id)
     nodes_z      = get_defect_node_z(ds, seg_id)
 
     # make sure that z is monotonically increasing (not strictly!)
@@ -366,7 +362,7 @@ def modified_adjacency(ds, seg_id):
 def modified_edge_indications(ds, seg_id):
     modified_indications = ds.edge_indications(seg_id)
     n_edges = modified_indications.shape[0]
-    if not ds.defect_slices:
+    if not ds.has_defects:
         return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
@@ -380,7 +376,7 @@ def modified_edge_indications(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_gt(ds, seg_id):
     modified_edge_gt = ds.edge_gt(seg_id)
-    if not ds.defect_slices:
+    if not ds.has_defects:
         return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id  )
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
@@ -459,7 +455,7 @@ def _get_skip_edge_features_for_slices(
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
-    if not ds.defect_slices:
+    if not ds.has_defects:
         return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
@@ -502,7 +498,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
-    if not ds.defect_slices:
+    if not ds.has_defects:
         modified_features = np.c_[modified_features,
                 np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
         return modified_features
@@ -640,7 +636,7 @@ def _get_skip_topo_features_for_slices(
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges):
     modified_features = ds.topology_features(seg_id, use_2d_edges)
-    if not ds.defect_slices:
+    if not ds.has_defects:
         return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
@@ -754,7 +750,7 @@ def _get_replace_slices(defected_slices, shape):
 
 
 def postprocess_segmentation(ds, seg_id, seg_result):
-    defect_slices = np.unique( get_defect_node_z(ds, seg_id) )
+    defect_slices = get_completely_defected_slices(ds, seg_id)
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
     for defect_slice in defect_slices:
         replace = replace_slices[defect_slice]

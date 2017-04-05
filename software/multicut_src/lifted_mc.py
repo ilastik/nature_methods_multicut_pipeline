@@ -12,7 +12,7 @@ from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt
 
-from defect_handling import defects_to_nodes_from_slice_list, find_matching_indices, modified_adjacency
+from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency
 
 RandomForest = vigra.learning.RandomForest3
 
@@ -22,7 +22,7 @@ RandomForest = vigra.learning.RandomForest3
 def lifted_ignore_ids(ds,
         seg_id,
         uv_ids):
-    defect_nodes = defects_to_nodes_from_slice_list(ds, seg_id)
+    defect_nodes = defects_to_nodes(ds, seg_id)
     return find_matching_indices(uv_ids, defect_nodes)
 
 
@@ -118,8 +118,9 @@ def clusteringFeatures(ds,
         #if not with_defects:
         #    assert mg.nodeNum == 1, str(mg.nodeNum)
         #else:
+        #    # TODO need list of defected slices
         #    # TODO test hypothesis
-        #    assert mg.nodeNum == len(ds.defect_slice_list) + 1, "%i, %i" % (mg.nodeNum, len(ds.defect_slice_list) + 1)
+        #    assert mg.nodeNum == len(defect_slices) + 1, "%i, %i" % (mg.nodeNum, len(defect_slices) + 1)
 
         tweight = edgeIndicatorNew.copy()
         hc.ucmTransform(tweight)
@@ -646,7 +647,7 @@ def mask_lifted_edges(ds,
         labeled[ignore_mask] = False
 
     # find all lifted edges that touch a defected node and ignore them
-    if with_defects and ds.defect_slices:
+    if with_defects and ds.has_defects:
         labeled[lifted_ignore_ids(ds, seg_id, uv_ids)] = False
 
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
@@ -929,7 +930,7 @@ def lifted_probs_to_energies(ds,
 
     uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
     # find all lifted edges that touch a defected node and ignore them
-    if with_defects and ds.defect_slices:
+    if with_defects and ds.has_defects:
         max_repulsive = 2 * e.min()
         e[lifted_ignore_ids(ds, seg_id, uv_ids)] = max_repulsive
 

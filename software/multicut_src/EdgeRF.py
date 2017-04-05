@@ -123,7 +123,7 @@ def mask_edges(ds,
         labeled[edge_indications == 0] = False
 
     # mask the ignore edges
-    if with_defects and ds.defect_slices:
+    if with_defects and ds.has_defects:
         ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
         labeled[ignore_edge_ids] = False
 
@@ -228,7 +228,7 @@ def learn_rf(cache_folder,
 
         features_cut = feature_aggregator( cutout, seg_id )
 
-        if with_defects and cutout.defect_slices:
+        if with_defects and cutout.has_defects:
             uv_ids = modified_adjacency(cutout, seg_id)
         else:
             uv_ids = cutout._adjacent_segments(seg_id)
@@ -261,12 +261,12 @@ def learn_rf(cache_folder,
                     uv_ids,
                     labels_cut,
                     labeled,
-                    with_defects and cutout.defect_slices)
+                    with_defects and cutout.has_defects)
 
         features_cut = features_cut[labeled]
         labels_cut   = labels_cut[labeled].astype('uint32')
 
-        if with_defects and cutout.defect_slices:
+        if with_defects and cutout.has_defects:
             skip_transition = features_cut.shape[0] - get_skip_edges(cutout, seg_id).shape[0]
             features_skip.append(features_cut[skip_transition:])
             labels_skip.append(labels_cut[skip_transition:])
@@ -389,7 +389,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     # get the training features
     features_test  = feature_aggregator( ds_test, seg_id_test )
 
-    if with_defects and ds_test.defect_slices:
+    if with_defects and ds_test.has_defects:
         skip_transition = features_test.shape[0] - get_skip_edges(
                 ds_test,
                 seg_id_test).shape[0]
@@ -401,7 +401,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
     pmem_test = rf.predictProbabilities( features_test.astype('float32'),
         n_threads = exp_params.n_threads)[:,1]
 
-    if with_defects and ds_test.defect_slices:
+    if with_defects and ds_test.has_defects:
         print "Start predicting defect random forest"
         pmem_skip = rf_defects.predictProbabilities( features_test_skip.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
