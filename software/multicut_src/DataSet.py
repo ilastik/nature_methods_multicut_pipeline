@@ -20,6 +20,7 @@ def load_dataset(meta_folder, ds_name):
     with open(ds_obj_path) as f:
         return pickle.load(ds_obj_path)
 
+
 # TODO Flag that tells us, if we have flat or 3d superpixel
 #      -> we can assert this every time we need flat superpix for a specific function
 class DataSet(object):
@@ -34,8 +35,8 @@ class DataSet(object):
         if not os.path.exists(self.cache_folder):
             os.mkdir(self.cache_folder)
 
+        self.has_raw = False
         # paths to external input data
-        self.external_raw_path  = None
         self.external_gt_path   = None
         self.external_inp_paths = []
         self.external_seg_paths = []
@@ -53,7 +54,6 @@ class DataSet(object):
         # shape of input data
         self.shape = None
 
-        # cutouts, tesselations and inverse cutouts
         # paths to cutouts
         self.cutouts   = []
 
@@ -65,11 +65,7 @@ class DataSet(object):
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
 
-        # depreated
-        #self.inverse_cutouts = {}
-
         # TODO the following constants should be more global, e.g. in exp_params once it is a singleton
-
         # compression method used
         self.compression = 'gzip'
         # maximal anisotropy factor for filter calculation
@@ -87,17 +83,12 @@ class DataSet(object):
     #
 
     @property
-    def has_raw(self):
-        return self.external_raw_path != None
-
-    @property
     def has_gt(self):
         return self.external_gt_path != None
 
     @propery
     def n_inp(self):
-        return len(self.external_inp_paths) + 1
-        # + 1 due to raw data that is counted as inp, but saved seperately
+        return len(self.external_inp_paths)
 
     @property n_seg(self):
         return len(self.external_seg_paths)
@@ -109,7 +100,7 @@ class DataSet(object):
         return len(self.cutouts)
 
     #
-    # Loading and saving the dataset
+    # Saving the dataset, and clearing caches
     #
 
     #  TODO better serialization
@@ -118,6 +109,32 @@ class DataSet(object):
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
         with open(self.obj_save_path, 'w') as f:
             pickle.dump(self, f)
+
+    # TODO
+    def clear_all_caches(self):
+        pass
+        #self.clear_inputs()
+        #self.clear_regular_caches()
+        #self.clear_filters()
+
+    # TODO clear all external inputs
+    def clear_inputs(self):
+        pass
+
+    # TODO clear cache that is not external
+    def clear_regular_caches(self):
+        pass
+
+    def clear_filters(self):
+        pass
+
+    # TODO
+    # this needs to be accompanied by as clear_regular_cache
+    # replacing inputs:
+    #def replace_raw()
+    #def replace_inp()
+    #def replace_seg()
+    #def replace_gt()
 
     #
     # Masking
@@ -158,9 +175,11 @@ class DataSet(object):
         self._check_input(raw_path, raw_key)
         with h5py.File(raw_path, raw_key) as f:
             assert len(f.shape) == 3, "Only 3d data supported"
-            self.shape = f.shape
-        self.external_raw_path = raw_path
-        self.external_raw_key  = raw_key
+            if not isinstance(self, Cutout):
+                self.shape = f.shape
+        self.external_inp_paths.append(raw_path)
+        self.external_inp_keys.append(raw_key)
+        self.has_raw = True
 
     def add_raw_from_data(self, raw):
         assert isinstance(raw, np.ndarray)
@@ -168,15 +187,18 @@ class DataSet(object):
             raise RuntimeError("Rawdata has already been added")
         self.shape = raw.shape
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
         vigra.writeHDF5(internal_raw_path, 'data')
-        self.external_raw_path = internal_raw_path
-        self.external_raw_key  = 'data'
+        self.external_inp_paths.append(internal_raw_path)
+        self.external_inp_keys.append('data')
+        self.has_raw = True
 
     def add_input(self, inp_path, inp_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
         self._check_input(inp_path, inp_key)
-        self._check_shape(inp_path, inp_key)
+        if not isinstance(self, Cutout): # don't check for cutouts
+            self._check_shape(inp_path, inp_key)
         self.external_inp_paths.append(inp_path)
         self.external_inp_keys.append(inp_key)
 
@@ -187,6 +209,8 @@ class DataSet(object):
         assert pixmap.shape[:3] == self.shape
         internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
         vigra.writeHDF5(pixmap, internal_inp_path, 'data')
+        self.external_inp_paths.append(internal_inp_path)
+        self.external_inp_keys.append('data')
 
     # FIXME TODO we don't really need to cache the raw data at all, but keep this for legacy for now
     def inp(self, inp_id):
@@ -232,6 +256,8 @@ class DataSet(object):
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % self.n_seg)
         seg = self._process_seg(seg)
         vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
+        self.external_seg_paths.append(internal_seg_path)
+        self.external_seg_keys.append(internal_seg_key)
 
     def seg(self, seg_id):
         assert seg_id < self.n_seg, "Trying to read seg_id %i but there are only %i segmentations" % (seg_ind, self.n_seg)
@@ -272,6 +298,8 @@ class DataSet(object):
         gt = _process_gt(gt)
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
         vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
+        self.external_gt_path = internal_gt_path
+        self.external_gt_key  = 'data'
 
     # get the groundtruth
     def gt(self):
@@ -1404,112 +1432,39 @@ class DataSet(object):
         return self.cutouts[cutout_id]
 
 
-    def make_inverse_cutout(self, cut_id):
-        assert False, "Deprecated"
-        assert self.has_raw, "Need at least raw data to make a cutout"
-        assert cut_id < self.n_cutouts, "Cutout was not done yet!"
-        assert not cut_id in self.inverse_cutouts.keys(), "Inverse Cutout is already there!"
-        inv_name = self.ds_name + "_invcut_" + str(cut_id)
-        ancestor_folder = self.cache_folder
-        if isinstance(self, Cutout):
-            ancestor_folder = self.ancestor_folder
-
-        cut_coordinates = self.get_cutout(cut_id).block_coordinates
-
-        inv_cut = InverseCutout(self.cache_folder, inv_name,
-                cut_id, cut_coordinates, self.shape, ancestor_folder)
-
-        # copy all inputs, segs and the gt to the inverse cutout
-        for inp in range(self.n_inp):
-            inp_path = os.path.join(self.cache_folder,"inp" + str(inp) + ".h5")
-            if inp == 0:
-                inv_cut.add_raw(inp_path)
-            else:
-                inv_cut.add_input(inp_path)
-
-        for seg_id in range(self.n_seg):
-            seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
-            inv_cut.add_seg(seg_path)
-
-        if self.has_gt:
-            gt_path = os.path.join(self.cache_folder,"gt.h5")
-            inv_cut.add_gt(gt_path)
-
-        self.inverse_cutouts[cut_id] = inv_cut
-
-
-    def get_inverse_cutout(self, cut_id):
-        assert False, "Deprecated"
-        assert cut_id in self.inverse_cutouts.keys(), "InverseCutout not produced yet"
-        return self.inverse_cutouts[cut_id]
-
-
-
+# TODO adjust to new caching -> we can actual call back to the parent dataset for make_filters
 #cutout from a given Dataset, used for cutouts and tesselations
 #calls the cache of the parent dataset for inp, seg, gt and filtercalls the cache of the parent dataset for inp, seg, gt and filter
 class Cutout(DataSet):
 
-    def __init__(self, meta_folder, ds_name, block_coordinates, ancestor_folder, block_offsets):
+    def __init__(self, meta_folder, ds_name, block_coordinates, parent_ds_folder, block_offsets):
         super(Cutout, self).__init__(meta_folder, ds_name)
 
-        self.inp_path = []
         self.block_coordinates = block_coordinates
         self.shape = (self.block_coordinates[1] - self.block_coordinates[0],
                 self.block_coordinates[3] - self.block_coordinates[2],
                 self.block_coordinates[5] - self.block_coordinates[4])
-
         self.block_offsets = block_offsets
 
-        # this is the cache folder of the "oldest ancestor",
-        # i.e. of the top dataset that is not a cutout or tesselation
-        # we need it for make_filters
-        self.ancestor_folder = ancestor_folder
-
+        # the actual bounding box for easy cutouts of data
         self.bb = np.s_[
                 self.block_coordinates[0]+self.block_offsets[0]:self.block_coordinates[1]+self.block_offsets[0],
                 self.block_coordinates[2]+self.block_offsets[1]:self.block_coordinates[3]+self.block_offsets[1],
                 self.block_coordinates[4]+self.block_offsets[2]:self.block_coordinates[5]+self.block_offsets[2]
                 ]
 
+        self.parent_ds_folder = parent_ds_folder
 
-        # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
-    # add path to the raw data from original ds
-    # expects hdf5 input
-    def add_raw(self, raw_path):
-        if self.has_raw:
-            raise RuntimeError("Rawdata has already been added")
-        assert os.path.exists(raw_path), raw_path
-        with h5py.File(raw_path) as f:
-            shape = f['data'].shape
-        assert len(shape) == 3, "Only 3d data supported"
-        # for subvolume make sure that boundaries are included
-        p = self.block_coordinates
-        assert shape[0] >= p[1] and shape[1] >= p[3] and shape[2] >= p[5]
-        self.inp_path.append(raw_path)
-        self.has_raw = True
-        self.n_inp = 1
+    # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
 
-
-    # add path to input from original ds
-    # expects hdf5 input
-    def add_input(self, inp_path):
-        if not self.has_raw:
-            raise RuntimeError("Add Rawdata before additional pixmaps")
-        with h5py.File(inp_path) as f:
-            shape = f['data'].shape
-        p = self.block_coordinates
-        assert shape[0] >= p[1] and shape[1] >= p[3] and shape[2] >= p[5]
-        self.inp_path.append(inp_path)
-        self.n_inp += 1
-
-
-    # return input with inp_id (0 corresponds to the raw data)
+    # we need to overload this, to not cache the raw data again, but read the one from the parent dataset
     def inp(self, inp_id):
         if inp_id >= self.n_inp:
             raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
-        inp_path = self.inp_path[inp_id]
+        inp_path = self.external_inp_paths[inp_id]
+        inp_key  = self.external_inp_keys[inp_id]
         with h5py.File(inp_path) as f:
-            return f['data'][self.bb]
+            return f[inp_key][self.bb]
 
 
     # seg and gt can't be reimplemented that way, because they need to be connected!
@@ -1558,141 +1513,3 @@ class Cutout(DataSet):
         filter_paths.sort()
 
         return filter_paths
-
-
-# the inverse of a cutout
-# implemented for crossvalidation mc style
-# FIXME this is deprecated
-# TODO this is pretty simple to implement with a seg mask now
-class InverseCutout(Cutout):
-
-    def __init__(self, meta_folder, inv_cut_name, cut_id,
-            cut_coordinates, vol_shape, ancestor_folder):
-        self.cut_id = cut_id
-        self.cut_coordinates = cut_coordinates
-        self.shape = vol_shape
-
-        print "WARNNG InverseCutout is deprecated!"
-
-        self.cache_folder = os.path.join(meta_folder, inv_cut_name)
-        self.ds_name = inv_cut_name
-        assert not os.path.exists(self.cache_folder), "This InverseCutout already exists"
-        os.mkdir(self.cache_folder)
-        self.ancestor_folder = ancestor_folder
-
-        # have to set this to be consistent with top classes
-        self.is_subvolume = False
-        self.aniso_max = 20.
-        self.compression = 'gzip'
-
-        # we cant call the init of Cutout, so we have to redefinde these
-        self.has_raw   = False
-        self.n_inp     = 0
-        self.inp_paths = []
-
-        self.n_seg = 0
-        self.has_gt = 0
-
-
-    def add_raw(self, raw_path):
-        assert not self.has_raw, "Rawdata has already been added!"
-        with h5py.File(raw_path) as f:
-            h5_ds = f["data"]
-            shape = h5_ds.shape
-        assert shape[0] >= self.shape[0] and shape[1] >= self.shape[1] and shape[2] >= self.shape[2]
-        self.inp_paths.append(raw_path)
-        self.n_inp = 1
-        self.has_raw = True
-
-
-    def add_input(self, inp_path):
-        assert self.has_raw, "Add Rawdata first!"
-        with h5py.File(inp_path) as f:
-            h5_ds = f["data"]
-            shape = h5_ds.shape
-        assert shape[0] >= self.shape[0] and shape[1] >= self.shape[1] and shape[2] >= self.shape[2]
-        self.inp_paths.append(inp_path)
-        self.n_inp += 1
-
-
-    def inp(self, inp_id):
-        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
-        inp = vigra.readHDF5(self.inp_paths[inp_id],"data")
-        p = self.cut_coordinates
-        inp[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
-        return inp
-
-
-    def add_seg(self, seg_path):
-        assert self.has_raw, "Add Rawdata first!"
-        seg = vigra.readHDF5(seg_path, "data")
-        shape = seg.shape
-        assert shape[0] >= self.shape[0] and shape[1] >= self.shape[1] and shape[2] >= self.shape[2]
-
-        # zero  is reserved for the 'empty' part of the volume
-        if 0 in seg:
-            seg += 1
-
-        p = self.cut_coordinates
-        seg[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
-        seg = vigra.analysis.labelVolume(seg)
-        seg -= 1
-
-        save_path = os.path.join(self.cache_folder, "seg" + str(self.n_seg) + ".h5")
-        vigra.writeHDF5(seg, save_path, "data", compression = self.compression)
-        self.n_seg += 1
-
-
-    def seg(self, seg_id):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        save_path = os.path.join(self.cache_folder, "seg" + str(seg_id) + ".h5")
-        return vigra.readHDF5(save_path, "data")
-
-
-    def add_gt(self, gt_path):
-        assert not self.has_gt, "GT already exists!"
-        gt = vigra.readHDF5(gt_path, "data")
-        assert gt.shape[0] >= self.shape[0] and gt.shape[1] >= self.shape[1] and gt.shape[2] >= self.shape[2]
-        p = self.cut_coordinates
-        gt[p[0]:p[1],p[2]:p[3],p[4]:p[5]] = 0
-        gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
-        save_path = os.path.join(self.cache_folder, "gt" + ".h5")
-        vigra.writeHDF5(gt, save_path, "data", compression = self.compression)
-        self.has_gt = True
-
-
-    def gt(self):
-        assert self.has_gt
-        save_path = os.path.join(self.cache_folder, "gt" + ".h5")
-        gt = vigra.readHDF5(save_path, "data")
-        return gt
-
-
-    # returns ids of the edges that are artificially introduced
-    # by the inverse cutout
-    @cacher_hdf5()
-    def get_artificial_edges(self,seg_id):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        artificial_edge_ids = []
-        uv_ids = self._adjacent_segments(seg_id)
-        for edge_id in xrange(uv_ids.shape[0]):
-            # the zero label is reserved for the region not covered by this inv cutout
-            # so all edges linking to it are introduced by the cutout
-            if uv_ids[edge_id,0] == 0 or uv_ids[edge_id,1] == 0:
-                artificial_edge_ids.append(edge_id)
-        return artificial_edge_ids
-
-
-    # there's a bunch of methods, that cant be called
-    # from inverse cutout, cause they don't make sense!
-    def make_cutout(self, block_coordinates):
-        raise AttributeError("Can't be called for InverseCutout")
-
-    def get_cutout(self, cutout_id):
-        raise AttributeError("Can't be called for InverseCutout")
-
-    def make_inverse_cutout(self, block_coordinates):
-        raise AttributeError("Can't be called for InverseCutout")
-
-    def get_inverse_cutout(self, cutout_id):
-        raise AttributeError("Can't be called for InverseCutout")
