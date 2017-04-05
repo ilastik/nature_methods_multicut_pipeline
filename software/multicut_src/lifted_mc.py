@@ -17,6 +17,7 @@ from defect_handling import defects_to_nodes_from_slice_list, find_matching_indi
 RandomForest = vigra.learning.RandomForest3
 
 
+# TODO this is quite the bottleneck, speed up !
 # returns indices of lifted edges that are ignored due to defects
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_ignore_ids(ds,
@@ -72,11 +73,10 @@ def clusteringFeatures(ds,
     assert foundEdges.sum() == nAdditionalEdges
 
     # TODO this loop should be parallelized!
-    allFeat = []
     eLen = vgraph.getEdgeLengths(originalGraph)
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
-    #for wardness in [0.01, 0.6, 0.7]:
-    for wardness in [0.01, 0.1, 0.2, 0.3 ,0.4, 0.5, 0.6, 0.7]:
+
+    def cluster(wardness):
 
         edgeLengthsNew = numpy.concatenate([eLen,numpy.zeros(nAdditionalEdges)]).astype('float32')
         edgeIndicatorNew = numpy.concatenate([edgeIndicator,numpy.zeros(nAdditionalEdges)]).astype('float32')
@@ -129,7 +129,13 @@ def clusteringFeatures(ds,
         assert whereInLifted.min() >= 0
         feat = tweight[whereInLifted]
         assert feat.shape[0] == extraUV.shape[0]
-        allFeat.append(feat[:,None])
+        return  feat[:,None]
+
+    wardness_vals = [0.01, 0.1, 0.2, 0.3 ,0.4, 0.5, 0.6, 0.7]
+    # TODO set from ppl parameter
+    with ThreadPoolExecutor(max_workers = 8) as executor:
+        tasks = [executor.submit(cluster, w) for w in wardness_vals]
+        allFeat = [t.result() for t in tasks]
 
     weights = numpy.concatenate(allFeat,axis=1)
     mean = numpy.mean(weights,axis=1)[:,None]
@@ -926,7 +932,7 @@ def lifted_probs_to_energies(ds,
 
     # weight down the z - edges with increasing distance
     if edgeZdistance is not None:
-        assert edgeZdistance.shape[0] == e.shape[0]
+        assert edgeZdistance.shape[0] == e.shape[0], "%s, %s" % (str(edgeZdistance.shape), str(e.shape))
         e /= (edgeZdistance + 1.)
 
     uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
