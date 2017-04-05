@@ -7,6 +7,8 @@ import vigra
 import vigra.graphs as vgraph
 import graph as agraph
 
+from concurrent import futures
+
 from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
 from Tools import cacher_hdf5
@@ -17,6 +19,7 @@ from defect_handling import defects_to_nodes, find_matching_indices, modified_ad
 RandomForest = vigra.learning.RandomForest3
 
 
+# TODO this is quite the bottleneck, speed up !
 # returns indices of lifted edges that are ignored due to defects
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_ignore_ids(ds,
@@ -41,7 +44,7 @@ def clusteringFeatures(ds,
     else:
         print "For normal clustering"
 
-    uvs_local = modified_adjacency(ds, segId) if with_defects else ds._adjacent_segments(segId)
+    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.defect_slices) else ds._adjacent_segments(segId)
     n_nodes = uvs_local.max() + 1
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
@@ -71,11 +74,11 @@ def clusteringFeatures(ds,
     assert len(whereLifted) == nAdditionalEdges
     assert foundEdges.sum() == nAdditionalEdges
 
-    allFeat = []
     eLen = vgraph.getEdgeLengths(originalGraph)
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
-    #for wardness in [0.01, 0.6, 0.7]:
-    for wardness in [0.01, 0.1, 0.2, 0.3 ,0.4, 0.5, 0.6, 0.7]:
+
+    # FIXME GIL is not lifted for vigra function (probably cluster)
+    def cluster(wardness):
 
         edgeLengthsNew = numpy.concatenate([eLen,numpy.zeros(nAdditionalEdges)]).astype('float32')
         edgeIndicatorNew = numpy.concatenate([edgeIndicator,numpy.zeros(nAdditionalEdges)]).astype('float32')
@@ -129,7 +132,13 @@ def clusteringFeatures(ds,
         assert whereInLifted.min() >= 0
         feat = tweight[whereInLifted]
         assert feat.shape[0] == extraUV.shape[0]
-        allFeat.append(feat[:,None])
+        return  feat[:,None]
+
+    wardness_vals = [0.01, 0.1, 0.2, 0.3 ,0.4, 0.5, 0.6, 0.7]
+    # TODO set from ppl parameter
+    with futures.ThreadPoolExecutor(max_workers = 8) as executor:
+        tasks = [executor.submit(cluster, w) for w in wardness_vals]
+        allFeat = [t.result() for t in tasks]
 
     weights = numpy.concatenate(allFeat,axis=1)
     mean = numpy.mean(weights,axis=1)[:,None]
@@ -156,7 +165,6 @@ def compute_lifted_feature_multiple_segmentations(ds,
 
     assert False, "Currently not supported"
     import nifty
-    from concurrent import futures
 
     print "Computing lifted features from multople segmentations from %i segmentations for reference segmentation %i" % (ds.n_seg, referenceSegId)
 
@@ -537,7 +545,7 @@ def compute_and_save_lifted_nh(ds,
         liftedNeighborhood,
         with_defects = False):
 
-    uvs_local = modified_adjacency(ds, segId) if with_defects else ds._adjacent_segments(segId)
+    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.defect_slices) else ds._adjacent_segments(segId)
     n_nodes = uvs_local.max() + 1
 
     # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
@@ -680,8 +688,6 @@ def learn_lifted_rf(cache_folder,
         rf_path   = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
             return RandomForest(rf_path, 'rf')
-            #if with_defects: TODO figure out if we need different random forests
-            #    return RandomForest(rf_path, 'rf'), RandomForest(rf_path, 'rf_defects')
 
     features_train = []
     labels_train   = []
@@ -926,6 +932,7 @@ def lifted_probs_to_energies(ds,
 
     # weight down the z - edges with increasing distance
     if edgeZdistance is not None:
+        assert edgeZdistance.shape[0] == e.shape[0], "%s, %s" % (str(edgeZdistance.shape), str(e.shape))
         e /= (edgeZdistance + 1.)
 
     uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)

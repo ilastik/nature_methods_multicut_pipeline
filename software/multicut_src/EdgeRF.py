@@ -313,6 +313,7 @@ def learn_rf(cache_folder,
 
 
 # set cache folder to None if you dont want to cache the resulting rf
+# TODO use cacher hdf5 for caching!
 def learn_and_predict_rf_from_gt(cache_folder,
         trainsets, ds_test,
         seg_id_train, seg_id_test,
