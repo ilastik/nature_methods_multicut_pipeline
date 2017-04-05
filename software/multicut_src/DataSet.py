@@ -1370,43 +1370,49 @@ class DataSet(object):
     # Convenience functions for Cutouts
     #
 
-    # TODO
-    # TODO adjust to new caching, we need to store the path to the cutout and pickle / unpickle it
-    # TODO
-
+    # TODO change syntax for the coordinates to a proper roi
     # make a cutout of the given block shape
     # need to update the ds in the MetaSet after this!
-    def make_cutout(self, block_coordinates, block_offsets = [0,0,0]):
+    def make_cutout(self, start, stop):
         assert self.has_raw, "Need at least raw data to make a cutout"
-        assert len(block_coordinates) == 6
+        assert len(start) == 3
+        assert len(stop)  == 3
         assert block_coordinates[1] <= self.shape[0] and block_coordinates[3] <= self.shape[1] and block_coordinates[5] <= self.shape[2], str(block_coordinates) + " , " + str(self.shape)
 
         cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
-        ancestor_folder = self.cache_folder
+
+        # if we are making a cutout of a cutout, we must adjust the parent ds and block offset
+        parent_ds     = self.parent_ds.cache_folder if isinstance(self, Cutout) else self.cache_folder
         if isinstance(self, Cutout):
-            ancestor_folder = self.ancestor_folder
-        cutout = Cutout(self.cache_folder, cutout_name, block_coordinates, ancestor_folder, block_offsets)
+            for dd in xrange(3):
+                start[dd] += self.start[dd]
+                stop[dd]  += self.stop[dd]
+
+        cutout = Cutout(self.cache_folder, cutout_name, start, stop, parent_ds)
 
         # copy all inputs, segs and the gt to cutuout
-        for inp in range(self.n_inp):
-            inp_path = os.path.join(self.cache_folder,"inp" + str(inp) + ".h5")
-            if isinstance(self, Cutout):
-                inp_path = self.inp_path[inp]
+        for inp_id in range(self.n_inp):
+            # call to make sure that the cache was generated
+            self.inp(inp_id)
+            inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
             if inp == 0:
-                cutout.add_raw(inp_path)
+                cutout.add_raw(inp_path, 'data')
             else:
-                cutout.add_input(inp_path)
+                cutout.add_input(inp_path, 'data')
 
         # check if we have a seg mask and copy
         if self.has_seg_mask:
+            self.get_seg_mask()
             mask_path = os.path.join(self.cache_folder,"seg_mask.h5")
             cutout.add_seg_mask(mask_path, 'data')
 
         for seg_id in range(self.n_seg):
+            self.seg(seg_id)
             seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
             cutout.add_seg(seg_path, "data")
 
         if self.has_gt:
+            self.gt()
             gt_path = os.path.join(self.cache_folder,"gt.h5")
             cutout.add_gt(gt_path, "data")
 
@@ -1416,46 +1422,53 @@ class DataSet(object):
         for false_split_gt in self.gt_false_splits:
             cutout.add_false_split_gt_id(false_split_gt)
 
+        # TODO replace by defect mask
         # copy the defect slices
         def_slices = []
         for z in self.defect_slices:
             if (z >= block_coordinates[4] and z < block_coordinates[5]):
                 def_slices.append(z - block_coordinates[4])
         cutout.add_defect_slices(def_slices)
+        cutout.save()
 
-        self.n_cutouts += 1
-        self.cutouts.append(cutout)
+        cutout_path = os.path.join( self.cache_folder,
+                os.path.join(cutout_name, 'ds_obj.pkl') )
+        self.cutouts.append(cutout_path)
 
 
     def get_cutout(self, cutout_id):
         assert cutout_id < self.n_cutouts, str(cutout_id) + " , " + str(self.n_cutouts)
-        return self.cutouts[cutout_id]
+        return load_dataset(self.cutouts[cutout_id])
 
 
+# TODO change syntax for the coordinates to a proper roi
 # TODO adjust to new caching -> we can actual call back to the parent dataset for make_filters
 #cutout from a given Dataset, used for cutouts and tesselations
 #calls the cache of the parent dataset for inp, seg, gt and filtercalls the cache of the parent dataset for inp, seg, gt and filter
 class Cutout(DataSet):
 
-    def __init__(self, meta_folder, ds_name, block_coordinates, parent_ds_folder, block_offsets):
-        super(Cutout, self).__init__(meta_folder, ds_name)
+    def __init__(self, cache_folder, ds_name, start, stop, parent_ds_folder):
+        super(Cutout, self).__init__(cache_folder, ds_name)
 
-        self.block_coordinates = block_coordinates
-        self.shape = (self.block_coordinates[1] - self.block_coordinates[0],
-                self.block_coordinates[3] - self.block_coordinates[2],
-                self.block_coordinates[5] - self.block_coordinates[4])
+        self.start = start
+        self.stop  = stop
+        self.shape = (self.start[0] - self.stop[0],
+                      self.start[1] - self.stop[1],
+                      self.start[2] - self.stop[2])
         self.block_offsets = block_offsets
 
         # the actual bounding box for easy cutouts of data
         self.bb = np.s_[
-                self.block_coordinates[0]+self.block_offsets[0]:self.block_coordinates[1]+self.block_offsets[0],
-                self.block_coordinates[2]+self.block_offsets[1]:self.block_coordinates[3]+self.block_offsets[1],
-                self.block_coordinates[4]+self.block_offsets[2]:self.block_coordinates[5]+self.block_offsets[2]
+                self.start[0]:self.stop[0],
+                self.start[1]:self.stop[1],
+                self.start[2]:self.stop[2]
                 ]
 
         self.parent_ds_folder = parent_ds_folder
 
+
     # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
+    # seg and gt can't be reimplemented that way, because they need to be connected!
 
     # we need to overload this, to not cache the raw data again, but read the one from the parent dataset
     def inp(self, inp_id):
@@ -1467,49 +1480,17 @@ class Cutout(DataSet):
             return f[inp_key][self.bb]
 
 
-    # seg and gt can't be reimplemented that way, because they need to be connected!
-
     # we get the paths to the filters of the top dataset
     def make_filters(self,
             inp_id,
-            anisotropy_factor,ancestor_folder,
+            anisotropy_factor,
             filter_names = [ "gaussianSmoothing",
                              "hessianOfGaussianEigenvalues",
                              "laplacianOfGaussian"],
             sigmas = [1.6, 4.2, 8.3]
             ):
-        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
-        assert anisotropy_factor >= 1., "Finer resolution in z-direction is nor supported"
 
-        top_ds_folder = self.cache_folder
-        # keep splitting the path, until we get to the meta folder
-        # then we know, that we have reached the cache folder for the parent dataset
-        while top_ds_folder != ancestor_folder:
-            top_ds_folder, sub_folder = os.path.split(top_ds_folder)
-        filter_folder = os.path.join(top_ds_folder, "filters")
-
-        # determine, how we calculate the pixfeats (2d, pure 3d or 3d scaled with anisotropy)
-        # save filters to corresponding path
-        calculation_2d = False
-
-        if anisotropy_factor == 1.:
-            filter_folder = os.path.join(filter_folder, "filters_3d")
-        elif anisotropy_factor >= self.aniso_max:
-            filter_folder = os.path.join(filter_folder, "filters_2d")
-            calculation_2d = True
-        else:
-            filter_folder = os.path.join(filter_folder, "filters_" + str(anisotropy_factor) )
-
-        filter_folder = os.path.join(filter_folder,"inp_" + str(inp_id))
-
-        assert os.path.exists(filter_folder), "Call make_filters of the parent DataSet, before calling it in the cutout!"
-
-        # get all the files in the filter folder
-        filter_paths = []
-        for file in os.listdir(filter_folder):
-            filter_paths.append( os.path.join(filter_folder,file) )
-
-        # sort to make this consistent!
-        filter_paths.sort()
-
-        return filter_paths
+        # call make filters of the parent dataset
+        parent_ds_path = os.path.join(parent_ds_folder, 'ds_obj.pkl')
+        parent_ds = load_dataset(parent_ds_path)
+        return parent_ds.make_filter(inp_id, anisotropy_factor, filter_names, sigmas)
