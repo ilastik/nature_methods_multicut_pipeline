@@ -179,7 +179,7 @@ class DataSet(object):
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
             mask = self.get_seg_mask()
-            assert self.ignore_seg_value == 0, "Only zero ignore value supported for now", # TODO change once we allow more general values
+            assert self.ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
             seg[ np.logical_not(mask) ] = self.ignore_seg_value
             # TODO to allow other ignore values than zero, we need to use a different relabeling value here
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),

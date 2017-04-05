@@ -175,10 +175,7 @@ def train_random_forest_for_merges(
         rf_save_folder,
         'rf_merges_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
     ) # TODO more meaningful save name
-    paths_save_path = None if paths_save_folder == None else os.path.join(
-        paths_save_folder,
-        'path_%s.pkl' % '_'.join([ds.ds_name for ds in trainsets])
-    )
+
 
     # check if the rf will be cached and if yes, if it is already cached
     if caching and os.path.exists(rf_save_path):
@@ -188,26 +185,29 @@ def train_random_forest_for_merges(
 
     # otherwise do the actual calculations
     else:
-        cached_paths = []
-        print "Looking for paths folder: {}".format(paths_save_path)
-        if caching and os.path.exists(paths_save_path):
-            # If the paths already exist (necessary if new features should be used)
-            print "Loading paths from:", paths_save_path
-            with open(paths_save_path, mode='r') as f:
-                cached_paths = pickle.load(f)
 
         print rf_save_path
         features_train = []
         labels_train = []
-        all_paths = []
-        all_paths_to_objs = []
-        all_path_classes = []
+
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
-            all_paths.append([])
-            all_paths_to_objs.append([])
-            all_path_classes.append([])
+            all_paths = []
+            all_paths_to_objs = []
+            all_path_classes = []
+
+            paths_save_path = None if paths_save_folder == None else os.path.join(
+                paths_save_folder,
+                'path_%s.pkl' % '_'.join([trainsets[ds_id].ds_name])
+            )
+            cached_paths = []
+            print "Looking for paths folder: {}".format(paths_save_path)
+            if caching and os.path.exists(paths_save_path):
+                # If the paths already exist (necessary if new features should be used)
+                print "Loading paths from:", paths_save_path
+                with open(paths_save_path, mode='r') as f:
+                    cached_paths = pickle.load(f)
 
             current_ds = trainsets[ds_id]
             keys_to_betas = mc_segs_train_keys[ds_id]
@@ -248,13 +248,13 @@ def train_random_forest_for_merges(
                 else:
 
                     # Get the paths and stuff for the current object
-                    paths = cached_paths['paths'][ds_id][seg_id]
-                    paths_to_objs = cached_paths['paths_to_objs'][ds_id][seg_id]
-                    path_classes = cached_paths['path_classes'][ds_id][seg_id]
+                    paths = cached_paths['paths'][seg_id]
+                    paths_to_objs = cached_paths['paths_to_objs'][seg_id]
+                    path_classes = cached_paths['path_classes'][seg_id]
 
-                all_paths[ds_id].append(paths)
-                all_paths_to_objs[ds_id].append(paths_to_objs)
-                all_path_classes[ds_id].append(path_classes)
+                all_paths.append(paths)
+                all_paths_to_objs.append(paths_to_objs)
+                all_path_classes.append(path_classes)
 
                 # Clear filter cache
                 filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
@@ -282,6 +282,17 @@ def train_random_forest_for_merges(
 
                     print "No paths found for seg_id = {}".format(seg_id)
 
+            if not cached_paths and caching:
+                print "Saving paths to:", paths_save_path
+                with open(paths_save_path, 'w') as f:
+                    pickle.dump(
+                        {
+                            'paths': all_paths,
+                            'paths_to_objs': all_paths_to_objs,
+                            'path_classes': all_path_classes
+                        }, f
+                    )
+
         features_train = np.concatenate(features_train, axis=0)
         labels_train = np.concatenate(labels_train, axis=0)
         assert features_train.shape[0] == labels_train.shape[0]
@@ -298,15 +309,7 @@ def train_random_forest_for_merges(
             print "Saving path-rf to:", rf_save_path
             with open(rf_save_path, 'w') as f:
                 pickle.dump(rf, f)
-            print "Saving paths to:", paths_save_path
-            with open(paths_save_path, 'w') as f:
-                pickle.dump(
-                    {
-                        'paths': all_paths,
-                        'paths_to_objs': all_paths_to_objs,
-                        'path_classes': all_path_classes
-                    }, f
-                )
+
     return rf
 
 
@@ -319,6 +322,7 @@ def compute_false_merges(
         mc_seg_test_key,
         rf_save_folder = None,
         paths_save_folder=None,
+        train_paths_save_folder=None,
         params=ExperimentSettings()
 ):
     """
@@ -354,7 +358,7 @@ def compute_false_merges(
         #gtruths_keys,
         params,
         rf_save_folder,
-        paths_save_folder
+        train_paths_save_folder
     )
 
     paths_save_path = None if paths_save_folder == None else os.path.join(
@@ -601,3 +605,83 @@ def project_resolved_objects_to_segmentation(ds,
             mc_labeling[node_id] = new_label_offset + resolved_nodes[node_id]
         new_label_offset += np.max(resolved_nodes.values()) + 1
     return rag.projectLabelsToBaseGraph(mc_labeling)
+
+
+def pre_compute_paths(
+        data_sets,
+        mc_segs,
+        mc_segs_keys,
+        params,
+        paths_save_folder
+):
+
+    # loop over the training datasets
+    for ds_id, paths_to_betas in enumerate(mc_segs):
+
+        all_paths = []
+        all_paths_to_objs = []
+        all_path_classes = []
+
+        paths_save_path = None if paths_save_folder == None else os.path.join(
+            paths_save_folder,
+            'path_%s.pkl' % '_'.join([data_sets[ds_id].ds_name])
+        )
+        cached_paths = []
+        print "Looking for paths folder: {}".format(paths_save_path)
+
+        current_ds = data_sets[ds_id]
+        keys_to_betas = mc_segs_keys[ds_id]
+        assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
+
+        # Load ground truth
+        gt = current_ds.gt()
+
+        # Initialize correspondence list which makes sure that the same merge is not extracted from
+        # multiple mc segmentations
+        if params.paths_avoid_duplicates:
+            correspondence_list = []
+        else:
+            correspondence_list = None
+
+        # loop over the different beta segmentations per train set
+        for seg_id, seg_path in enumerate(paths_to_betas):
+            key = keys_to_betas[seg_id]
+
+            # Delete distance transform and filters from cache
+            # Generate file name according to how the cacher generated it (append parameters)
+            # Find and delete the file if it is there
+            dt_args = (current_ds, [1., 1., params.anisotropy_factor])
+            filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+
+            # Compute the paths
+            paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
+                current_ds,
+                seg_path,
+                key,
+                params,
+                gt,
+                correspondence_list)
+
+            all_paths.append(paths)
+            all_paths_to_objs.append(paths_to_objs)
+            all_path_classes.append(path_classes)
+
+            if paths:
+
+                pass
+
+            else:
+
+                print "No paths found for seg_id = {}".format(seg_id)
+
+        print "Saving paths to:", paths_save_path
+        with open(paths_save_path, 'w') as f:
+            pickle.dump(
+                {
+                    'paths': all_paths,
+                    'paths_to_objs': all_paths_to_objs,
+                    'path_classes': all_path_classes
+                }, f
+            )
