@@ -2,8 +2,6 @@ import numpy as np
 cimport cython
 cimport numpy as np
 
-from concurrent import futures
-
 # typedefs
 ctypedef np.uint32_t LabelType
 PyLabelType = np.uint32

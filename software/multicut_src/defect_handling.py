@@ -42,12 +42,20 @@ def find_matching_row_indices(x, y):
 # return the indices of array which have at least one value from value list
 def find_matching_indices(array, value_list):
     assert isinstance(array, np.ndarray)
-    assert isinstance(value_list, np.ndarray) or isinstance(value_list, list)
-    indices = []
-    for i, row in enumerate(array):
-        if( np.intersect1d(row, value_list).size ):
-            indices.append(i)
-    return np.array(indices)
+    assert isinstance(value_list, np.ndarray)
+    # reimplemented in cython for speed # TODO !!! include in conda package
+    try:
+        from cython_tools import find_matching_indices_fast
+        if isinstance(list, value_list):
+            value_list = np.array(value_list)
+        return find_matching_indices_fast(array.astype('uint32'), value_list.astype('uint32'))
+    else:
+        print "WARNING: Could not find cython function, using slow numpy version"
+        indices = []
+        for i, row in enumerate(array):
+            if( np.intersect1d(row, value_list).size ):
+                indices.append(i)
+        return np.array(indices)
 
 
 #
