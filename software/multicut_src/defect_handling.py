@@ -81,7 +81,7 @@ def defects_to_nodes(ds, seg_id):
                 completely_defected = True
             else:
                 defect_nodes_z = np.unique(seg_z[where_defect])
-            if ds.has_seg_mask ds.ignore_seg_value in defect_nodes_z:
+            if ds.has_seg_mask and ds.ignore_seg_value in defect_nodes_z:
                 defect_nodes_z = defect_nodes_z[defect_nodes_z != ds.ignore_seg_value]
         else:
             defect_nodes_slice = []

@@ -4,7 +4,7 @@ import os
 import time
 import sys
 
-from DataSet import DataSet, InverseCutout
+from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
 # FIXME only import what we need !!!
 from MCSolverImpl import *
@@ -90,10 +90,6 @@ def multicut_workflow(ds_train, ds_test,
                 feature_list,
                 mc_params)
 
-    # for an InverseCutout, make sure that the artificial edges will be cut
-    if isinstance(ds_test, InverseCutout):
-        edge_probs[ds_test.get_artificial_edges(seg_id_test)] = 1.
-
     # get all parameters for the multicut
     # number of variables = number of nodes
     seg_id_max = ds_test.seg(seg_id_test).max()
@@ -145,9 +141,6 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
                 seg_id_test,
                 feature_list,
                 mc_params, True)
-    # for an InverseCutout, make sure that the artificial edges will be cut
-    if isinstance(ds_test, InverseCutout):
-        raise AttributeError("Not supported for defect correction workflow.")
 
     # get all parameters for the multicut
     uv_ids = modified_adjacency(ds_test, seg_id_test)

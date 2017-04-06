@@ -2,7 +2,7 @@ import numpy as np
 import vigra
 import os
 import time
-from DataSet import DataSet, InverseCutout
+from DataSet import DataSet
 from Tools import cacher_hdf5
 import sys
 

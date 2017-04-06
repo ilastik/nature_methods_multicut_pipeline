@@ -5,7 +5,7 @@ import os
 import h5py
 from concurrent import futures
 import itertools
-import cPicle as pickle
+import cPickle as pickle
 
 import graph as agraph
 
@@ -46,7 +46,7 @@ class DataSet(object):
 
         # additional flags
         self.has_raw = False
-        self.has_defects
+        self.has_defects = False
 
         # keys to external data
         self.external_raw_key  = None
@@ -88,17 +88,20 @@ class DataSet(object):
     def has_gt(self):
         return self.external_gt_path != None
 
-    @propery
+    @property
     def n_inp(self):
         return len(self.external_inp_paths)
 
-    @property n_seg(self):
+    @property
+    def n_seg(self):
         return len(self.external_seg_paths)
 
-    @property has_seg_mask(self):
+    @property
+    def has_seg_mask(self):
         return self.external_seg_mask_path != None
 
-    @property n_cutouts(self):
+    @property
+    def n_cutouts(self):
         return len(self.cutouts)
 
     #
@@ -109,7 +112,7 @@ class DataSet(object):
     def save(self):
         # TODO for now we serialize with pickle, but something else might be better
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
-        with open(self.obj_save_path, 'w') as f:
+        with open(obj_save_path, 'w') as f:
             pickle.dump(self, f)
 
     # TODO
@@ -153,18 +156,22 @@ class DataSet(object):
     #
 
     def _check_input(self, path, key):
-        assert os.path.exists(path, key), path
+        assert os.path.exists(path), path
         with h5py.File(path) as f:
             assert key in f.keys(), "%s, %s" % (key, f.keys())
+
+    def _check_shape(self, path, key):
+        with h5py.File(path) as f:
+            assert f[key].shape == self.shape, "%s, %s" % ( str(f[key].shape), str(self.shape) )
 
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
         self._check_input(raw_path, raw_key)
-        with h5py.File(raw_path, raw_key) as f:
-            assert len(f.shape) == 3, "Only 3d data supported"
+        with h5py.File(raw_path) as f:
+            assert len(f[raw_key].shape) == 3, "Only 3d data supported"
             if not isinstance(self, Cutout):
-                self.shape = f.shape
+                self.shape = f[raw_key].shape
         self.external_inp_paths.append(raw_path)
         self.external_inp_keys.append(raw_key)
         self.has_raw = True
@@ -207,12 +214,12 @@ class DataSet(object):
     # FIXME TODO we don't really need to cache the raw data at all, but keep this for legacy for now
     def inp(self, inp_id):
         assert inp_id < self.n_inp, "Trying to read inp_id %i but there are only %i input maps" % (inp_id, self.n_inp)
-        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
         if os.path.exists(internal_inp_path): # this is already cached
             return vigra.readHDF5(internal_inp_path, "data").astype('float32')
         else: # this is cached for the first time, load from external data
-            external_path = self.external_raw_path if (inp_id == 0) else self.external_raw_path[inp_id]
-            external_key = self.external_raw_key if (inp_id == 0) else self.external_raw_key[inp_id]
+            external_path = self.external_inp_paths[inp_id]
+            external_key = self.external_inp_keys[inp_id]
             inp_data = vigra.readHDF5(external_path, external_key)
             vigra.writeHDF5(inp_data, internal_inp_path, 'data')
             return inp_data.astype('float32')
@@ -260,8 +267,8 @@ class DataSet(object):
             return vigra.readHDF5(internal_seg_path, "data")
         else:
             seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
-            seg = _process_seg(seg)
-            vigra.writeHDF5(internal_seg_path, 'data', compression = 'gzip')
+            seg = self._process_seg(seg)
+            vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
             return seg
 
     def _process_gt(self, gt):
@@ -284,8 +291,8 @@ class DataSet(object):
         self.external_gt_key = gt_key
         self.save()
 
-    # only single gt for now!
-    # add grountruth
+
+   # add grountruth
     def add_gt_from_data(self, gt):
         assert isinstance(gt, np.ndarray)
         if self.has_gt:
@@ -297,6 +304,7 @@ class DataSet(object):
         self.external_gt_key  = 'data'
         self.save()
 
+
     # get the groundtruth
     def gt(self):
         if not self.has_gt:
@@ -306,9 +314,10 @@ class DataSet(object):
             return vigra.readHDF5(internal_gt_path, "data")
         else:
             gt = vigra.readHDF5(self.external_gt_path, self.external_gt_key)
-            gt = _process_gt(gt)
+            gt = self._process_gt(gt)
             vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
             return gt
+
 
     def add_seg_mask(self, mask_path, mask_key):
         assert self.has_raw
@@ -318,6 +327,18 @@ class DataSet(object):
             self._check_shape(mask_path, mask_key)
         self.external_seg_mask_path = mask_path
         self.external_seg_mask_key  = mask_key
+        self.save()
+
+
+    def add_seg_mask_from_data(self, mask):
+        assert self.has_raw
+        assert not self.has_seg_mask
+        if not isinstance(self, Cutout): # don't check for cutouts
+            assert mask.shape == self.shape
+        internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = 'gzip')
+        self.external_seg_mask_path = internal_mask_path
+        self.external_seg_mask_key  = 'data'
         self.save()
 
 
@@ -336,19 +357,26 @@ class DataSet(object):
             vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
             return mask
 
-    # TODO add_seg_mask_from_data
-
 
     def add_defect_mask(self, mask_path, mask_key):
         assert self.external_defect_mask_path == None
-        _check_input(mask_path, mask_key)
+        self._check_input(mask_path, mask_key)
         if not isinstance(self, Cutout): # don't check for cutouts
             self._check_shape(mask_path, mask_key)
         self.external_defect_mask_path = mask_path
         self.external_defect_mask_key  = mask_key
         self.save()
 
-    # TODO add_defect_mask_from_data
+
+    def add_defect_mask_from_data(self, mask):
+        assert self.external_defect_mask_path == None
+        if not isinstance(self, Cutout): # don't check for cutouts
+            assert mask.shape == self.shape
+        internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = 'gzip')
+        self.external_defect_mask_path = internal_mask_path
+        self.external_defect_mask_key  = 'data'
+        self.save()
 
 
     def defect_mask(self):
@@ -1348,14 +1376,14 @@ class DataSet(object):
     # Convenience functions for Cutouts
     #
 
-    # TODO change syntax for the coordinates to a proper roi
     # make a cutout of the given block shape
     # need to update the ds in the MetaSet after this!
     def make_cutout(self, start, stop):
         assert self.has_raw, "Need at least raw data to make a cutout"
         assert len(start) == 3
         assert len(stop)  == 3
-        assert block_coordinates[1] <= self.shape[0] and block_coordinates[3] <= self.shape[1] and block_coordinates[5] <= self.shape[2], str(block_coordinates) + " , " + str(self.shape)
+        assert start[0] < stop[0] and start[1] < stop[1] and start[2] < stop[2]
+        assert stop[0] <= self.shape[0] and stop[1] <= self.shape[1] and stop[2] <= self.shape[2], "%s, %s" % (str(self.shape), str(stop))
 
         cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
 
@@ -1368,12 +1396,13 @@ class DataSet(object):
 
         cutout = Cutout(self.cache_folder, cutout_name, start, stop, parent_ds)
 
+        # TODO only call inp / seg / etc. if it is not cached yey
         # copy all inputs, segs and the gt to cutuout
         for inp_id in range(self.n_inp):
             # call to make sure that the cache was generated
             self.inp(inp_id)
             inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
-            if inp == 0:
+            if inp_id == 0:
                 cutout.add_raw(inp_path, 'data')
             else:
                 cutout.add_input(inp_path, 'data')
@@ -1430,7 +1459,6 @@ class Cutout(DataSet):
         self.shape = (self.start[0] - self.stop[0],
                       self.start[1] - self.stop[1],
                       self.start[2] - self.stop[2])
-        self.block_offsets = block_offsets
 
         # the actual bounding box for easy cutouts of data
         self.bb = np.s_[
