@@ -48,12 +48,11 @@ def find_matching_indices(array, value_list):
         from cython_tools import find_matching_indices_fast
         return find_matching_indices_fast(array.astype('uint32'), value_list.astype('uint32'))
     except ImportError:
-        print "WARNING: Could not find cython function, using slow numpy version"
-        indices = []
-        for i, row in enumerate(array):
-            if( np.intersect1d(row, value_list).size ):
-                indices.append(i)
-        return np.array(indices)
+        #print "WARNING: Could not find cython function, using slow numpy version"
+        # TODO this is the proper numpy way to do it, check if it is actually slower and get rid of cython functionality if this is fast enough
+        # also, don't need to wrap this if it is just a one-liner
+        mask = np.in1d(array, value_list).reshape(array.shape)
+        return mask.all(axis=1) # FIXME this is a mask now, but shouldn't matter for where we use it
 
 
 #
