@@ -69,6 +69,7 @@ class ExperimentSettings(object):
         self.min_nh_range = 5
         self.max_sample_size = 20
         self.paths_penalty_power = 10
+        self.lifted_path_weights_factor = 1.
 
 
     # overloadd str to reliably cache this

@@ -2,6 +2,7 @@ from compute_paths_and_features import shortest_paths
 from multicut_src import probs_to_energies
 from multicut_src import remove_small_segments
 from multicut_src import compute_and_save_long_range_nh, optimizeLifted
+from multicut_src import compute_and_save_lifted_nh
 from multicut_src import learn_and_predict_rf_from_gt
 from multicut_src import ExperimentSettings
 # from find_false_merges_src import path_features_from_feature_images
@@ -417,10 +418,6 @@ def compute_false_merges(
     return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test
 
 
-# TODO : DEBUGGING!!!
-# TODO: Debug images
-# TODO: Look at paths
-# otherwise out of sync options etc. could be a pain....
 def resolve_merges_with_lifted_edges(
         ds,
         seg_id,
@@ -429,7 +426,8 @@ def resolve_merges_with_lifted_edges(
         mc_segmentation,
         mc_weights_all, # the precomputed mc-weights
         exp_params,
-        export_paths_path=None
+        export_paths_path=None,
+        lifted_weights_all=None # pre-computed lifted mc-weights
 ):
     assert isinstance(false_paths, dict)
 
@@ -456,6 +454,14 @@ def resolve_merges_with_lifted_edges(
     # get the multicut weights
     uv_ids = rag.uvIds()
 
+    # Get the lifted nh of the full segmentation
+    uv_ids_lifted = compute_and_save_lifted_nh(
+        ds,
+        seg_id,
+        exp_params.lifted_neighborhood,
+        False
+    )
+
     if export_paths_path is not None:
         if not os.path.exists(export_paths_path):
             os.mkdir(export_paths_path)
@@ -466,45 +472,50 @@ def resolve_merges_with_lifted_edges(
         mask = mc_segmentation == merge_id
         seg_ids = np.unique(seg[mask])
 
+        # Extract the sub graph mc problem
         compare = np.in1d(uv_ids, seg_ids)
         compare = np.swapaxes(np.reshape(compare, uv_ids.shape), 0, 1)
         compare = np.logical_and(compare[0], compare[1])
         mc_weights = mc_weights_all[compare]
 
-        # ... now we extracted the sub-graph multicut problem!
-        # Next we want to introduce the lifted edges
-
-        # Sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
-        # ------------------------------------------------------------------------
         compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
         uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
 
+        # Extract the sub graph lifted mc problem
+        uv_mask = np.in1d(uv_ids_lifted, seg_ids)
+        uv_mask = np.swapaxes(np.reshape(uv_mask, uv_ids_lifted.shape), 0, 1)
+        uv_mask = np.logical_and(uv_mask[0], uv_mask[1])
+        lifted_weights = lifted_weights_all[uv_mask]
 
+        ids_in_mask = list(itertools.compress(xrange(len(uv_mask)), np.logical_not(uv_mask)))
+        uv_ids_lifted_in_seg = np.delete(uv_ids_lifted, ids_in_mask, axis=0)
+
+        # Now map the uv ids to locally consecutive ids
         # local graph (consecutive in obj)
-        # FIXME Temporarily commented out the new vigra relabelConsecutive version
-        # seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros = False)
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros=False)
 
         # mapping = old to new,
         # reverse = new to old
         reverse_mapping = {val: key for key, val in mapping.iteritems()}
         # edge dict
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_seg])
+        uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted_in_seg])
 
+        # Next we want to introduce the lifted path edges
+
+        # Sample uv pairs out of seg_ids (make sure to have a minimal graph dist.)
+        # ------------------------------------------------------------------------
         # TODO: Alternatively sample until enough false merges are found
-        # TODO: min range and sample size should be parameter
         min_range = exp_params.min_nh_range
         max_sample_size = exp_params.max_sample_size
-        uv_ids_lifted_min_nh_local = compute_and_save_long_range_nh(
+        uv_ids_paths_min_nh_local = compute_and_save_long_range_nh(
                 uv_local,
                 min_range,
                 max_sample_size
         )
-        if uv_ids_lifted_min_nh_local.any():
-            uv_ids_lifted_min_nh_local = np.sort(uv_ids_lifted_min_nh_local, axis = 1)
+        if uv_ids_paths_min_nh_local.any():
+            uv_ids_paths_min_nh_local = np.sort(uv_ids_paths_min_nh_local, axis = 1)
 
-
-            # TODO: Compute the paths from the centers of mass of the pairs list
             # -------------------------------------------------------------
             # Get the distance transform of the current object
 
@@ -512,15 +523,15 @@ def resolve_merges_with_lifted_edges(
             masked_disttransf[np.logical_not(mask)] = np.inf
 
             # Turn them to the original labels
-            uv_ids_lifted_min_nh = np.array([ np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_lifted_min_nh_local])
+            uv_ids_paths_min_nh = np.array([ np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_paths_min_nh_local])
 
             # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
-            uv_ids_lifted_min_nh_coords = [[ecc_centers_seg[u] for u in uv] for uv in uv_ids_lifted_min_nh]
+            uv_ids_paths_min_nh_coords = [[ecc_centers_seg[u] for u in uv] for uv in uv_ids_paths_min_nh]
 
             # Compute the shortest paths according to the pairs list
             paths_obj = shortest_paths(
                 masked_disttransf,
-                uv_ids_lifted_min_nh_coords,
+                uv_ids_paths_min_nh_coords,
                 32) # TODO set n_threads from global params
 
         else:
@@ -534,59 +545,80 @@ def resolve_merges_with_lifted_edges(
             [mapping[seg[coord[0]]],
              mapping[seg[coord[1]]] ]) for coord in extra_coords])
         extra_path_uvs = np.sort(extra_path_uvs, axis = 1)
+        # Extra path uv pairs have to be different
+        are_different = np.not_equal(extra_path_uvs[:, 0], extra_path_uvs[:,1])
+        extra_path_uvs = extra_path_uvs[are_different, :]
+        extra_paths = extra_paths[are_different]
 
-        if uv_ids_lifted_min_nh_local.any():
+        if uv_ids_paths_min_nh_local.any():
             for extra_id, extra_uv in enumerate(extra_path_uvs):
-                if not any(np.equal(uv_ids_lifted_min_nh_local, extra_uv).all(1)): # check whether this uv - pair is already present
+                if not any(np.equal(uv_ids_paths_min_nh_local, extra_uv).all(1)): # check whether this uv - pair is already present
                     paths_obj.append(extra_paths[extra_id])
-                    uv_ids_lifted_min_nh_local = np.append(uv_ids_lifted_min_nh_local, extra_uv[None,:], axis = 0)
+                    uv_ids_paths_min_nh_local = np.append(uv_ids_paths_min_nh_local, extra_uv[None,:], axis = 0)
         else:
             paths_obj = extra_paths
-            uv_ids_lifted_min_nh_local = extra_path_uvs
+            uv_ids_paths_min_nh_local = extra_path_uvs
 
-        # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj, exp_params)
-        features = np.nan_to_num(features)
-        # FIXME Remove this
-        # Cache features for debug purpose
-        with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
-            pickle.dump(features, f)
+        if paths_obj:
 
-        fs = path_feature_aggregator(ds, (extra_paths[0],), exp_params)
-        with open(export_paths_path + '../debug/fs_{}.pkl'.format(merge_id), mode='w') as f:
-            pickle.dump(fs, f)
+            # Compute the path features
+            features = path_feature_aggregator(ds, paths_obj, exp_params)
+            features = np.nan_to_num(features)
 
-        # compute the lifted weights from rf probabilities
-        lifted_weights = path_rf.predict_proba(features)[:,1]
+            # Cache features for debug purpose
+            with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+                pickle.dump(features, f)
 
-        # Cache paths for evaluation purposes
-        if export_paths_path is not None:
-            with open(export_paths_path + 'resolve_paths_{}.pkl'.format(merge_id), mode='w') as f:
-                pickle.dump(paths_obj, f)
-            with open(export_paths_path + 'resolve_paths_probs_{}.pkl'.format(merge_id), mode='w') as f:
-                pickle.dump(lifted_weights, f)
+            fs = path_feature_aggregator(ds, (extra_paths[0],), exp_params)
+            with open(export_paths_path + '../debug/fs_{}.pkl'.format(merge_id), mode='w') as f:
+                pickle.dump(fs, f)
 
-        # Class 1: contain a merge
-        # Class 0: don't contain a merge
+            # compute the lifted weights from rf probabilities
+            lifted_path_weights = path_rf.predict_proba(features)[:,1]
 
-        # scale the probabilities
-        p_min = 0.001
-        p_max = 1. - p_min
-        lifted_weights = (p_max - p_min) * lifted_weights + p_min
+            # Cache paths for evaluation purposes
+            if export_paths_path is not None:
+                with open(export_paths_path + 'resolve_paths_{}.pkl'.format(merge_id), mode='w') as f:
+                    pickle.dump(paths_obj, f)
+                with open(export_paths_path + 'resolve_paths_probs_{}.pkl'.format(merge_id), mode='w') as f:
+                    pickle.dump(lifted_path_weights, f)
 
-        # Transform probs to weights
-        lifted_weights = np.log((1 - lifted_weights) / lifted_weights)
+            # Class 1: contain a merge
+            # Class 0: don't contain a merge
 
-        resolved_nodes = optimizeLifted(uv_local,
-                uv_ids_lifted_min_nh_local,
+            # scale the probabilities
+            p_min = 0.001
+            p_max = 1. - p_min
+            lifted_path_weights = (p_max - p_min) * lifted_path_weights + p_min
+
+            # Transform probs to weights
+            lifted_path_weights = np.log((1 - lifted_path_weights) / lifted_path_weights)
+
+            # Weighting edges with their length for proper lifted to local scaling
+            lifted_path_weights /= lifted_path_weights.shape[0] * exp_params.lifted_path_weights_factor
+            lifted_weights /= lifted_weights.shape[0]
+            mc_weights /= mc_weights.shape[0]
+
+            # Concatenate all lifted weights and edges
+            lifted_weights = np.concatenate(
+                (lifted_path_weights, lifted_weights),
+                axis=0 # TODO check for correct axis
+            )
+            uv_ids_lifted_nh_total = np.concatenate(
+                (uv_ids_paths_min_nh_local, uv_local_lifted),
+                axis=0 # TODO check for correct axis
+            )
+
+            resolved_nodes = optimizeLifted(
+                uv_local,
+                uv_ids_lifted_nh_total,
                 mc_weights,
-                lifted_weights )
+                lifted_weights
+            )
 
-        # FIXME Changed to older version of vigra
-        # resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
-        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
-        # project back to global node ids and save
-        resolved_objs[merge_id] = {reverse_mapping[i] : node_res for i, node_res in enumerate(resolved_nodes)}
+            resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label = 0, keep_zeros = False)
+            # project back to global node ids and save
+            resolved_objs[merge_id] = {reverse_mapping[i] : node_res for i, node_res in enumerate(resolved_nodes)}
 
     return resolved_objs
 
