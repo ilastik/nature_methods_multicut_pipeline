@@ -473,18 +473,23 @@ def resolve_merges_with_lifted_edges(
         seg_ids = np.unique(seg[mask])
 
         # Extract the sub graph mc problem
+        # FIXME, @JULIAN: REVIEW, I think what you have done works, but the new syntax is much cleaner (and probably also a little faster)
         compare = np.in1d(uv_ids, seg_ids)
-        compare = np.swapaxes(np.reshape(compare, uv_ids.shape), 0, 1)
-        compare = np.logical_and(compare[0], compare[1])
+        compare = compare.reshape(uv_ids.shape).all(axis = 1)
+        #compare = np.swapaxes(np.reshape(compare, uv_ids.shape), 0, 1)
+        #compare = np.logical_and(compare[0], compare[1])
         mc_weights = mc_weights_all[compare]
 
         compare_list = list(itertools.compress(xrange(len(compare)), np.logical_not(compare)))
         uv_ids_in_seg = np.delete(uv_ids, compare_list, axis=0)
 
+        # FIXME this does not work if lifted_weights_all are none!
         # Extract the sub graph lifted mc problem
+        # FIXME, @JULIAN: REVIEW, I think what you have done works, but the new syntax is much cleaner (and probably also a little faster)
         uv_mask = np.in1d(uv_ids_lifted, seg_ids)
-        uv_mask = np.swapaxes(np.reshape(uv_mask, uv_ids_lifted.shape), 0, 1)
-        uv_mask = np.logical_and(uv_mask[0], uv_mask[1])
+        uv_mask = uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
+        #uv_mask = np.swapaxes(np.reshape(uv_mask, uv_ids_lifted.shape), 0, 1)
+        #uv_mask = np.logical_and(uv_mask[0], uv_mask[1])
         lifted_weights = lifted_weights_all[uv_mask]
 
         ids_in_mask = list(itertools.compress(xrange(len(uv_mask)), np.logical_not(uv_mask)))
@@ -600,6 +605,7 @@ def resolve_merges_with_lifted_edges(
             mc_weights /= mc_weights.shape[0]
 
             # Concatenate all lifted weights and edges
+            # FIXME this does not work if lifted_weights_all are none!
             lifted_weights = np.concatenate(
                 (lifted_path_weights, lifted_weights),
                 axis=0 # TODO check for correct axis
