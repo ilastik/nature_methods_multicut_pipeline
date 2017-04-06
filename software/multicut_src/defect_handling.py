@@ -396,7 +396,6 @@ def modified_edge_gt(ds, seg_id):
 # Modified Features
 #
 
-# TODO apdapt
 # TODO modified edge features from affinities -> implement!!!
 def modified_edge_features_from_affinity_maps(ds, seg_id, inp_id, anisotropy_factor):
     assert False, "Not implemented yet"

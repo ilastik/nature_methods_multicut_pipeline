@@ -175,7 +175,8 @@ def compute_lifted_feature_multiple_segmentations(ds,
         pLocals.append( learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
             trainsets, ds,
             candidateSegId, candidateSegId,
-            featureListLocal, pipelineParam) )
+            featureListLocal, pipelineParam,
+            use_2rfs = pipelineParam.use_2rfs) )
         # append edge indications (strange hdf5 bugs..)
         rags.append(ds._rag(candidateSegId))
         indications.append(ds.edge_indications(candidateSegId))
@@ -706,7 +707,8 @@ def learn_lifted_rf(cache_folder,
             seg_id,
             feature_list_local,
             exp_params,
-            with_defects)
+            with_defects = with_defects,
+            use_2rfs = exp_params.use_2rfs)
 
         uv_ids_train = compute_and_save_lifted_nh(
             train_cut,
@@ -809,7 +811,8 @@ def learn_and_predict_lifted_rf(cache_folder,
         [ds_train.get_cutout(i) for i in (0,2) for ds_train in trainsets], ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, exp_params,
-        with_defects)
+        with_defects = with_defects,
+        use_2rfs = exp_params.use_2rfs)
 
     features_test = lifted_feature_aggregator(ds_test,
             [ds_train.get_cutout(i) for i in (0,2) for ds_train in trainsets],

@@ -1,4 +1,5 @@
 # class, holding all experiment parameters
+# TODO make singleton!
 class ExperimentSettings(object):
 
     # init the experiment setttings, setting all parameter to their default
@@ -29,6 +30,8 @@ class ExperimentSettings(object):
         self.negative_threshold = 0.4
         # nubmer of trees for random forests
         self.n_trees = 500
+        # use different rfs for xy - and z edges
+        self.use_2rfs = False
 
         # parameter for multicuts
         # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves"

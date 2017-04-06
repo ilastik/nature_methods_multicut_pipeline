@@ -55,8 +55,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies, mc_params):
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow(ds_train, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, mc_params,
-        use_2_rfs = False):
+        feature_list, mc_params):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
@@ -71,24 +70,15 @@ def multicut_workflow(ds_train, ds_test,
     print "with solver", mc_params.solver
 
     # get edge probabilities from random forest
-    if use_2_rfs:
-        print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
-        edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
-                ds_train,
-                ds_test,
-                seg_id_train,
-                seg_id_test,
-                feature_list, feature_list,
-                mc_params)
-    else:
-        print "Learning single random forest with", mc_params.n_trees, "trees"
-        edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
-                ds_train,
-                ds_test,
-                seg_id_train,
-                seg_id_test,
-                feature_list,
-                mc_params)
+   print "Learning random forests with", mc_params.n_trees, "trees"
+   edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
+           ds_train,
+           ds_test,
+           seg_id_train,
+           seg_id_test,
+           feature_list,
+           mc_params,
+           use_2rfs = mc_params.use_2rfs)
 
     # get all parameters for the multicut
     # number of variables = number of nodes
@@ -109,8 +99,8 @@ def multicut_workflow(ds_train, ds_test,
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow_with_defect_correction(ds_train, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, mc_params,
-        use_2_rfs = False):
+        feature_list, mc_params
+        ):
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
     assert isinstance(ds_test, DataSet)
@@ -121,26 +111,17 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
     else:
         print "Weights learned on multiple Datasets"
     print "with solver", mc_params.solver
+
     # get edge probabilities from random forest
-    if use_2_rfs:
-        print "Learning separate random forests for xy - and z - edges with", mc_params.n_trees, "trees"
-        assert False, "Currently not supported"
-        edge_probs = learn_and_predict_anisotropic_rf(mc_params.rf_cache_folder,
-                ds_train,
-                ds_test,
-                seg_id_train,
-                seg_id_test,
-                feature_list, feature_list,
-                mc_params, True)
-    else:
-        print "Learning single random forest with", mc_params.n_trees, "trees"
-        edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
-                ds_train,
-                ds_test,
-                seg_id_train,
-                seg_id_test,
-                feature_list,
-                mc_params, True)
+    edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
+            ds_train,
+            ds_test,
+            seg_id_train,
+            seg_id_test,
+            feature_list,
+            mc_params,
+            with_defcts = True,
+            use_2rfs = exp_params.use_2rfs)
 
     # get all parameters for the multicut
     uv_ids = modified_adjacency(ds_test, seg_id_test)
@@ -183,7 +164,8 @@ def lifted_multicut_workflow(ds_train, ds_test,
     pTestLocal = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
         ds_train, ds_test,
         seg_id_train, seg_id_test,
-        feature_list_local, mc_params)
+        feature_list_local, mc_params,
+        use_2rfs = mc_params.use_2rfs)
 
     feat_str = _get_feat_str(feature_list_local)
     # energies for the multicut
@@ -260,7 +242,8 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
         trainsets, ds_test,
         seg_id_train, seg_id_test,
         feature_list_local, mc_params,
-        True)
+        with_defcts = True,
+        use_2rfs = exp_params.use_2rfs)
 
     # get all parameters for the multicut
     uv_ids_local = modified_adjacency(ds_test, seg_id_test)
