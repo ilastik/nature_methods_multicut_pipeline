@@ -508,7 +508,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         features_test = features_test[:skip_transition]
 
     # predict
-    if use_2d:
+    if use_2rfs:
         edge_indications = modified_edge_indications(ds_test, seg_id_test)[skip_transition:] \
                 if (with_defects and ds_test.has_defects) else ds_test.edge_indications(seg_id_test)
         pmem_xy = rf_xy.predictProbabilities(features_test[edge_indications==1].astype('float32'),

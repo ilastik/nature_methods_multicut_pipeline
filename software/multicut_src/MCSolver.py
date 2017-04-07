@@ -70,15 +70,15 @@ def multicut_workflow(ds_train, ds_test,
     print "with solver", mc_params.solver
 
     # get edge probabilities from random forest
-   print "Learning random forests with", mc_params.n_trees, "trees"
-   edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
-           ds_train,
-           ds_test,
-           seg_id_train,
-           seg_id_test,
-           feature_list,
-           mc_params,
-           use_2rfs = mc_params.use_2rfs)
+    print "Learning random forests with", mc_params.n_trees, "trees"
+    edge_probs = learn_and_predict_rf_from_gt(mc_params.rf_cache_folder,
+            ds_train,
+            ds_test,
+            seg_id_train,
+            seg_id_test,
+            feature_list,
+            mc_params,
+            use_2rfs = mc_params.use_2rfs)
 
     # get all parameters for the multicut
     # number of variables = number of nodes
