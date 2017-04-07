@@ -396,9 +396,44 @@ def modified_edge_gt(ds, seg_id):
 # Modified Features
 #
 
-# TODO modified edge features from affinities -> implement!!!
-def modified_edge_features_from_affinity_maps(ds, seg_id, inp_id, anisotropy_factor):
-    assert False, "Not implemented yet"
+def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor):
+    modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor)
+    if not ds.has_defects:
+        return modified_features
+
+    skip_edges   = get_skip_edges(  ds, seg_id)
+    skip_starts  = get_skip_starts( ds, seg_id)
+    skip_ranges  = get_skip_ranges( ds, seg_id)
+    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+
+    # delete features for delete edges
+    modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
+
+    # get features for skip edges
+    seg = ds.seg(seg_id)
+    lower_slices  = np.unique(skip_starts)
+    skip_edge_pairs_to_slice   = {z : skip_edges[skip_starts == z]  for z in lower_slices}
+    skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
+    skip_edge_ranges_to_slice  = {z : skip_ranges[skip_starts == z] for z in lower_slices}
+
+    # we only need to calculate skip edge features for z edges
+    filter_paths_z  = ds.make_filters(inp_ids[1], anisotropy_factor)
+
+    skip_edge_features = np.zeros( (skip_edges.shape[0], modified_features.shape[1]) )
+    for z in lower_slices:
+        _get_skip_edge_features_for_slices(
+                filter_paths_z,
+                z,
+                seg,
+                skip_edge_pairs_to_slice[z],
+                skip_edge_ranges_to_slice[z],
+                skip_edge_indices_to_slice[z],
+                skip_edge_features)
+
+    skip_edge_features = np.nan_to_num(skip_edge_features)
+    assert skip_edge_features.shape[1] == modified_features.shape[1]
+    return np.concatenate([modified_features, skip_edge_features],axis = 0)
+
 
 def _get_skip_edge_features_for_slices(
         filter_paths,
@@ -477,11 +512,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
     skip_edge_indices_to_slice = {z : np.where(skip_starts == z)[0] for z in lower_slices}
     skip_edge_ranges_to_slice  = {z : skip_ranges[skip_starts == z] for z in lower_slices}
 
-    # calculate the volume filters for the given input
-    if isinstance(ds, Cutout):
-        filter_paths = ds.make_filters(inp_id, anisotropy_factor, ds.ancestor_folder)
-    else:
-        filter_paths = ds.make_filters(inp_id, anisotropy_factor)
+    filter_paths = ds.make_filters(inp_id, anisotropy_factor)
 
     skip_edge_features = np.zeros( (skip_edges.shape[0], modified_features.shape[1]) )
     for z in lower_slices:
