@@ -476,7 +476,8 @@ def learn_and_predict_rf_from_gt(cache_folder,
         exp_params,
         trainstr,
         paramstr,
-        with_defects)
+        with_defects,
+        use_2rfs)
 
     if use_2rfs:
         rf_xy = rfs[0]
