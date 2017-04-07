@@ -186,7 +186,13 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
                 [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_xy],
                 ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_xy',])
 
+# TODO
+#def _learn_seperate_rfs():
 
+# TODO
+#def _learn_single_rfs():
+
+# TODO include use_2rf
 def learn_rf(cache_folder,
         trainsets,
         seg_id,
@@ -205,6 +211,7 @@ def learn_rf(cache_folder,
         if os.path.exists(rf_path):
             print "Loading random forest from"
             print rf_path
+            # TODO need to check for use_2rfs too -> rf_xy, rf_z
             # we need to check if the defect rf actually exists
             with h5py.File(rf_path) as f:
                  has_defect_rf = True if ('rf_defects' in f.keys()) else False
@@ -290,6 +297,7 @@ def learn_rf(cache_folder,
     assert features_train.shape[0] == labels_train.shape[0]
     assert all( np.unique(labels_train) == np.array([0, 1]) ), "Unique labels: " + str(np.unique(labels_train))
 
+    # TODO move this to learn_single_rf / learn_seperate_rfs
     print "Start learning random forest"
     rf = RandomForest(features_train.astype('float32'), labels_train,
         treeCount = exp_params.n_trees,
@@ -313,6 +321,7 @@ def learn_rf(cache_folder,
 
 
 # set cache folder to None if you dont want to cache the resulting rf
+# TODO include use_2rf
 # TODO use cacher hdf5 for caching!
 def learn_and_predict_rf_from_gt(cache_folder,
         trainsets, ds_test,

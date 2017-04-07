@@ -11,14 +11,20 @@ import graph as agraph
 
 from Tools import cacher_hdf5, cache_name
 
-def load_dataset(meta_folder, ds_name):
+# this can be used in 2 different ways:
+# ds_name = None: -> called with cache folder and loads from there
+# ds_name = string -> called with meta_folder and descends into cache folder
+def load_dataset(meta_folder, ds_name = None):
     assert os.path.exists(meta_folder)
-    cache_folder = os.path.join(meta_folder, ds_name)
-    assert os.path.exists(cache_folder)
+    if ds_name is None:
+        cache_folder = meta_folder
+    else:
+        cache_folder = os.path.join(meta_folder, ds_name)
+        assert os.path.exists(cache_folder)
     ds_obj_path = os.path.join(cache_folder, 'ds_obj.pkl')
-    assert os.path.exists(ds_obj_path)
+    assert os.path.exists(ds_obj_path), ds_obj_path
     with open(ds_obj_path) as f:
-        return pickle.load(ds_obj_path)
+        return pickle.load(f)
 
 
 # TODO Flag that tells us, if we have flat or 3d superpixel
@@ -578,18 +584,19 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 8
+        n_workers = 2
 
         # first pass over the paths to check if we have to compute anything
+        filter_and_sigmas_to_compute = []
         for filt_name in filter_names:
             for sig in sigmas:
                 # check whether this is already there
-                filt_path = os.path.join(filter_folder, "%s_%i" % (filt_name, sig) )
+                filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sig) )
                 return_paths.append(filt_path)
                 if not os.path.exists(filt_path):
-                    compute_pairs.append((filt_name, sig))
+                    filter_and_sigmas_to_compute.append((filt_name, sig))
 
-        if compute_pairs:
+        if filter_and_sigmas_to_compute:
             inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor]) if use_dt else self.inp(inp_id)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
@@ -600,11 +607,14 @@ class DataSet(object):
                 filter_res = np.zeros(f_shape, dtype = 'float32')
                 for z in xrange(inp.shape[2]):
                     filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
-                vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = chunks)
+                with h5py.File(filter_path) as f:
+                    f.create_dataset(filter_key, data = filter_res, chunks = chunks)
+
 
             def _calc_filter_3d(filter_fu, sig, filt_path):
                 filter_res = filter_fu( inp, sig )
-                vigra.writeHDF5(filter_res, filt_path, filter_key, chunks = True)
+                with h5py.File(filter_path) as f:
+                    f.create_dataset(filter_key, data = filter_res, chunks = True)
 
             if calculation_2d:
                 print "Calculating Filter in 2d"
@@ -617,9 +627,9 @@ class DataSet(object):
 
             with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                 tasks = []
-                for filt_name, sigmas in compute_pairs:
+                for filt_name, sigma in filter_and_sigmas_to_compute:
                     filter_fu = eval(filt_name)
-                    filt_path = os.path.join(filter_folder, "%s_%i" % (filt_name, sig) )
+                    filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma) )
                     tasks.append( executor.submit(_calc_filter, filter_fu, sig, filt_path) )
                 res = [t.result() for t in tasks]
 
@@ -715,12 +725,7 @@ class DataSet(object):
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is nor supported"
 
-        # calculate the volume filters for the given input
-        if isinstance(self, Cutout):
-            filter_paths = self.make_filters(inp_id, anisotropy_factor, self.ancestor_folder)
-        else:
-            filter_paths = self.make_filters(inp_id, anisotropy_factor)
-
+        filter_paths = self.make_filters(inp_id, anisotropy_factor)
         filter_key = "data"
 
         rag = self._rag(seg_id)
@@ -762,6 +767,7 @@ class DataSet(object):
 
         # TODO use cache_name function instead
         # save the feature names to file
+        # TODO, this should happen in the cacher !
         save_folder = os.path.join(self.cache_folder, "features")
         if not os.path.exists(save_folder):
             os.mkdir(save_folder)
@@ -1396,12 +1402,11 @@ class DataSet(object):
 
         cutout = Cutout(self.cache_folder, cutout_name, start, stop, parent_ds)
 
-        # TODO only call inp / seg / etc. if it is not cached yey
         # copy all inputs, segs and the gt to cutuout
         for inp_id in range(self.n_inp):
-            # call to make sure that the cache was generated
-            self.inp(inp_id)
             inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
+            if not os.path.exists(inp_path): # make sure that the cache was generated
+                self.inp(inp_id)
             if inp_id == 0:
                 cutout.add_raw(inp_path, 'data')
             else:
@@ -1409,18 +1414,21 @@ class DataSet(object):
 
         # check if we have a seg mask and copy
         if self.has_seg_mask:
-            self.seg_mask()
             mask_path = os.path.join(self.cache_folder,"seg_mask.h5")
+            if not os.path.exists(mask_path):
+                self.seg_mask()
             cutout.add_seg_mask(mask_path, 'data')
 
         for seg_id in range(self.n_seg):
-            self.seg(seg_id)
             seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
+            if not os.path.exists(seg_path):
+                self.seg(seg_id)
             cutout.add_seg(seg_path, "data")
 
         if self.has_gt:
-            self.gt()
             gt_path = os.path.join(self.cache_folder,"gt.h5")
+            if not os.path.exists(gt_path):
+                self.gt()
             cutout.add_gt(gt_path, "data")
 
         for false_merge_gt in self.gt_false_merges:
@@ -1431,22 +1439,20 @@ class DataSet(object):
 
         if self.external_defect_mask_path != None:
             mask_path = os.path.join(self.cache_folder,"defect_mask.h5")
+            if not os.path.exists(mask_path):
+                self.defect_mask()
             cutout.add_defect_mask(mask_path, "data")
         cutout.save()
 
-        cutout_path = os.path.join( self.cache_folder,
-                os.path.join(cutout_name, 'ds_obj.pkl') )
-        self.cutouts.append(cutout_path)
+        self.cutouts.append(cutout_name)
         self.save()
 
 
     def get_cutout(self, cutout_id):
         assert cutout_id < self.n_cutouts, str(cutout_id) + " , " + str(self.n_cutouts)
-        return load_dataset(self.cutouts[cutout_id])
+        return load_dataset(self.cache_folder, self.cutouts[cutout_id])
 
 
-# TODO change syntax for the coordinates to a proper roi
-# TODO adjust to new caching -> we can actual call back to the parent dataset for make_filters
 #cutout from a given Dataset, used for cutouts and tesselations
 #calls the cache of the parent dataset for inp, seg, gt and filtercalls the cache of the parent dataset for inp, seg, gt and filter
 class Cutout(DataSet):
@@ -1456,9 +1462,9 @@ class Cutout(DataSet):
 
         self.start = start
         self.stop  = stop
-        self.shape = (self.start[0] - self.stop[0],
-                      self.start[1] - self.stop[1],
-                      self.start[2] - self.stop[2])
+        self.shape = (self.stop[0] - self.start[0],
+                      self.stop[1] - self.start[1],
+                      self.stop[2] - self.start[2])
 
         # the actual bounding box for easy cutouts of data
         self.bb = np.s_[
@@ -1494,6 +1500,5 @@ class Cutout(DataSet):
             ):
 
         # call make filters of the parent dataset
-        parent_ds_path = os.path.join(parent_ds_folder, 'ds_obj.pkl')
-        parent_ds = load_dataset(parent_ds_path)
+        parent_ds = load_dataset(self.parent_ds_folder)
         return parent_ds.make_filters(inp_id, anisotropy_factor, filter_names, sigmas)

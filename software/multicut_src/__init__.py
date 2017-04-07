@@ -1,5 +1,5 @@
 # TODO clean this up
-from DataSet import DataSet
+from DataSet import DataSet, load_dataset
 
 from MCSolver import multicut_workflow, lifted_multicut_workflow, multicut_workflow_with_defect_correction, lifted_multicut_workflow_with_defect_correction
 from ExperimentSettings import ExperimentSettings
