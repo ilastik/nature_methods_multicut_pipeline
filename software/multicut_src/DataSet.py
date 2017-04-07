@@ -584,7 +584,7 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 1
+        n_workers = 8
 
         # first pass over the paths to check if we have to compute anything
         filter_and_sigmas_to_compute = []
