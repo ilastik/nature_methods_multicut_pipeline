@@ -2,7 +2,7 @@ import vigra
 import h5py
 import numpy as np
 from concurrent import futures
-from Tools import cacher_hdf5, cache_name
+from tools import cacher_hdf5, cache_name
 
 from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges

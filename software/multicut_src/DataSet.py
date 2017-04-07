@@ -9,7 +9,7 @@ import cPickle as pickle
 
 import graph as agraph
 
-from Tools import cacher_hdf5, cache_name
+from tools import cacher_hdf5, cache_name
 
 # this can be used in 2 different ways:
 # ds_name = None: -> called with cache folder and loads from there
@@ -765,17 +765,11 @@ class DataSet(object):
         edge_features = np.concatenate( edge_features, axis = 1)
         assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
 
-        # TODO use cache_name function instead
         # save the feature names to file
-        # TODO, this should happen in the cacher !
-        save_folder = os.path.join(self.cache_folder, "features")
-        if not os.path.exists(save_folder):
-            os.mkdir(save_folder)
         # clip the anisotropy factor
         if anisotropy_factor >= self.aniso_max:
             anisotropy_factor = self.aniso_max
-        save_name = "edge_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(anisotropy_factor) + ".h5"
-        save_file = os.path.join( save_folder, save_name)
+        save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         vigra.writeHDF5(edge_features_names, save_file, "edge_features_names")
 
         # remove NaNs
@@ -789,14 +783,8 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         self.edge_features(seg_id, inp_id, anisotropy_factor)
-
-        save_folder = os.path.join(self.cache_folder, "features")
-        if anisotropy_factor >= self.aniso_max:
-            anisotropy_factor = self.aniso_max
-        save_name = "edge_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(anisotropy_factor) + ".h5"
-        save_file = os.path.join( save_folder, save_name)
+        save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         assert os.path.exists(save_file)
-
         return vigra.readHDF5(save_file,"edge_features_names")
 
 

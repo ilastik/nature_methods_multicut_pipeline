@@ -5,92 +5,6 @@ import numpy as np
 
 from functools import wraps
 from itertools import combinations, product
-from concurrent import futures
-
-#
-# Implementation of a disjoint-set forest
-#
-
-# TODO maybe use C++ implementation instead
-# Node datastrucuture for UDF
-# works only for connected labels
-class Node(object):
-    def __init__(self, u):
-        self.parent = self
-        self.label  = u
-        self.rank   = 0
-
-class UnionFind(object):
-
-    def __init__(self, n_labels):
-        assert isinstance(n_labels, int), type(n_labels)
-        self.n_labels = n_labels
-        self.nodes = [Node(n) for n in xrange(n_labels)]
-
-
-    # find the root of u and compress the path on the way
-    def find(self, u_id):
-        #assert u_id < self.n_labels
-        u = self.nodes[ u_id ]
-        return self.findNode(u)
-
-    # find the root of u and compress the path on the way
-    def findNode(self, u):
-        if u.parent == u:
-            return u
-        else:
-            u.parent = self.findNode(u.parent)
-            return u.parent
-
-    def merge(self, u_id, v_id):
-        #assert u_id < self.n_labels
-        #assert v_id < self.n_labels
-        u = self.nodes[ u_id ]
-        v = self.nodes[ v_id ]
-        self.mergeNode(u, v)
-
-    # merge u and v trees in a union by rank manner
-    def mergeNode(self, u, v):
-        u_root = self.findNode(u)
-        v_root = self.findNode(v)
-        if u_root.rank > v_root.rank:
-            v_root.parent = u_root
-        elif u_root.rank < v_root.rank:
-            u_root.parent = v_root
-        elif u_root != v_root:
-            v_root.parent = u_root
-            u_root.rank += 1
-
-    # get the new sets after merging
-    def get_merge_result(self):
-
-        merge_result = []
-
-        # find all the unique roots
-        roots = []
-        for u in self.nodes:
-            root = self.findNode(u)
-            if not root in roots:
-                roots.append(root)
-
-        # find ordering of roots (from 1 to n_roots)
-        roots_ordered = {}
-        root_id = 0
-        for root in roots:
-            merge_result.append( [] )
-            roots_ordered[root] = root_id
-            root_id += 1
-        for u in self.nodes:
-            u_label = u.label
-            root = self.findNode(u)
-            merge_result[ roots_ordered[root] ].append(u_label)
-
-        # sort the nodes in the result
-        #(this might result in problems if label_type cannot be sorted)
-        for res in merge_result:
-            res.sort()
-
-        return merge_result
 
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
@@ -306,53 +220,7 @@ def edges_to_volumes_for_skip_edges(
 
     return volume
 
-    ##for e_id, uv in enumerate(uv_ids):
-    #def _write_coords(e_id, uv):
-    #    #print e_id, '/', n_edges
-    #    val = edge_labels[e_id]
-    #    if val == 0: # 0 labels are ignored
-    #        return False
-    #    u, v = uv
-    #    coords_u = np.where(seg == u)
-    #    coords_v = np.where(seg == v)
-    #    coords_u = np.concatenate(
-    #            [coords_u[0][:,None], coords_u[1][:,None], coords_u[2][:,None]],
-    #            axis = 1 )
-    #    coords_v = np.concatenate(
-    #            [coords_v[0][:,None], coords_v[1][:,None], coords_v[2][:,None]],
-    #            axis = 1 )
-    #    z_u = np.unique(coords_u[:,2])
-    #    z_v = np.unique(coords_v[:,2])
-    #    assert z_u.size == 1
-    #    assert z_v.size == 1
-    #    z_u, z_v = z_u[0], z_v[0]
-    #    assert z_u != z_v, "%i, %i" % (z_u, z_v)
-
-    #    # for z-edges find the intersection in plane
-    #    # get the intersecting coordinates:
-    #    # cf: http://stackoverflow.com/questions/8317022/get-intersecting-rows-across-two-2d-numpy-arrays
-    #    intersect = np.array([x for x in ( set(tuple(x) for x in coords_u[:,:2]) & set(tuple(x) for x in coords_v[:,:2]) ) ])
-    #    intersect_u = (
-    #            intersect[:,0],
-    #            intersect[:,1],
-    #            z_u * np.ones(intersect.shape[0], intersect.dtype) )
-    #    intersect_v = (
-    #            intersect[:,0],
-    #            intersect[:,1],
-    #            z_v * np.ones(intersect.shape[0], intersect.dtype) )
-    #    volume[intersect_u] = val
-    #    volume[intersect_v] = val
-
-    ## serial for debugging
-    ##res = [ _write_coords(e_id, uv) for e_id, uv in enumerate(uv_ids) ]
-
-    ## parallel
-    #with futures.ThreadPoolExecutor(max_workers = 8) as executor:
-    #    tasks = [ executor.submit(_write_coords, e_id, uv) for e_id, uv in enumerate(uv_ids) ]
-    #    res = [t.result() for t in tasks]
-
-    #return volume
-
+# DEPRECATED, in blockwise-mc replace with vigra or nifty blocking
 
 # find the coordinates of all blocks for a tesselation of
 # vol_shape with block_shape and n_blocks

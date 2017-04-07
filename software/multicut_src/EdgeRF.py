@@ -9,7 +9,7 @@ from defect_handling import modified_edge_features, modified_region_features, mo
 from defect_handling import modified_edge_indications, modified_edge_gt
 from defect_handling import get_skip_edges, modified_adjacency, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
-from Tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
+from tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
 
 RandomForest = vigra.learning.RandomForest3
 
