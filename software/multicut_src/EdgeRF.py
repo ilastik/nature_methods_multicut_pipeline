@@ -194,6 +194,7 @@ def _learn_seperate_rfs(trainsets,
         seg_id,
         features,
         labels,
+        labeled,
         exp_params,
         rf_path,
         features_skip = None,
@@ -202,12 +203,16 @@ def _learn_seperate_rfs(trainsets,
 
     assert len(trainsets) == len(features)
     assert len(labels) == len(features)
+    assert len(labels) == len(labeled), "%i, %i" % (len(labels), len(labeled))
 
     if with_defects:
         skip_transitions = [features[i].shape[0] - get_skip_edges(ds, seg_id).shape[0] for i, ds in enumerate(trainsets)]
 
-    all_indications = [modified_edge_indications(ds, seg_id)[skip_transitions[i]:] \
-            if (with_defects and ds.has_defects) else ds.edge_indications(seg_id) for i, ds in enumerate(trainsets)]
+    all_indications = [modified_edge_indications(ds, seg_id)[labeled[i]][skip_transitions[i]:] \
+            if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]] for i, ds in enumerate(trainsets)]
+    print with_defects
+    print all_indications[0].shape
+    print features[0].shape
     features_xy = np.concatenate(
             [features[i][indications == 1] for i, indications in enumerate(all_indications)])
     labels_xy = np.concatenate(
@@ -322,6 +327,7 @@ def learn_rf(cache_folder,
 
     features_train = []
     labels_train   = []
+    labeled_train  = []
 
     if with_defects:
         features_skip = []
@@ -358,6 +364,7 @@ def learn_rf(cache_folder,
                 exp_params,
                 uv_ids,
                 with_defects)
+        labeled_train.append(labeled)
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         # TODO properly inspect the skip edges
@@ -394,7 +401,7 @@ def learn_rf(cache_folder,
     if use_2rfs:
         return _learn_seperate_rfs(trainsets, seg_id,
                 features_train, labels_train,
-                exp_params,
+                labeled_train, exp_params,
                 rf_path if cache_folder is not None else None,
                 features_skip if with_defects else None,
                 labels_skip if with_defects else None,
@@ -514,7 +521,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
                 if (with_defects and ds_test.has_defects) else ds_test.edge_indications(seg_id_test)
         pmem_xy = rf_xy.predictProbabilities(features_test[edge_indications==1].astype('float32'),
                 n_threads = exp_params.n_threads)[:,1]
-        pmem_z  = rf_z.predictProbabilities(features_test[edge_indications==0],
+        pmem_z  = rf_z.predictProbabilities(features_test[edge_indications==0].astype('float32'),
                 n_threads = exp_params.n_threads)[:,1]
         pmem_test = np.zeros_like(edge_indications, dtype = 'float32')
         pmem_test[edge_indications==1] = pmem_xy
