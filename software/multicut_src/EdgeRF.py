@@ -38,7 +38,7 @@ def local_feature_aggregator(ds,
                 ds.edge_features(seg_id, 1, anisotropy_factor ))
     if "affinities" in feature_list:
         features.append(
-                ds.edge_features_from_affinity_maps(seg_id, 1, anisotropy_factor ))
+                ds.edge_features_from_affinity_maps(seg_id, (1,2), anisotropy_factor ))
     if "extra_input" in feature_list:
         features.append(
                 ds.edge_features(seg_id, 2, anisotropy_factor ))
@@ -80,7 +80,7 @@ def local_feature_aggregator_with_defects(ds,
             1, anisotropy_factor))
     if "affinities" in feature_list:
         features.append(modified_edge_features_from_affinity_maps(ds, seg_id,
-            1, anisotropy_factor))
+            (1,2), anisotropy_factor))
     if "extra_input" in feature_list:
         features.append(modified_edge_features(ds, seg_id,
             2, anisotropy_factor))
@@ -210,9 +210,7 @@ def _learn_seperate_rfs(trainsets,
 
     all_indications = [modified_edge_indications(ds, seg_id)[labeled[i]][skip_transitions[i]:] \
             if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]] for i, ds in enumerate(trainsets)]
-    print with_defects
-    print all_indications[0].shape
-    print features[0].shape
+
     features_xy = np.concatenate(
             [features[i][indications == 1] for i, indications in enumerate(all_indications)])
     labels_xy = np.concatenate(

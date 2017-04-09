@@ -607,13 +607,13 @@ class DataSet(object):
                 filter_res = np.zeros(f_shape, dtype = 'float32')
                 for z in xrange(inp.shape[2]):
                     filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
-                with h5py.File(filter_path) as f:
+                with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = chunks)
 
 
             def _calc_filter_3d(filter_fu, sig, filt_path):
                 filter_res = filter_fu( inp, sig )
-                with h5py.File(filter_path) as f:
+                with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = True)
 
             if calculation_2d:
