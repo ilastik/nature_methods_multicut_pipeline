@@ -52,7 +52,7 @@ def find_matching_indices(array, value_list):
         # TODO this is the proper numpy way to do it, check if it is actually slower and get rid of cython functionality if this is fast enough
         # also, don't need to wrap this if it is just a one-liner
         mask = np.in1d(array, value_list).reshape(array.shape)
-        return mask.all(axis=1) # FIXME this is a mask now, but shouldn't matter for where we use it
+        return np.where(mask.all(axis=1))[0]
 
 
 #
@@ -61,7 +61,6 @@ def find_matching_indices(array, value_list):
 
 @cacher_hdf5()
 def defects_to_nodes(ds, seg_id):
-    assert False, "Not ported to new features yet!"
     defect_mask = ds.defect_mask()
     seg = ds.seg(seg_id)
     assert seg.shape == defect_mask.shape
@@ -83,9 +82,9 @@ def defects_to_nodes(ds, seg_id):
             if ds.has_seg_mask and ds.ignore_seg_value in defect_nodes_z:
                 defect_nodes_z = defect_nodes_z[defect_nodes_z != ds.ignore_seg_value]
         else:
-            defect_nodes_slice = []
+            defect_nodes_z= []
 
-        return list(defect_nodes_slice), len(defect_nodes_slice) * [z], completely_defected
+        return list(defect_nodes_z), len(defect_nodes_z) * [z], completely_defected
 
     completely_defected_slices = []
     with futures.ThreadPoolExecutor(max_workers = 8) as executor:
@@ -106,6 +105,7 @@ def defects_to_nodes(ds, seg_id):
     # only mask the dataset as having defects, if we actually found any defected nodes
     if defect_nodes:
         ds.has_defects = True
+        ds.save()
 
     defect_nodes = np.array(defect_nodes, dtype = 'uint32')
     nodes_z = np.array(nodes_z, dtype = 'uint32')
@@ -122,46 +122,60 @@ def defects_to_nodes(ds, seg_id):
 
 def get_defect_node_z(ds, seg_id):
     defects_to_nodes(ds, seg_id)
-    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+    save_path = cache_name("defects_to_nodes", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(save_path, 'nodes_z')
 
 def get_completely_defected_slices(ds, seg_id):
     defects_to_nodes(ds, seg_id)
-    save_path = cache_name("defects_to_nodes_from_slice_list", "dset_folder", False, False, ds, seg_id)
+    save_path = cache_name("defects_to_nodes", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(save_path, "completely_defected_slices")
 
 def get_delete_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edges")
 
 def get_delete_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edge_ids")
 
 def get_ignore_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edges")
 
 def get_ignore_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edge_ids")
 
 def get_skip_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_edges")
 
 def get_skip_ranges(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_ranges")
 
 def get_skip_starts(ds, seg_id):
     modified_adjacency(ds, seg_id)
+    if not ds.has_defects:
+        return []
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
@@ -214,11 +228,12 @@ def compute_skip_edges_z(
 
 @cacher_hdf5()
 def modified_adjacency(ds, seg_id):
-    if not ds.has_defects:
-        return np.array([0])
 
     defect_nodes = defects_to_nodes(ds, seg_id)
     nodes_z      = get_defect_node_z(ds, seg_id)
+
+    if not ds.has_defects:
+        return np.array([0])
 
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(nodes_z.astype(int)) >= 0), "Defected slice index is not increasing monotonically!"
@@ -367,10 +382,10 @@ def modified_adjacency(ds, seg_id):
 def modified_edge_indications(ds, seg_id):
     modified_indications = ds.edge_indications(seg_id)
     n_edges = modified_indications.shape[0]
-    if not ds.has_defects:
-        return modified_indications
     skip_edges   = get_skip_edges(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+    if not ds.has_defects:
+        return modified_indications
     modified_indications = np.delete(modified_indications, delete_edge_ids)
     modified_indications = np.concatenate(
             [modified_indications, np.zeros(skip_edges.shape[0], dtype = modified_indications.dtype)] )
@@ -381,10 +396,10 @@ def modified_edge_indications(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_gt(ds, seg_id):
     modified_edge_gt = ds.edge_gt(seg_id)
-    if not ds.has_defects:
-        return modified_edge_gt
     skip_edges   = get_skip_edges(ds, seg_id  )
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+    if not ds.has_defects:
+        return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds._rag(seg_id)
     node_gt, _ = rag.projectBaseGraphGt( ds.gt().astype('uint32') )
@@ -398,13 +413,14 @@ def modified_edge_gt(ds, seg_id):
 
 def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor):
     modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor)
-    if not ds.has_defects:
-        return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+
+    if not ds.has_defects:
+        return modified_features
 
     # delete features for delete edges
     modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
@@ -432,7 +448,7 @@ def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_fa
 
     skip_edge_features = np.nan_to_num(skip_edge_features)
     assert skip_edge_features.shape[1] == modified_features.shape[1]
-    return np.concatenate([modified_features, skip_edge_features],axis = 0)
+    return np.nan_to_num(np.concatenate([modified_features, skip_edge_features],axis = 0))
 
 
 def _get_skip_edge_features_for_slices(
@@ -493,14 +509,16 @@ def _get_skip_edge_features_for_slices(
 
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
+
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
-    if not ds.has_defects:
-        return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+
+    if not ds.has_defects:
+        return modified_features
 
     # delete features for delete edges
     modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
@@ -532,15 +550,17 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
 
 @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
 def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
+
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
-    if not ds.has_defects:
-        modified_features = np.c_[modified_features,
-                np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
-        return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+
+    if not ds.has_defects:
+        modified_features = np.c_[modified_features,
+                np.logical_not(ds.edge_indications(seg_id)).astype('float32')]
+        return modified_features
 
     # delete all features corresponding to delete - edges
     modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)
@@ -569,7 +589,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     skip_features = np.concatenate([skip_stat_feats, skip_center_feats], axis = 1)
     assert skip_features.shape[1] == modified_features.shape[1], "%s, %s" % (str(skip_features.shape), str(modified_features.shape))
 
-    return np.concatenate( [modified_features, skip_features], axis = 0)
+    return np.nan_to_num( np.concatenate( [modified_features, skip_features], axis = 0) )
 
 
 # TODO move this somewhere else and also use in normal topo_features
@@ -670,14 +690,16 @@ def _get_skip_topo_features_for_slices(
 
 @cacher_hdf5(folder="feature_folder")
 def modified_topology_features(ds, seg_id, use_2d_edges):
+
     modified_features = ds.topology_features(seg_id, use_2d_edges)
-    if not ds.has_defects:
-        return modified_features
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_ranges  = get_skip_ranges( ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
+
+    if not ds.has_defects:
+        return modified_features
 
     # delete all features corresponding to delete - edges
     modified_features = np.delete(modified_features, delete_edge_ids, axis = 0)

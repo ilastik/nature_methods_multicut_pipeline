@@ -105,6 +105,9 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
     assert isinstance(ds_train, DataSet) or isinstance(ds_train, list)
     assert isinstance(ds_test, DataSet)
     assert isinstance(mc_params, ExperimentSettings )
+
+    modified_adjacency(ds_test, seg_id_test)
+    assert ds_test.has_defects
     print "Running multicut with defect correction on", ds_test.ds_name
     if isinstance(ds_train, DataSet):
         print "Weights learned on", ds_train.ds_name
@@ -120,8 +123,8 @@ def multicut_workflow_with_defect_correction(ds_train, ds_test,
             seg_id_test,
             feature_list,
             mc_params,
-            with_defcts = True,
-            use_2rfs = exp_params.use_2rfs)
+            with_defects = True,
+            use_2rfs = mc_params.use_2rfs)
 
     # get all parameters for the multicut
     uv_ids = modified_adjacency(ds_test, seg_id_test)
@@ -220,6 +223,9 @@ def lifted_multicut_workflow_with_defect_correction(trainsets, ds_test,
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(mc_params, ExperimentSettings )
+
+    modified_adjacency(ds_test, seg_id_test)
+    assert ds_test.has_defects
 
     print "Running lifted multicut with defect detection on", ds_test.ds_name
     if isinstance(trainsets, DataSet):

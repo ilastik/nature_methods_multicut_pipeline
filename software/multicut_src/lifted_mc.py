@@ -12,11 +12,9 @@ from concurrent import futures
 from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
 from tools import cacher_hdf5
-from EdgeRF import learn_and_predict_rf_from_gt
+from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 
 from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency
-
-RandomForest = vigra.learning.RandomForest3
 
 
 # TODO this is quite the bottleneck, speed up !
@@ -688,7 +686,7 @@ def learn_lifted_rf(cache_folder,
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
-            return RandomForest(rf_path, 'rf')
+            return RandomForest.load_from_file(rf_path, 'rf')
 
     features_train = []
     labels_train   = []
@@ -746,12 +744,12 @@ def learn_lifted_rf(cache_folder,
     print "Start learning lifted random forest"
     rf = RandomForest(features_train.astype('float32'),
             labels_train.astype('uint32'),
-            treeCount = exp_params.n_trees,
+            n_trees = exp_params.n_trees,
             n_threads = exp_params.n_threads,
             max_depth = 10 )
 
     if cache_folder is not None:
-        rf.writeHDF5(rf_path, 'rf')
+        rf.write(rf_path, 'rf')
     return rf
 
 
