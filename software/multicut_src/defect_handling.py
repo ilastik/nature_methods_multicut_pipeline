@@ -713,6 +713,8 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
 @cacher_hdf5(ignoreNumpyArrays=True)
 def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_cache):
 
+    assert edge_probs.shape[0] == uv_ids.shape[0], "%s, %s" % ( str(edge_probs.shape) , str(uv_ids.shape) )
+
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
     p_min = 0.001
@@ -764,6 +766,7 @@ def _get_replace_slices(defected_slices, shape):
         if len(consec) == 1:
             z = consec[0]
             replace_slice[z] = z - 1 if z > 0 else 1
+            #replace_slice[z] = z + 1 if z > 0 else 1
         elif len(consec) == 2:
             z0, z1 = consec[0], consec[1]
             replace_slice[z0] = z0 - 1 if z0 > 0 else 2

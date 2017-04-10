@@ -6,6 +6,8 @@ from ExperimentSettings import ExperimentSettings
 from Postprocessing import merge_small_segments, remove_small_segments
 from lifted_mc import compute_and_save_long_range_nh, optimizeLifted
 
+from workflow_no_learning import multicut_workflow_no_learning, multicut_costs_from_affinities_no_learning
+
 from MCSolverImpl import probs_to_energies
 from EdgeRF import learn_and_predict_rf_from_gt
 
