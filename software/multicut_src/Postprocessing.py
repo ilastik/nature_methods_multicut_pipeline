@@ -2,7 +2,7 @@ import numpy as np
 import vigra
 from concurrent import futures
 
-from Tools import UnionFind
+import nifty
 
 # numpy.replace: replcaces the values in array according to dict
 # cf. SO: http://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
@@ -92,21 +92,14 @@ def merge_small_segments(mc_seg, min_seg_size):
             merge_nodes.append( (n_id, merge_node_id) )
 
     # merge the nodes with udf
-    udf = UnionFind( n_nodes + 1 )
+    ufd = nifty.ufd.ufd( n_nodes + 1 )
     for merge_pair in merge_nodes:
-        udf.merge(merge_pair[0], merge_pair[1])
+        ufd.merge(merge_pair[0], merge_pair[1])
 
     # get new to old as merge result
-    new_to_old = udf.get_merge_result()
-
-    # find old to new nodes
-    old_to_new = np.zeros( n_nodes + 1, dtype = np.uint32 )
-    for set_id in xrange( len(new_to_old)  ):
-        for n_id in new_to_old[set_id]:
-            assert n_id <= n_nodes, str(n_id) + " , " + str(n_nodes)
-            old_to_new[n_id] = set_id
+    merged_nodes = ufd.elmentLabeling()
 
     # merge the new nodes
-    merged_seg = seg_rag.projectLabelsToBaseGraph(old_to_new)
+    merged_seg = seg_rag.projectLabelsToBaseGraph(merged_nodes)
     merged_seg = vigra.analysis.labelVolume(merged_seg)
     return merged_seg

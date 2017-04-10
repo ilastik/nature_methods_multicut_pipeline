@@ -7,7 +7,7 @@ from multicut_src import ExperimentSettings
 # from find_false_merges_src import path_features_from_feature_images
 # from find_false_merges_src import path_classification
 from compute_paths_and_features import path_feature_aggregator
-from multicut_src.Tools import cache_name
+from multicut_src.tools import cache_name
 from compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
 
 import numpy as np

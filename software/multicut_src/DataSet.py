@@ -66,7 +66,7 @@ class DataSet(object):
         self.shape = None
 
         # paths to cutouts
-        self.cutouts   = []
+        self.cutouts = []
 
         # gt ids to be ignored for positive training examples
         self.gt_false_splits = set()
@@ -123,14 +123,24 @@ class DataSet(object):
 
     # TODO
     def clear_all_caches(self):
-        pass
-        #self.clear_inputs()
-        #self.clear_regular_caches()
-        #self.clear_filters()
+        self.clear_inputs()
+        self.clear_regular_caches()
+        self.clear_filters()
 
     # TODO clear all external inputs
     def clear_inputs(self):
-        pass
+        cache_names = os.listdir(self.cache_folder)
+        for nn in cache_names:
+            pp = os.path.join(self.cache_folder, nn)
+            if os.path.isdir(pp):
+                continue
+            elif is_inp_name(nn):
+                os.reomve(pp)
+            else:
+                continue
+        for c_path in sellf.cutouts:
+            pass # TODO
+
 
     # TODO clear cache that is not external
     def clear_regular_caches(self):
@@ -584,7 +594,7 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 8
+        n_workers = 1
 
         # first pass over the paths to check if we have to compute anything
         filter_and_sigmas_to_compute = []
@@ -643,7 +653,7 @@ class DataSet(object):
     # we can pass the rag, because loading it for large datasets takes some time...
     def _accumulate_filter_over_edge(self, seg_id, filt, filt_name, rag = None):
         assert len(filt.shape) in (3,4)
-        assert filt.shape[0:3] == self.shape
+        assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
 
         # suffixes for the feature names in the correct order
         suffixes = ["mean", "sum", "min", "max", "variance", "skewness", "kurtosis",
@@ -696,12 +706,14 @@ class DataSet(object):
             path_z = paths_z[ii]
 
             # accumulate over the xy channel
-            filtXY     = vigra.readHDF5(path_xy, 'data')
+            with h5py.File(path_xy) as f:
+                filtXY = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
             featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag)
             featsXY    = np.concatenate(featsXY, axis = 1)
 
             # accumulate over the z channel
-            filtZ      = vigra.readHDF5(path_z, 'data')
+            with h5py.File(path_z) as f:
+                filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
             featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag)
             featsZ     = np.concatenate(featsZ,  axis = 1)
 
@@ -743,15 +755,7 @@ class DataSet(object):
 
             # load the precomputed filter from file
             with h5py.File(path) as f:
-                f_shape = f[filter_key].shape
-
-            # check whether the shapes match, otherwise get the correct shape
-            if f_shape[0:3] != self.shape:
-                assert isinstance(self, Cutout), "This should only happen in cutouts!"
-                with h5py.File(path) as f:
-                    filt = f[filter_key][self.bb]
-            else:
-                filt = vigra.readHDF5(path, filter_key)
+                filt = f[filter_key][self.bb] if isinstance(self, Cutout) else f[filter_key][:]
 
             # accumulate over the edge
             feats_acc, names_acc = self._accumulate_filter_over_edge(
