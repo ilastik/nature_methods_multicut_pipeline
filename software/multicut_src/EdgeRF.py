@@ -80,7 +80,8 @@ class RandomForest(object):
     # TODO max_depth
     def _learn_rf_sklearn(self, train_data, train_labels):
         self.rf = RFType(n_estimators = self.n_trees,
-                n_jobs = self.n_threads)
+                n_jobs = self.n_threads,
+                verbose = 2)
         self.rf.fit(train_data, train_labels)
 
     # TODO max_depth
@@ -316,7 +317,8 @@ def _learn_seperate_rfs(trainsets,
     assert len(labels) == len(labeled), "%i, %i" % (len(labels), len(labeled))
 
     if with_defects:
-        skip_transitions = [modified_adjacency(ds, seg_id).shape[0] - get_skip_edges(ds, seg_id).shape[0] for i, ds in enumerate(trainsets)]
+        skip_transitions = [ (modified_adjacency(ds, seg_id).shape[0] - get_skip_edges(ds, seg_id).shape[0]) \
+                if ds.has_defects else ds._adjacent_segments(seg_id).shape[0] for i, ds in enumerate(trainsets)]
 
     all_indications = [modified_edge_indications(ds, seg_id)[:skip_transitions[i]][labeled[i]] \
             if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]] for i, ds in enumerate(trainsets)]

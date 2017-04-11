@@ -414,6 +414,7 @@ def modified_edge_gt(ds, seg_id):
 # Modified Features
 #
 
+@cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
 def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor):
     modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor)
 
