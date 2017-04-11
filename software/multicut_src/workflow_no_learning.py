@@ -76,13 +76,13 @@ def multicut_costs_from_affinities_no_learning(ds,
     # weight with the edge lens according to the weighting scheme
     if weighting_scheme == "z":
         print "Weighting Z edges"
-        costs = weight_z_edges(ds, costs, seg_id, edge_sizes, edge_indications, weight)
+        costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
     elif weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        costs = weight_xyz_edges(ds, costs, seg_id, edge_sizes, edge_indications, weight)
+        costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
     elif weighting_scheme == "all":
         print "Weighting all edges"
-        costs = weight_all_edges(ds, costs, seg_id, edge_sizes, weight)
+        costs = weight_all_edges(costs, edge_sizes, weight)
     else:
         print "Edges are not weighted"
 

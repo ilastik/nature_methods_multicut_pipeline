@@ -52,7 +52,7 @@ class DataSet(object):
 
         # additional flags
         self.has_raw = False
-        self.has_defects = False
+        self._has_defects = False
 
         # keys to external data
         self.external_raw_key  = None
@@ -89,6 +89,10 @@ class DataSet(object):
     #
     # Properties to check for inp-data etc.
     #
+
+    @property
+    def has_defects(self):
+        return self._has_defects if self.external_defect_mask_path != None else False
 
     @property
     def has_gt(self):
@@ -178,7 +182,7 @@ class DataSet(object):
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
-            assert f[key].shape == self.shape, "%s, %s" % ( str(f[key].shape), str(self.shape) )
+            assert f[key].shape == self.shape, "%s: %s, %s" % (path, str(f[key].shape), str(self.shape) )
 
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
@@ -594,7 +598,7 @@ class DataSet(object):
         # list of paths to the filters, that will be calculated
         return_paths = []
         # TODO set max_workers with ppl param value!
-        n_workers = 1
+        n_workers = 8
 
         # first pass over the paths to check if we have to compute anything
         filter_and_sigmas_to_compute = []

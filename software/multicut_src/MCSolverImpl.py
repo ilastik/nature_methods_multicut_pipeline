@@ -47,13 +47,13 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
     # weight edges
     if exp_params.weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
+        edge_energies = weight_all_edges(edge_energies, edge_areas, exp_params.weight)
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
@@ -66,7 +66,7 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
 
 
 # weight z edges with their area
-def weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):
+def weight_z_edges(edge_energies, edge_areas, edge_indications, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0], "%s, %s" % (str(edge_areas.shape), str(edge_energies.shape))
     assert edge_indications.shape[0] == edge_energies.shape[0]
 
@@ -84,7 +84,7 @@ def weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weig
 
 # weight z edges with their area and xy edges with their length
 # this is (probably) better than treating xy and z edges the same
-def weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, weight):
+def weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0]
     assert edge_indications.shape[0] == edge_energies.shape[0]
 
@@ -106,7 +106,7 @@ def weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, we
 
 # weight all edges with their length / area irrespective of them being xy or z
 # note that this is the only weighting we can do for 3d-superpixel !
-def weight_all_edges(ds, edge_energies, seg_id, edge_areas, weight):
+def weight_all_edges(edge_energies, edge_areas, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0]
 
     energies_return = np.zeros_like(edge_energies)

@@ -13,8 +13,9 @@ from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
 from tools import cacher_hdf5
 from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
+from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 
-from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency
+from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features
 
 
 # TODO this is quite the bottleneck, speed up !
@@ -275,75 +276,61 @@ def compute_lifted_feature_multiple_segmentations(ds,
     return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
 
 
-# TODO need to adapt to defects
 @cacher_hdf5(ignoreNumpyArrays=True)
 def compute_lifted_feature_multicut(ds,
-        segId,
-        pLocal,
-        pipelineParam,
-        uvIds,
+        seg_id,
+        pmap_local,
+        exp_params,
+        uv_ids_lifted,
         liftedNeighborhood,
         with_defects = False):
 
-    if with_defects:
-        assert False, "Currently not supported"
     print "Computing multcut features for lifted neighborhood", liftedNeighborhood
 
-    from concurrent import futures
-
     # variables for the multicuts
-    uv_ids_local     = ds._adjacent_segments(segId)
-    seg_id_max = ds.seg(segId).max()
-    n_var = seg_id_max + 1
+    uv_ids_local = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects else ds._adjacent_segments(seg_id)
+    n_var = uv_ids_local.max() + 1
+    assert pmap_local.shape[0] == uv_ids_local.shape[0]
 
-    # scaling for energies
-    edge_probs = pLocal.copy()
+    edge_indications = modified_edge_indications(ds, seg_id) if with_defects and ds.has_defects else ds.edge_indications(seg_id)
+    edge_areas       = modified_topology_features(ds, seg_id, False)[:,0] if with_defects and ds.has_defects else ds.topology_features(seg_id, False)[:,0]
 
-    edge_indications = ds.edge_indications(segId)
-    edge_areas       = ds._rag(segId).edgeLengths()
+    # set ignore edges to be maximally repulsive
+    if with_defects:
+        ignore_defect_edge_ids = get_ignore_edge_ids(ds, seg_id)
 
-    def single_mc(pLocal, edge_indications, edge_areas,
-            uv_ids, n_var, seg_id, pipelineParam, beta, weight):
+    # set the edges within the segmask to be maximally repulsive
+    if ds.has_seg_mask:
+        ignore_seg_mask = (uv_ids_local == ds.ignore_seg_value).any(axis = 1)
+
+    def single_mc(beta, weight):
 
         # copy the probabilities
-        probs = pLocal.copy()
+        costs = pmap_local.copy()
         p_min = 0.001
         p_max = 1. - p_min
-        probs = (p_max - p_min) * edge_probs + p_min
+        costs = (p_max - p_min) * costs + p_min
         # probs to energies
-        energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
+        costs = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
 
         # weight the energies
-        if pipelineParam.weighting_scheme == "z":
-            print "Weighting Z edges"
-            # z - edges are indicated with 0 !
-            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-            # we only weight the z edges !
-            w = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
+        if exp_params.weighting_scheme == "z":
+            costs = weight_z_edges(costs, edge_areas, edge_indications, weight)
+        elif exp_params.weighting_scheme == "xyz":
+            costs = weight_xyz_edges(costs, edge_areas, edge_indications, weight)
+        elif exp_params.weighting_scheme == "all":
+            costs = weight_all_edges(costs, edge_areas, weight)
 
-        elif pipelineParam.weighting_scheme == "xyz":
-            print "Weighting xyz edges"
-            # z - edges are indicated with 0 !
-            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-            len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
-            # weight the z edges !
-            w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
-            # weight xy edges
-            w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-            energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
-
-        elif pipelineParam.weighting_scheme == "all":
-            print "Weighting all edges"
-            area_max = float( numpy.max( edge_areas ) )
-            w = weight * edge_areas / area_max
-            energies = numpy.multiply(w, energies)
+        max_repulsive = 2 * costs.min()
+        if with_defects and ds.has_defects:
+            costs[ignore_defect_edge_ids] = max_repulsive
+        if ds.has_seg_mask:
+            costs[ignore_seg_mask] = max_repulsive
 
         # get the energies (need to copy code here, because we can't use caching in threads)
         mc_node, mc_energy, t_inf = multicut_fusionmoves(
-                n_var, uv_ids,
-                energies, pipelineParam)
+                n_var, uv_ids_local,
+                costs, exp_params)
 
         return mc_node
 
@@ -352,21 +339,20 @@ def compute_lifted_feature_multicut(ds,
     #for beta in (0.4, 0.45, 0.5, 0.55, 0.65):
     #    for w in (12, 16, 25):
     #        res = single_mc( pLocal, edge_indications, edge_areas,
-    #            uv_ids_local, n_var, segId, pipelineParam, beta, w )
+    #            uv_ids_local, n_var, seg_id, exp_params, beta, w )
     #        mc_nodes.append(res)
 
     # parralel
-    with futures.ThreadPoolExecutor(max_workers=pipelineParam.n_threads) as executor:
+    with futures.ThreadPoolExecutor(max_workers=exp_params.n_threads) as executor:
         tasks = []
-        for beta in (0.4, 0.45, 0.5, 0.55, 0.65):
+        for beta in (0.4, 0.45, 0.5, 0.55, 0.60):
             for w in (12, 16, 25):
-                tasks.append( executor.submit( single_mc, pLocal, edge_indications, edge_areas,
-                    uv_ids_local, n_var, segId, pipelineParam, beta, w ) )
+                tasks.append( executor.submit( single_mc, beta, w ) )
 
     mc_nodes = [future.result() for future in tasks]
 
     # map multicut result to lifted edges
-    allFeat = [ ( mc_node[uvIds[:, 0]] !=  mc_node[uvIds[:, 1]] )[:,None] for mc_node in mc_nodes]
+    allFeat = [ ( mc_node[uv_ids_lifted[:, 0]] !=  mc_node[uv_ids_lifted[:, 1]] )[:,None] for mc_node in mc_nodes]
 
     mcStates = numpy.concatenate(allFeat, axis=1)
     stateSum = numpy.sum(mcStates,axis=1)

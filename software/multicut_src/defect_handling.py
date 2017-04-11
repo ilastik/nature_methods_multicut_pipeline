@@ -61,6 +61,10 @@ def find_matching_indices(array, value_list):
 
 @cacher_hdf5()
 def defects_to_nodes(ds, seg_id):
+
+    if ds.external_defect_mask_path == None:
+        return []
+
     defect_mask = ds.defect_mask()
     seg = ds.seg(seg_id)
     assert seg.shape == defect_mask.shape
@@ -104,7 +108,7 @@ def defects_to_nodes(ds, seg_id):
     assert len(defect_nodes) == len(nodes_z)
     # only mask the dataset as having defects, if we actually found any defected nodes
     if defect_nodes:
-        ds.has_defects = True
+        ds._has_defects = True
         ds.save()
 
     defect_nodes = np.array(defect_nodes, dtype = 'uint32')
@@ -230,10 +234,9 @@ def compute_skip_edges_z(
 def modified_adjacency(ds, seg_id):
 
     defect_nodes = defects_to_nodes(ds, seg_id)
-    nodes_z      = get_defect_node_z(ds, seg_id)
-
     if not ds.has_defects:
         return np.array([0])
+    nodes_z      = get_defect_node_z(ds, seg_id)
 
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(nodes_z.astype(int)) >= 0), "Defected slice index is not increasing monotonically!"
@@ -753,24 +756,24 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_
     # weight edges
     if exp_params.weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(ds, edge_energies, seg_id, edge_areas, edge_indications, exp_params.weight)
+        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
     elif exp_params.weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(ds, edge_energies, seg_id, edge_areas, exp_params.weight)
+        edge_energies = weight_all_edges(edge_energies, edge_areas, exp_params.weight)
 
     # set ignore edges to be maximally repulsive
     ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
+    max_repulsive = 2 * edge_energies.min()
     if ignore_edge_ids.size:
-        max_repulsive = 2 * edge_energies.min()
         edge_energies[ignore_edge_ids] = max_repulsive
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
         ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
-        edge_energies[ ignore_mask ] = 2 * edge_energies.min()
+        edge_energies[ ignore_mask ] = max_repulsive
 
     assert not np.isnan(edge_energies).any()
     return edge_energies
