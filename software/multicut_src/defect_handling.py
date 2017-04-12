@@ -73,7 +73,7 @@ def defects_to_nodes(ds, seg_id):
     def defects_to_nodes_z(z):
         defect_mask_z = defect_mask[:,:,z]
         where_defect = defect_mask_z > 0
-        n_defect_pix = np.sum(where_defect) > 0
+        n_defect_pix = np.sum(where_defect)
         completely_defected = False
         if n_defect_pix > 0:
             seg_z = seg[:,:,z]
@@ -103,7 +103,7 @@ def defects_to_nodes(ds, seg_id):
                 defect_nodes.extend(nodes)
                 nodes_z.extend(zz)
                 if completely_defected:
-                    completely_defected_slices.append(zz)
+                    completely_defected_slices.append(zz[0])
 
     assert len(defect_nodes) == len(nodes_z)
     # only mask the dataset as having defects, if we actually found any defected nodes
@@ -815,6 +815,7 @@ def _get_replace_slices(defected_slices, shape):
 
 def postprocess_segmentation(ds, seg_id, seg_result):
     defect_slices = get_completely_defected_slices(ds, seg_id)
+    assert defect_slices.size, "Can only post-process data with defects"
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
     for defect_slice in defect_slices:
         replace = replace_slices[defect_slice]

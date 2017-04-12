@@ -28,6 +28,7 @@ def lifted_ignore_ids(ds,
     return find_matching_indices(uv_ids, defect_nodes)
 
 
+# TODO use nifty agglomertion
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds,
         segId,
@@ -150,143 +151,88 @@ def clusteringFeatures(ds,
     return allFeat
 
 #
-# Multicut features
+# Features from ensembling over segmentations
 #
 
-# TODO we might even loop over different solver here ?! -> nifty greedy ?!
-@cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_multiple_segmentations(ds,
-        trainsets,
-        referenceSegId,
-        featureListLocal,
-        uvIdsLifted,
-        pipelineParam):
+# TODO common ensembling backend
+# TODO adapt for defects
+# TODO also use similar feature for ucm
+#@cacher_hdf5(ignoreNumpyArrays=True)
+def compute_lifted_feature_mala_agglomeration(
+        ds,
+        seg_id,
+        inp_ids,
+        uv_ids_lifted,
+        lifted_nh,
+        with_defects = False
+        ):
 
-    assert False, "Currently not supported"
-    import nifty
+    assert len(inp_ids) == 2
+    print "Computing mala agglomeration features for lifted neighborhood", lifted_nh
+    assert not with_defects, "Not Implemented for defects yet!"
 
-    print "Computing lifted features from multople segmentations from %i segmentations for reference segmentation %i" % (ds.n_seg, referenceSegId)
+    rag = ds._rag(seg_id)
+    edge_indications = ds.edge_indications(seg_id)
+    edge_lens        = ds.topology_features(seg_id, False)[:,0]
 
-    pLocals = []
-    indications = []
-    rags = []
-    for candidateSegId in xrange(ds.n_seg):
-        pLocals.append( learn_and_predict_rf_from_gt(pipelineParam.rf_cache_folder,
-            trainsets, ds,
-            candidateSegId, candidateSegId,
-            featureListLocal, pipelineParam,
-            use_2rfs = pipelineParam.use_2rfs) )
-        # append edge indications (strange hdf5 bugs..)
-        rags.append(ds._rag(candidateSegId))
-        indications.append(ds.edge_indications(candidateSegId))
+    # get the max affinities for xy edges from xy affinities
+    aff_xy = ds.inp(inp_ids[0])
+    edge_map_xy  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_xy)
+    indicators = rag.accumulateEdgeStatistics(edge_map_xy)[:,3] # 3 -> max
 
+    # get the max affinities for z edges from z affinities
+    aff_z  = ds.inp(inp_ids[1])
+    edge_map_z  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_z)
+    indicators_z = rag.accumulateEdgeStatistics(edge_map_z)[:,3] # 3 -> max
 
-    def single_mc(segId, pLocal, edge_indications, rag, beta):
+    # merge the indicators for xy and z edges
+    indicators[edge_indications==1] = indicators_z[edge_indications==1]
 
-        weight = pipelineParam.weight
+    def agglomerate(threshold, use_edge_len):
+        graph = nifty.graph.UndirectedGraph(rag.numberOfNodes)
+        graph.insertEdges(ds._adjacent_segments(seg_id))
 
-        # copy the probabilities
-        probs = pLocal.copy()
-        p_min = 0.001
-        p_max = 1. - p_min
-        probs = (p_max - p_min) * probs + p_min
-        # probs to energies
-        energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
+        policy = nifty.graph.agglo.malaClusterPolicy(
+                graph = graph,
+                edgeIndicators = indicators,
+                edgeSizes = edge_lens if use_edge_len else np.ones(graph.numberOfEdges),
+                nodeSizes = np.ones(graph.numberOfNodes),
+                threshold = threshold)
 
-        edge_areas = rag.edgeLengths()
+        clustering = nifty.graph.agglo.agglomerativeClustering(policy)
+        clustering.run()
 
-        # weight the energies
-        if pipelineParam.weighting_scheme == "z":
-            print "Weighting Z edges"
-            # z - edges are indicated with 0 !
-            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-            # we only weight the z edges !
-            w = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
+        clustered_nodes = clustering.result()
 
-        elif pipelineParam.weighting_scheme == "xyz":
-            print "Weighting xyz edges"
-            # z - edges are indicated with 0 !
-            area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-            len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
-            # weight the z edges !
-            w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-            energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
-            # weight xy edges
-            w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-            energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
-
-        elif pipelineParam.weighting_scheme == "all":
-            print "Weighting all edges"
-            area_max = float( numpy.max( edge_areas ) )
-            w = weight * edge_areas / area_max
-            energies = numpy.multiply(w, energies)
-
-        uv_ids = numpy.sort(rag.uvIds(), axis = 1)
-        n_var = uv_ids.max() + 1
-
-        mc_node, mc_energy, t_inf = multicut_fusionmoves(
-                n_var, uv_ids,
-                energies, pipelineParam)
-
-        return mc_node
-
-
-    def map_nodes_to_reference(segId, nodes, rag, ragRef):
-
-        if segId == referenceSegId:
-            return nodes
-
-        # map nodes to segmentation
-        denseSegmentation = rag.projectLabelsToBaseGraph(nodes.astype('uint32'))
-        # map segmentation to nodes of reference seg
-        referenceNodes, _ = ragRef.projectBaseGraphGt(denseSegmentation)
-
-        return referenceNodes
-
-    #workers = 1
-    workers = pipelineParam.n_threads
-
-    # iterate over several betas
-    betas = [.35,.4,.45,.5,.55,.6,.65]
-
-    with futures.ThreadPoolExecutor(max_workers=workers) as executor:
+    # TODO set n workers from ppl params
+    with ThreadPoolExecutor(max_workers = 8) as executor:
         tasks = []
-        for candidateSegId in xrange(ds.n_seg):
-            for beta in betas:
-                tasks.append( executor.submit( single_mc, candidateSegId, pLocals[candidateSegId], indications[candidateSegId], rags[candidateSegId], beta) )
+        for use_edge_len in (True, False):
+            for threshold in (.3,.4,.5,.6,.7,.8):
+                tasks.append(executor.submit(agglomerate, use_edge_len, threshold))
 
-    mc_nodes = [future.result() for future in tasks]
-
-    # map nodes to the reference seg
-    with futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        tasks = []
-        for candidateSegId in xrange(ds.n_seg):
-            for i in xrange(len(betas)):
-                resIndex = candidateSegId * len(betas) + i
-                tasks.append( executor.submit( map_nodes_to_reference, candidateSegId, mc_nodes[resIndex], rags[candidateSegId], rags[referenceSegId] ) )
-
-    reference_nodes = [future.result() for future in tasks]
+    node_results = [t.result() for t in tasks]
 
     # map multicut result to lifted edges
-    allFeat = [ ( reference_node[uvIdsLifted[:, 0]] !=  reference_node[uvIdsLifted[:, 1]] )[:,None] for reference_node in reference_nodes]
+    edge_results = numpy.concatenate(
+            [ ( node_res[uv_ids_lifted[:, 0]] != node_res[uv_ids_lifted[:, 1]] )[:,None] for node_res in node_results],
+            axis = 1)
+    state_sum = numpy.sum(edge_results, axis=1)
+    return numpy.concatenate([edge_results, state_sum[:,None]], axis=1)
 
-    mcStates = numpy.concatenate(allFeat, axis=1)
-    stateSum = numpy.sum(mcStates,axis=1)
-    return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
 
-
+# TODO unify with mala ensembling (common function for ensembling over the segmentations)
 @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_multicut(ds,
+def compute_lifted_feature_multicut(
+        ds,
         seg_id,
         pmap_local,
         exp_params,
         uv_ids_lifted,
-        liftedNeighborhood,
+        lifted_nh,
         with_defects = False):
 
-    print "Computing multcut features for lifted neighborhood", liftedNeighborhood
-
+    print "Computing multicut features for lifted neighborhood", lifted_nh
     # variables for the multicuts
     uv_ids_local = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects else ds._adjacent_segments(seg_id)
     n_var = uv_ids_local.max() + 1
@@ -304,7 +250,6 @@ def compute_lifted_feature_multicut(ds,
         ignore_seg_mask = (uv_ids_local == ds.ignore_seg_value).any(axis = 1)
 
     def single_mc(beta, weight):
-
         # copy the probabilities
         costs = pmap_local.copy()
         p_min = 0.001
@@ -359,104 +304,6 @@ def compute_lifted_feature_multicut(ds,
     return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
 
 
-# TODO adapt to defects
-@cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_pmap_multicut(ds,
-        segId,
-        pLocal,
-        pipelineParam,
-        uvIds,
-        liftedNeighborhood,
-        with_defects = False):
-
-    if with_defects:
-        assert False, "Currently not supported"
-
-    print "Computing multcut features for lifted neighborhood", liftedNeighborhood
-
-    # variables for the multicuts
-    uv_ids_local     = ds._adjacent_segments(segId)
-    seg_id_max = ds.seg(segId).max()
-    n_var = seg_id_max + 1
-
-    # scaling for energies
-    edge_probs = pLocal.copy()
-
-    edge_indications = ds.edge_indications(segId)
-    edge_areas       = ds._rag(segId).edgeLengths()
-
-    weight = pipelineParam.weight
-    beta = pipelineParam.beta_local
-
-    # copy the probabilities
-    probs = pLocal.copy()
-    p_min = 0.001
-    p_max = 1. - p_min
-    probs = (p_max - p_min) * edge_probs + p_min
-    # probs to energies
-    energies = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
-
-    # weight the energies
-    if pipelineParam.weighting_scheme == "z":
-        print "Weighting Z edges"
-        # z - edges are indicated with 0 !
-        area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-        # we only weight the z edges !
-        w = weight * edge_areas[edge_indications == 0] / area_z_max
-        energies[edge_indications == 0] = numpy.multiply(w, energies[edge_indications == 0])
-
-    elif pipelineParam.weighting_scheme == "xyz":
-        print "Weighting xyz edges"
-        # z - edges are indicated with 0 !
-        area_z_max = float( numpy.max( edge_areas[edge_indications == 0] ) )
-        len_xy_max = float( numpy.max( edge_areas[edge_indications == 1] ) )
-        # weight the z edges !
-        w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-        energies[edge_indications == 0] = numpy.multiply(w_z, energies[edge_indications == 0])
-        # weight xy edges
-        w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-        energies[edge_indications == 1] = numpy.multiply(w_xy, energies[edge_indications == 1])
-
-    elif pipelineParam.weighting_scheme == "all":
-        print "Weighting all edges"
-        area_max = float( numpy.max( edge_areas ) )
-        w = weight * edge_areas / area_max
-        energies = numpy.multiply(w, energies)
-
-    # compute map
-    ret, mc_energy, t_inf, obj = multicut_fusionmoves(n_var,
-            uv_ids_local,
-            energies,
-            pipelineParam,
-            returnObj=True)
-
-    ilpFactory = obj.multicutIlpFactory(ilpSolver='cplex',
-        addThreeCyclesConstraints=True,
-        addOnlyViolatedThreeCyclesConstraints=True
-        #memLimit= 0.01
-    )
-    print "Map solution computed starting perturb"
-    greedy = obj.greedyAdditiveFactory()
-
-    fmFactory = obj.fusionMoveBasedFactory(
-        fusionMove=obj.fusionMoveSettings(mcFactory=greedy),
-        proposalGen=obj.watershedProposals(sigma=1,seedFraction=0.01),
-        numberOfIterations=100,
-        numberOfParallelProposals=16, # no effect if nThreads equals 0 or 1
-        numberOfThreads=0,
-        stopIfNoImprovement=20,
-        fuseN=2,
-    )
-    s = obj.perturbAndMapSettings(mcFactory=fmFactory,noiseMagnitude=4.2,numberOfThreads=-1,
-                            numberOfIterations=pipelineParam.pAndMapIterations, verbose=2, noiseType='uniform')
-    pAndMap = obj.perturbAndMap(obj, s)
-    pmapProbs =  pAndMap.optimize(ret)
-
-    # use perturb and map probs with clustering
-    return clusteringFeatures(ds, segId,
-            uvIds, pmapProbs, pipelineParam.lifted_neighborhood, True )
-
-
 def lifted_feature_aggregator(ds,
         trainsets,
         featureList,
@@ -468,8 +315,11 @@ def lifted_feature_aggregator(ds,
         with_defects = False):
 
     assert len(featureList) > 0
+    # deprecated features
+    #for feat in featureList:
+    #    assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
     for feat in featureList:
-        assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
+        assert feat in ("mc", "cluster", "reg", "mala"), feat
 
     features = []
     if "mc" in featureList:# TODO make defect proof
@@ -513,6 +363,16 @@ def lifted_feature_aggregator(ds,
                     featureListLocal,
                     uvIds,
                     pipelineParam) )
+    if "mala" in featureList:
+        features.append(
+                compute_lifted_feature_mala_agglomeration(
+                    ds,
+                    seg_id,
+                    (1,2),
+                    uv_ids_lifted,
+                    pipelineParam.lifted_neighborhood,
+                    with_defects)
+                )
     if pipelineParam.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
         nz_train = ds.node_z_coord(segId)
         lifted_distance = numpy.abs(
@@ -818,6 +678,7 @@ def learn_and_predict_lifted_rf(cache_folder,
     return p_test, uv_ids_test, nz_test
 
 
+# TODO use lifted multicut from nifty
 def optimizeLifted(uvs_local,
         uvs_lifted,
         costs_local,
@@ -873,7 +734,6 @@ def optimizeLifted(uvs_local,
     # solver
     solver = agraph.fusionMoves(model, settings)
     ws3 = solver.run(ws2)
-
 
     # FM SG
     # settings for proposal generator

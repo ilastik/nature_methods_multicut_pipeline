@@ -671,7 +671,6 @@ class DataSet(object):
         if len(filt.shape) == 3:
             # let RAG do the work
             gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, filt)
-            #edgeFeat_mean = rag.accumulateEdgeFeatures(gridGraphEdgeIndicator)[:,np.newaxis]
             edgeFeats     = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
             feats_return.append(edgeFeats)
             names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
