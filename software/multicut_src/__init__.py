@@ -9,6 +9,7 @@ from MCSolverImpl import probs_to_energies
 from EdgeRF import learn_and_predict_rf_from_gt
 
 from false_merges import compute_false_merges, resolve_merges_with_lifted_edges, project_resolved_objects_to_segmentation
+from false_merges import resolve_merges_with_lifted_edges_global
 from false_merges import shortest_paths, path_feature_aggregator
 from false_merges import pre_compute_paths
 #from resolve_false_merges import compute_false_merges, resolve_merges_with_lifted_edges

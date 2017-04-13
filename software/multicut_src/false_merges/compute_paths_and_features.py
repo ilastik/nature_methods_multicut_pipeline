@@ -181,16 +181,23 @@ def path_features_from_feature_images(
         #print ret.shape
         return np.array(path_features)[None,:]
 
-    # We parallelize over the paths for now.
-    # TODO parallelizing over filters might in fact be much faster, because
-    # we avoid the single threaded i/o in the beginning!
-    # it also lessens memory requirements if we have less threads than filters
-    # parallel
-    with futures.ThreadPoolExecutor(max_workers = params.n_threads) as executor:
-        tasks = []
-        for p_id, path in enumerate(paths_in_roi):
-            tasks.append( executor.submit( extract_features_for_path, path) )
-        out = np.concatenate([t.result() for t in tasks], axis = 0)
+    if len(paths) > 1:
+
+        # We parallelize over the paths for now.
+        # TODO parallelizing over filters might in fact be much faster, because
+        # we avoid the single threaded i/o in the beginning!
+        # it also lessens memory requirements if we have less threads than filters
+        # parallel
+        with futures.ThreadPoolExecutor(max_workers = params.n_threads) as executor:
+            tasks = []
+            for p_id, path in enumerate(paths_in_roi):
+                tasks.append( executor.submit( extract_features_for_path, path) )
+            out = np.concatenate([t.result() for t in tasks], axis = 0)
+
+    else:
+
+        out = np.concatenate([extract_features_for_path(path) for path in paths_in_roi])
+
 
     # serial for debugging
     #out = []
