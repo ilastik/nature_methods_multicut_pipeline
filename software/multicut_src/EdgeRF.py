@@ -29,7 +29,7 @@ class RandomForest(object):
             train_labels,
             n_trees,
             n_threads,
-            max_depth = 0
+            max_depth = None
             ):
 
         if isinstance(train_data, str) and train_data == '__will_deserialize__':
@@ -47,7 +47,6 @@ class RandomForest(object):
         else:
             self._learn_vigra_sklearn(train_data, train_labels)
 
-    # TODO max_depth
     @classmethod
     def load_from_file(self, file_path, key, n_threads):
         self = self('__will_deserialize__', None, None, n_threads)
@@ -77,19 +76,20 @@ class RandomForest(object):
         save_path = file_path if use_sklearn else file_path + ".h5"
         return os.path.exists(save_path)
 
-    # TODO max_depth
     def _learn_rf_sklearn(self, train_data, train_labels):
         self.rf = RFType(n_estimators = self.n_trees,
                 n_jobs = self.n_threads,
-                verbose = 2)
+                verbose = 2 if ExperimentSettings().verbose else 0,
+                max_depth = self.max_depth)
         self.rf.fit(train_data, train_labels)
 
-    # TODO max_depth
     def _learn_rf_vigra(self, train_data, train_labels):
+        mdepth = self.max_depth if self.max_depth is not None else 0
         self.rf = RFType(train_data,
                 train_labels,
                 treeCount = self.n_trees,
-                n_threads = self.n_threads)
+                n_threads = self.n_threads,
+                max_depth = mdepth)
 
     def predictProbabilities(self, test_data):
         if use_sklearn:
