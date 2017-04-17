@@ -24,8 +24,7 @@ import numpy as np
 # watershed on distance transform
 from wsdt import wsDtSegmentation
 
-from multicut_src import MetaSet
-from multicut_src import DataSet
+from multicut_src import DataSet, load_dataset
 from multicut_src import multicut_workflow, lifted_multicut_workflow
 from multicut_src import ExperimentSettings
 
@@ -123,12 +122,10 @@ def make_consecutive(seg):
 
 
 def init(data_folder, cache_folder, snemi_mode ):
-    meta = MetaSet(cache_folder)
 
     print "Generating initial cache, this may take some minutes"
 
-    # init train and test data
-
+    # init train
     ds_train = DataSet(cache_folder, "ds_train")
 
     raw_train = vol_to_vol( os.path.join(data_folder, "raw_train") )
@@ -155,12 +152,11 @@ def init(data_folder, cache_folder, snemi_mode ):
     z2 = int( shape[2] * 0.8 )
     z3 = shape[2]
 
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z0, z1])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z1, z2])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z2, z3])
+    ds_train.make_cutout([0, 0, z0], [shape[0], shape[1], z1])
+    ds_train.make_cutout([0, 0, z1], [shape[0], shape[1], z2])
+    ds_train.make_cutout([0, 0, z2], [shape[0], shape[1], z3])
 
-    meta.add_dataset("ds_train", ds_train)
-
+    # init test
     ds_test = DataSet(cache_folder, "ds_test")
 
     raw_test = vol_to_vol( os.path.join(data_folder, "raw_test") )
@@ -170,15 +166,9 @@ def init(data_folder, cache_folder, snemi_mode ):
     probs_test = normalize_if(probs_test)
     ds_test.add_input_from_data(probs_test)
 
-    if snemi_mode:
-        seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test")).astype('uint32')
-    else:
-        seg_test = wsdt( probs_test )
+    seg_test = vol_to_vol( os.path.join(data_folder, "oversegmentation_test")).astype('uint32') \
+            if snemi_mode else wsdt( probs_test )
     ds_test.add_seg_from_data(seg_test)
-
-    meta.add_dataset("ds_test", ds_test)
-
-    meta.save()
 
 
 def main():
@@ -189,30 +179,18 @@ def main():
     cache_folder = os.path.join(out_folder, "cache")
 
     # init the cache when running experiments the first time
-    # if the meta set wasn't saved yet, we need to recreate the cache
-    if not os.path.exists( os.path.join(cache_folder, "meta_dict.pkl" ) ):
+    if not os.path.exists( cache_folder ):
         init(args.data_folder, cache_folder, args.snemi_mode )
 
-    meta = MetaSet(cache_folder)
-    meta.load()
-
-    ds_train = meta.get_dataset("ds_train")
-    ds_test  = meta.get_dataset("ds_test")
+    ds_train = load_dataset(cache_folder, "ds_train")
+    ds_test  = load_dataset(cache_folder, "ds_test")
 
     # experiment settings
-    exp_params = ExperimentSettings()
-
-    exp_params.set_rfcache( os.path.join(cache_folder, "rf_cache") )
-
-    # use extra 2d features
-    exp_params.set_use2d(True)
-
-    # parameters for learning
-    exp_params.set_fuzzy_learning(True)
-    exp_params.set_ntrees(500)
-
-    # parameters for lifted multicut
-    exp_params.set_lifted_neighborhood(3)
+    ExperimentSettings().set_rfcache( os.path.join(cache_folder, "rf_cache") )
+    ExperimentSettings().set_use2d(True)
+    ExperimentSettings().set_fuzzy_learning(True)
+    ExperimentSettings().set_ntrees(500)
+    ExperimentSettings().set_lifted_neighborhood(3)
 
     # features used
     local_feats_list  = ("raw", "prob", "reg", "topo")
@@ -220,14 +198,14 @@ def main():
     lifted_feats_list = ("cluster", "reg")
 
     if args.snemi_mode:
-        exp_params.set_anisotropy(5.)
-        exp_params.set_weighting_scheme("all")
-        exp_params.set_solver("multicut_exact")
+        ExperimentSettings().anisotropy_factor = 5.
+        ExperimentSettings().weighting_scheme = "all"
+        ExperimentSettings().solver = "multicut_exact"
         gamma = 10000.
     else:
-        exp_params.set_anisotropy(25.)
-        exp_params.set_weighting_scheme("z")
-        exp_params.set_solver("multicut_fusionmoves")
+        ExperimentSettings().anisotropy_factor = 25.
+        ExperimentSettings().weighting_scheme = "z"
+        ExperimentSettings().solver = "multicut_fusionmoves"
         gamma = 2.
 
     seg_id = 0
@@ -235,15 +213,9 @@ def main():
     if args.use_lifted:
         print "Starting Lifted Multicut Workflow"
 
-        # have to make filters first due to cutouts...
-        ds_train.make_filters(0, exp_params.anisotropy_factor)
-        ds_train.make_filters(1, exp_params.anisotropy_factor)
-        ds_test.make_filters( 0, exp_params.anisotropy_factor)
-        ds_test.make_filters( 1, exp_params.anisotropy_factor)
-
         mc_node, mc_edges, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
            seg_id, seg_id,
-           local_feats_list, lifted_feats_list, exp_params,
+           local_feats_list, lifted_feats_list,
            gamma = gamma, weight_z_lifted = True)
 
         save_path = os.path.join(out_folder, "lifted_multicut_segmentation.tif")
@@ -253,7 +225,7 @@ def main():
         mc_node, mc_edges, mc_energy, t_inf = multicut_workflow(
                 ds_train, ds_test,
                 seg_id, seg_id,
-                local_feats_list, exp_params)
+                local_feats_list)
 
         save_path = os.path.join(out_folder, "multicut_segmentation.tif")
 

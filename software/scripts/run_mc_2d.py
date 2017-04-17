@@ -24,8 +24,7 @@ import numpy as np
 # watershed on distance transform
 from wsdt import wsDtSegmentation
 
-from multicut_src import MetaSet
-from multicut_src import DataSet
+from multicut_src import DataSet, load_dataset
 from multicut_src import multicut_workflow, lifted_multicut_workflow
 from multicut_src import ExperimentSettings
 from multicut_src import edges_to_binary
@@ -151,7 +150,6 @@ def labels_to_dense_gt( labels_path, probs):
 
 
 def init(data_folder, cache_folder):
-    meta = MetaSet(cache_folder)
 
     print "Generating initial cache, this may take some minutes"
 
@@ -178,11 +176,9 @@ def init(data_folder, cache_folder):
     z2 = int( shape[2] * 0.8 )
     z3 = shape[2]
 
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z0, z1])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z1, z2])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z2, z3])
-
-    meta.add_dataset("ds_train", ds_train)
+    ds_train.make_cutout([0, 0, z0], [shape[0], shape[1], z1])
+    ds_train.make_cutout([0, 0, z1], [shape[0], shape[1], z2])
+    ds_train.make_cutout([0, 0, z2], [shape[0], shape[1], z3])
 
     ds_test = DataSet(cache_folder, "ds_test")
 
@@ -196,10 +192,6 @@ def init(data_folder, cache_folder):
     seg_test = wsdt( probs_test )
     ds_test.add_seg_from_data(seg_test)
 
-    meta.add_dataset("ds_test", ds_test)
-
-    meta.save()
-
 
 def main():
     args = process_command_line()
@@ -208,32 +200,21 @@ def main():
     assert os.path.exists(out_folder), "Please choose an existing folder for the output"
     cache_folder = os.path.join(out_folder, "cache")
 
-    # if the meta set wasn't saved yet, we need to recreate the cache
-    if not os.path.exists( os.path.join(cache_folder, "meta_dict.pkl" ) ):
+    # init the cache when running experiments the first time
+    if not os.path.exists( cache_folder ):
         init(args.data_folder, cache_folder)
 
-    meta = MetaSet(cache_folder)
-    meta.load()
+    ds_train = load_dataset(cache_folder, "ds_train")
+    ds_test  = load_dataset(cache_folder, "ds_test")
 
-    ds_train = meta.get_dataset("ds_train")
-    ds_test  = meta.get_dataset("ds_test")
-
-    # experiment settings
-    exp_params = ExperimentSettings()
-
-    exp_params.set_rfcache( os.path.join(cache_folder, "rf_cache") )
-
-    # use extra 2d features
-    exp_params.set_use2d(True)
-
-    # parameters for learning
-    exp_params.set_anisotropy(25.)
-    exp_params.set_learn2d(True)
-    exp_params.set_ignore_mask(False)
-    exp_params.set_ntrees(500)
-
-    exp_params.set_weighting_scheme("z")
-    exp_params.set_solver("multicut_fusionmoves")
+    # set the experiment settings
+    ExperimentSettings().rf_cache_folder = os.path.join(cache_folder, "rf_cache")
+    ExperimentSettings().use2d = True
+    ExperimentSettings().anisotropy_factor = 25.
+    ExperimentSettings().learn2d = True
+    ExperimentSettings().n_trees = 500
+    ExperimentSettings().weighting_scheme = "z"
+    ExperimentSettings().solver = "multicut_fusionmoves"
 
     local_feats_list  = ("raw", "prob", "reg", "topo")
     lifted_feats_list = ("mc", "cluster", "reg")
@@ -243,16 +224,10 @@ def main():
     if args.use_lifted:
         print "Starting Lifted Multicut Workflow"
 
-        # have to make filters first due to cutouts...
-        ds_train.make_filters(0, exp_params.anisotropy_factor)
-        ds_train.make_filters(1, exp_params.anisotropy_factor)
-        ds_test.make_filters( 0, exp_params.anisotropy_factor)
-        ds_test.make_filters( 1, exp_params.anisotropy_factor)
-
         mc_node, mc_edges, mc_energy, t_inf = lifted_multicut_workflow(
                 ds_train, ds_test,
                 seg_id, seg_id,
-                local_feats_list, lifted_feats_list, exp_params,
+                local_feats_list, lifted_feats_list,
                 gamma = 2., warmstart = False, weight_z_lifted = True)
 
         save_path_seg = os.path.join(out_folder, "lifted_multicut_segmentation.tif")
@@ -263,7 +238,7 @@ def main():
         mc_node, mc_edges, mc_energy, t_inf = multicut_workflow(
                 ds_train, ds_test,
                 seg_id, seg_id,
-                local_feats_list, exp_params)
+                local_feats_list)
 
         save_path_seg = os.path.join(out_folder, "multicut_segmentation.tif")
         save_path_edge = os.path.join(out_folder, "multicut_labeling.tif")
