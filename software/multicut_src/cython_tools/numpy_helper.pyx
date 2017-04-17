@@ -16,7 +16,7 @@ cdef inline list _find_indices(
     
     cdef list indices = []
     cdef size_t xx, yy, cc
-    cdef int match_found# bool workaround... FIXME
+    cdef int match_found# bool workaround...
     n_row = array.shape[0]
     n_col = array.shape[1]
     n_compare = compare.shape[0]

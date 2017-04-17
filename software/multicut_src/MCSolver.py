@@ -6,10 +6,10 @@ import sys
 
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
-# FIXME only import what we need !!!
-from MCSolverImpl import *
-from EdgeRF import *
-from lifted_mc import *
+
+from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves
+from EdgeRF import learn_and_predict_rf_from_gt
+from lifted_mc import learn_and_predict_lifted_rf, optimizeLifted
 from defect_handling import modified_adjacency, modified_probs_to_energies
 
 import graph as agraph
