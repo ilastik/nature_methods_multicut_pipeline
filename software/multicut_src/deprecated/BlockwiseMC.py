@@ -1,3 +1,8 @@
+#
+# This implementation of the blockwise multicut is deprecated.
+# Use mc_luigi (https://github.com/constantinpape/mc_luigi) instead.
+#
+
 import numpy as np
 import time
 
@@ -5,7 +10,6 @@ from DataSet import DataSet
 from EdgeRF import learn_and_predict_rf_from_gt
 from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves
 from ExperimentSettings import ExperimentSettings
-from Tools import UnionFind
 
 from concurrent import futures
 
@@ -189,7 +193,6 @@ def blockwise_multicut_workflow(ds_train, ds_test,
     res_edge = ru!=rv
 
     # get the global energy
-    # TODO need to get this from nifty, too drunk right now...
     E_glob = -42. # dummy ...
 
     if 0 in res_node:

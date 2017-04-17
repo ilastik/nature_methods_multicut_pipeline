@@ -185,7 +185,6 @@ def edges_to_volumes_for_skip_edges(
         # get the target slcies from unique ranges
         unique_ranges = np.unique(ranges_lower)
         targets = unique_ranges + lower
-        # FIXME this can overwrite some of the lower stuff...
         for i, upper in enumerate(targets):
             print "to", upper
 

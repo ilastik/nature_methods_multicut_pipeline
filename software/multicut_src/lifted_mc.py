@@ -1,7 +1,6 @@
 import os
 
-# TODO numpy -> np to be consistent with the rest of the ppl
-import numpy
+import numpy as np
 import vigra
 
 import vigra.graphs as vgraph
@@ -18,9 +17,8 @@ from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features
 
 
-# TODO this is quite the bottleneck, speed up !
 # returns indices of lifted edges that are ignored due to defects
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def lifted_ignore_ids(ds,
         seg_id,
         uv_ids):
@@ -29,7 +27,7 @@ def lifted_ignore_ids(ds,
 
 
 # TODO use nifty agglomertion
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def clusteringFeatures(ds,
         segId,
         extraUV,
@@ -52,13 +50,13 @@ def clusteringFeatures(ds,
         where_uv_local = (uvs_local != ds.ignore_seg_value).all(axis = 1)
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        assert numpy.sum( (extraUV == ds.ignore_seg_value).any(axis = 1) ) == 0
+        assert np.sum( (extraUV == ds.ignore_seg_value).any(axis = 1) ) == 0
     assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
     originalGraph.addEdges(uvs_local)
 
-    extraUV = numpy.require(extraUV,dtype='uint32')
+    extraUV = np.require(extraUV,dtype='uint32')
     uvOriginal = originalGraph.uvIds()
     liftedGraph =  vgraph.listGraph(originalGraph.nodeNum)
     liftedGraph.addEdges(uvOriginal)
@@ -70,7 +68,7 @@ def clusteringFeatures(ds,
     foundEdges *= -1
 
     nAdditionalEdges = liftedGraph.edgeNum - originalGraph.edgeNum
-    whereLifted = numpy.where(foundEdges==1)[0].astype('uint32')
+    whereLifted = np.where(foundEdges==1)[0].astype('uint32')
     assert len(whereLifted) == nAdditionalEdges
     assert foundEdges.sum() == nAdditionalEdges
 
@@ -81,8 +79,8 @@ def clusteringFeatures(ds,
     # TODO -> check GIL again once using nifty
     def cluster(wardness):
 
-        edgeLengthsNew = numpy.concatenate([eLen,numpy.zeros(nAdditionalEdges)]).astype('float32')
-        edgeIndicatorNew = numpy.concatenate([edgeIndicator,numpy.zeros(nAdditionalEdges)]).astype('float32')
+        edgeLengthsNew = np.concatenate([eLen,np.zeros(nAdditionalEdges)]).astype('float32')
+        edgeIndicatorNew = np.concatenate([edgeIndicator,np.zeros(nAdditionalEdges)]).astype('float32')
 
         nodeSizes = nodeSizes_.copy()
         nodeLabels = vgraph.graphMap(originalGraph,'node',dtype='uint32')
@@ -90,7 +88,7 @@ def clusteringFeatures(ds,
         nodeFeatures = vgraph.graphMap(liftedGraph,'node',addChannelDim=True)
         nodeFeatures[:]=0
 
-        outWeight=vgraph.graphMap(liftedGraph,item='edge',dtype=numpy.float32)
+        outWeight=vgraph.graphMap(liftedGraph,item='edge',dtype=np.float32)
 
         mg = vgraph.mergeGraph(liftedGraph)
         clusterOp = vgraph.minEdgeWeightNodeDist(mg,
@@ -142,12 +140,12 @@ def clusteringFeatures(ds,
         tasks = [executor.submit(cluster, w) for w in wardness_vals]
         allFeat = [t.result() for t in tasks]
 
-    weights = numpy.concatenate(allFeat,axis=1)
-    mean = numpy.mean(weights,axis=1)[:,None]
-    stddev = numpy.std(weights,axis=1)[:,None]
-    allFeat = numpy.nan_to_num(
-            numpy.concatenate([weights,mean,stddev],axis=1) )
-    allFeat = numpy.require(allFeat, dtype = 'float32')
+    weights = np.concatenate(allFeat,axis=1)
+    mean = np.mean(weights,axis=1)[:,None]
+    stddev = np.std(weights,axis=1)[:,None]
+    allFeat = np.nan_to_num(
+            np.concatenate([weights,mean,stddev],axis=1) )
+    allFeat = np.require(allFeat, dtype = 'float32')
     assert allFeat.shape[0] == extraUV.shape[0]
 
     return allFeat
@@ -156,10 +154,9 @@ def clusteringFeatures(ds,
 # Features from ensembling over segmentations
 #
 
-# TODO common ensembling backend
 # TODO adapt for defects
 # TODO also use similar feature for ucm
-#@cacher_hdf5(ignoreNumpyArrays=True)
+#@cacher_hdf5(ignorenpArrays=True)
 def compute_lifted_feature_mala_agglomeration(
         ds,
         seg_id,
@@ -216,15 +213,14 @@ def compute_lifted_feature_mala_agglomeration(
     node_results = [t.result() for t in tasks]
 
     # map multicut result to lifted edges
-    edge_results = numpy.concatenate(
+    edge_results = np.concatenate(
             [ ( node_res[uv_ids_lifted[:, 0]] != node_res[uv_ids_lifted[:, 1]] )[:,None] for node_res in node_results],
             axis = 1)
-    state_sum = numpy.sum(edge_results, axis=1)
-    return numpy.concatenate([edge_results, state_sum[:,None]], axis=1)
+    state_sum = np.sum(edge_results, axis=1)
+    return np.concatenate([edge_results, state_sum[:,None]], axis=1)
 
 
-# TODO unify with mala ensembling (common function for ensembling over the segmentations)
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def compute_lifted_feature_multicut(
         ds,
         seg_id,
@@ -244,7 +240,7 @@ def compute_lifted_feature_multicut(
     edge_areas       = modified_topology_features(ds, seg_id, False)[:,0] if with_defects and ds.has_defects else ds.topology_features(seg_id, False)[:,0]
 
     # set ignore edges to be maximally repulsive
-    if with_defects:
+    if with_defects and ds.has_defects:
         ignore_defect_edge_ids = get_ignore_edge_ids(ds, seg_id)
 
     # set the edges within the segmask to be maximally repulsive
@@ -258,7 +254,7 @@ def compute_lifted_feature_multicut(
         p_max = 1. - p_min
         costs = (p_max - p_min) * costs + p_min
         # probs to energies
-        costs = numpy.log( (1. - probs) / probs ) + numpy.log( (1. - beta) / beta )
+        costs = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
 
         # weight the energies
         if exp_params.weighting_scheme == "z":
@@ -299,11 +295,11 @@ def compute_lifted_feature_multicut(
     mc_nodes = [future.result() for future in tasks]
 
     # map multicut result to lifted edges
-    allFeat = [ ( mc_node[uv_ids_lifted[:, 0]] !=  mc_node[uv_ids_lifted[:, 1]] )[:,None] for mc_node in mc_nodes]
-
-    mcStates = numpy.concatenate(allFeat, axis=1)
-    stateSum = numpy.sum(mcStates,axis=1)
-    return numpy.concatenate([mcStates,stateSum[:,None]],axis=1)
+    mc_states = np.concatenate(
+            [(mc_node[uv_ids_lifted[:,0]] != mc_node[uv_ids_lifted[:,1]])[:,None] for mc_node in mc_nodes],
+            axis=1)
+    state_sum = np.sum(mc_states,axis=1)
+    return np.concatenate([mc_states, state_sum[:,None]], axis=1)
 
 
 def lifted_feature_aggregator(ds,
@@ -324,7 +320,7 @@ def lifted_feature_aggregator(ds,
         assert feat in ("mc", "cluster", "reg", "mala"), feat
 
     features = []
-    if "mc" in featureList:# TODO make defect proof
+    if "mc" in featureList:
         features.append(
                 compute_lifted_feature_multicut(ds,
                     segId,
@@ -365,7 +361,7 @@ def lifted_feature_aggregator(ds,
                     featureListLocal,
                     uvIds,
                     pipelineParam) )
-    if "mala" in featureList:
+    if "mala" in featureList: # TODO make defect proof
         features.append(
                 compute_lifted_feature_mala_agglomeration(
                     ds,
@@ -377,13 +373,13 @@ def lifted_feature_aggregator(ds,
                 )
     if pipelineParam.use_2d: # lfited distance as extra feature if we use extra features for 2d edges
         nz_train = ds.node_z_coord(segId)
-        lifted_distance = numpy.abs(
-                numpy.subtract(
+        lifted_distance = np.abs(
+                np.subtract(
                         nz_train[uvIds[:,0]],
                         nz_train[uvIds[:,1]]) )
         features.append(lifted_distance[:,None])
 
-    return numpy.concatenate( features, axis=1 )
+    return np.concatenate( features, axis=1 )
 
 
 @cacher_hdf5()
@@ -395,8 +391,8 @@ def compute_and_save_lifted_nh(ds,
     uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds._adjacent_segments(segId)
     n_nodes = uvs_local.max() + 1
 
-    # TODO maybe we should remove the uvs connected to a ignore segment if we have a seg mask
-    # should be done if this takes too much time if we have a seg mask
+    # remove the local uv_ids that are connected to a ignore-segment-value
+    # this has to be done to prevent large ignore segments from short-cutting lifted edges
     if ds.has_seg_mask:
         where_uv = (uvs_local != ds.ignore_seg_value).all(axis=1)
         uvs_local = uvs_local[where_uv]
@@ -424,7 +420,7 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     originalGraph = agraph.Graph(uvIds.max()+1)
     originalGraph.insertEdges(uvIds)
 
-    uv_long_range = numpy.array(list(itertools.combinations(numpy.arange(originalGraph.numberOfVertices), 2)), dtype=numpy.uint64)
+    uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
 
     lm_short = agraph.liftedMcModel(originalGraph)
     agraph.addLongRangeNH(lm_short, min_range)
@@ -434,12 +430,12 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     # -----------------------------------
 
     # Concatenate both lists
-    concatenated = numpy.concatenate((uvs_short, uv_long_range), axis=0)
+    concatenated = np.concatenate((uvs_short, uv_long_range), axis=0)
 
     # Find unique rows according to
-    # http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
-    b = numpy.ascontiguousarray(concatenated).view(numpy.dtype((numpy.void, concatenated.dtype.itemsize * concatenated.shape[1])))
-    uniques, idx, counts = numpy.unique(b, return_index=True, return_counts=True)
+    # http://stackoverflow.com/questions/16970982/find-unique-rows-in-np-array
+    b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
+    uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
 
     # Extract those that have count == 1
     # TODO this is not tested
@@ -449,12 +445,12 @@ def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
     # Extract random sample
     if max_sample_size:
         sample_size = min(max_sample_size, uv_long_range.shape[0])
-        uv_long_range = numpy.array(random.sample(uv_long_range, sample_size))
+        uv_long_range = np.array(random.sample(uv_long_range, sample_size))
 
     return uv_long_range
 
 
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def lifted_fuzzy_gt(ds, segId, uvIds):
     if ds.has_seg_mask:
         assert False, "Fuzzy gt not supported yet for segmentation mask"
@@ -462,11 +458,11 @@ def lifted_fuzzy_gt(ds, segId, uvIds):
     oseg = ds.seg(segId)
     fuzzyLiftedGt = agraph.candidateSegToRagSeg(
     oseg.astype('uint32'), gt.astype('uint32'),
-        uvIds.astype(numpy.uint64))
+        uvIds.astype(np.uint64))
     return fuzzyLiftedGt
 
 
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def lifted_hard_gt(ds, segId, uvIds):
     rag = ds._rag(segId)
     gt = ds.gt()
@@ -482,7 +478,7 @@ def mask_lifted_edges(ds,
         exp_params,
         with_defects):
 
-    labeled = numpy.ones_like(labels, bool)
+    labeled = np.ones_like(labels, bool)
 
     # mask edges in ignore mask
     if exp_params.use_ignore_mask:
@@ -509,7 +505,7 @@ def mask_lifted_edges(ds,
     # they should all be removed from the lifted edges -> check
     if ds.has_seg_mask:
         ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
-        assert numpy.sum(ignore_mask) == 0
+        assert np.sum(ignore_mask) == 0
         #assert ignore_mask.shape[0] == labels.shape[0]
         #labeled[ ignore_mask ] = False
 
@@ -586,8 +582,8 @@ def learn_lifted_rf(cache_folder,
         features_train.append(f_train[labeled])
         labels_train.append(labels[labeled])
 
-    features_train = numpy.concatenate(features_train, axis = 0)
-    labels_train = numpy.concatenate(labels_train, axis = 0)
+    features_train = np.concatenate(features_train, axis = 0)
+    labels_train = np.concatenate(labels_train, axis = 0)
 
     print "Start learning lifted random forest"
     rf = RandomForest(features_train.astype('float32'),
@@ -672,8 +668,8 @@ def learn_and_predict_lifted_rf(cache_folder,
             features_test.astype('float32'),
             n_threads = exp_params.n_threads)[:,1]
     p_test /= rf.treeCount()
-    p_test[numpy.isnan(p_test)] = .5
-    assert not numpy.isnan(p_test).any(), str(numpy.isnan(p_test).sum())
+    p_test[np.isnan(p_test)] = .5
+    assert not np.isnan(p_test).any(), str(np.isnan(p_test).sum())
     if cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 
@@ -760,7 +756,7 @@ def optimizeLifted(uvs_local,
 
 
 # TODO weight connections in plane: kappa=20
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignorenpArrays=True)
 def lifted_probs_to_energies(ds,
         edge_probs,
         seg_id,
@@ -775,7 +771,7 @@ def lifted_probs_to_energies(ds,
     edge_probs = (p_max - p_min) * edge_probs + p_min
 
     # probabilities to energies, second term is boundary bias
-    e = numpy.log( (1. - edge_probs) / edge_probs ) + numpy.log( (1. - betaGlobal) / betaGlobal )
+    e = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - betaGlobal) / betaGlobal )
 
     # additional weighting
     e /= gamma
@@ -794,6 +790,6 @@ def lifted_probs_to_energies(ds,
     # set the edges within the segmask to be maximally repulsive
     # these should all be removed, check !
     if ds.has_seg_mask:
-        assert numpy.sum((uv_ids == ds.ignore_seg_value).any(axis = 1)) == 0
+        assert np.sum((uv_ids == ds.ignore_seg_value).any(axis = 1)) == 0
 
     return e
