@@ -5,7 +5,7 @@ from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from MCSolver import run_mc_solver
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
-from Tools import cacher_hdf5
+from tools import cacher_hdf5
 
 # get weights from accumulated affinities between the local superpixel edges
 # feature determines how to accumulated (supported: max, mean, median, quantile75, quantile90)

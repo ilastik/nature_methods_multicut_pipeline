@@ -2,6 +2,7 @@ import numpy as np
 import vigra
 import vigra.graphs as graphs
 import os
+import shutil
 import h5py
 from concurrent import futures
 import itertools
@@ -26,6 +27,17 @@ def load_dataset(meta_folder, ds_name = None):
     with open(ds_obj_path) as f:
         return pickle.load(f)
 
+def is_inp_name(file_name):
+    if file_name.startswith('seg'):
+        return True
+    elif file_name.startswith('inp'):
+        return True
+    elif file_name.startswith('gt'):
+        return True
+    elif file_name.startswith('defect_mask'):
+        return True
+    else:
+        return False
 
 # TODO Flag that tells us, if we have flat or 3d superpixel
 #      -> we can assert this every time we need flat superpix for a specific function
@@ -118,20 +130,18 @@ class DataSet(object):
     # Saving the dataset, and clearing caches
     #
 
-    #  TODO better serialization
     def save(self):
-        # TODO for now we serialize with pickle, but something else might be better
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
         with open(obj_save_path, 'w') as f:
             pickle.dump(self, f)
 
-    # TODO
     def clear_all_caches(self):
         self.clear_inputs()
         self.clear_regular_caches()
-        self.clear_filters()
+        for inp_id in range(self.n_inp):
+            self.clear_filters(inp_id)
 
-    # TODO clear all external inputs
+    # clear all external inputs
     def clear_inputs(self):
         cache_names = os.listdir(self.cache_folder)
         for nn in cache_names:
@@ -142,24 +152,114 @@ class DataSet(object):
                 os.reomve(pp)
             else:
                 continue
-        for c_path in sellf.cutouts:
-            pass # TODO
+        for cut_id in range(self.n_cutouts):
+            cut = self.get_cutout(cut_id)
+            cut.clear_inputs()
 
-
-    # TODO clear cache that is not external
+    # clear cache that is not external
     def clear_regular_caches(self):
-        pass
+        cache_names = os.listdir(self.cache_folder)
+        for nn in cache_names:
+            pp = os.path.join(self.cache_folder, nn)
+            if os.path.isdir(pp):
+                if nn == 'features':
+                    shutil.rmtree(pp)
+                else:
+                    continue
+            elif not is_inp_name(nn):
+                os.remove(pp)
+            else:
+                continue
+        for cut_id in range(self.n_cutouts):
+            cut = self.get_cutout(cut_id)
+            cut.clear_regular_caches()
+        self.save()
 
-    def clear_filters(self):
-        pass
+    def clear_filters(self, inp_id):
+        filter_folder = os.path.join(self.cache_folder, 'filters')
+        for sub_folder in os.listdir(filter_folder):
+            subsub = os.path.join(filter_folder, sub_folder)
+            # This will only work for inp_ids <= 9
+            for inp_folder in os.listdir(subsub):
+                if inp_folder[-1] == inp_id:
+                    shutil.rmtree(os.path.join(subsub, inp_folder))
 
-    # TODO
-    # this needs to be accompanied by as clear_regular_cache
+    # TODO implement 'replace_from_data'
     # replacing inputs:
-    #def replace_raw()
-    #def replace_inp()
-    #def replace_seg()
-    #def replace_gt()
+    def replace_raw(self, new_path, new_key):
+        assert self.has_raw
+        internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
+        if os.path.exists(internal_raw_path):
+            os.remove(internal_raw_path)
+        self.external_inp_paths[0] = new_path
+        self.external_inp_keys[0]  = new_key
+        self.clear_regular_caches()
+        self.clear_filters(0)
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.raw()
+
+    def replace_inp(self, inp_id, new_path, new_key):
+        assert inp_id > 0, "Use replace raw instead"
+        assert inp_id < self.n_inp
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
+        if os.path.exists(internal_inp_path):
+            os.remove(internal_inp_path)
+        self.external_inp_paths[inp_id] = new_path
+        self.external_inp_keys[inp_id]  = new_key
+        self.clear_regular_caches()
+        self.clear_filters(inp_id)
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.inp(inp_id)
+
+    def replace_seg(self, seg_id, new_path, new_key):
+        assert seg_id < self.n_seg
+        internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % seg_id)
+        if os.path.exists(internal_seg_path):
+            os.remove(internal_seg_path)
+        self.external_seg_paths[seg_id] = new_path
+        self.external_seg_keys[seg_id]  = new_key
+        self.clear_regular_caches()
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.seg(seg_id)
+
+    def replace_gt(self, new_path, new_key):
+        assert self.has_gt
+        internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
+        if os.path.exists(internal_gt_path):
+            os.remove(internal_gt_path)
+        self.external_gt_path = new_path
+        self.external_gt_key  = new_key
+        self.clear_regular_caches()
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.gt()
+
+    def replace_seg_mask(self, new_path, new_key):
+        assert self.has_seg_mask
+        internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
+        if os.path.exists(internal_mask_path):
+            os.remove(internal_mask_path)
+        self.external_mask_path = new_path
+        self.external_mask_key  = new_key
+        self.clear_regular_caches()
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.seg_mask()
+
+    def replace_defect_mask(self, new_path, new_key):
+        assert self.external_defect_mask_path != None
+        internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
+        if os.path.exists(internal_mask_path):
+            os.remove(internal_mask_path)
+        self.external_mask_path = new_path
+        self.external_mask_key  = new_key
+        self.clear_regular_caches()
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.defect_mask()
 
     #
     # Masking
@@ -167,9 +267,11 @@ class DataSet(object):
 
     def add_false_split_gt_id(self, gt_id):
         self.gt_false_splits.add(gt_id)
+        self.save()
 
     def add_false_merge_gt_id(self, gt_id):
         self.gt_false_merges.add(gt_id)
+        self.save()
 
     #
     # Adding and loading external input data
@@ -253,7 +355,6 @@ class DataSet(object):
             mask = self.seg_mask()
             assert self.ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
             seg[ np.logical_not(mask) ] = self.ignore_seg_value
-            # TODO to allow other ignore values than zero, we need to use a different relabeling value here
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
                     start_label = 1,
                     keep_zeros = True)
