@@ -4,9 +4,9 @@ import numpy as np
 from concurrent import futures
 from tools import cacher_hdf5, cache_name
 
-from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
+from DataSet import _topology_features_impl
 
 
 # TODO move the numpy tools somewhere else
@@ -597,60 +597,15 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
     return np.nan_to_num( np.concatenate( [modified_features, skip_features], axis = 0) )
 
 
-# TODO move this somewhere else and also use in normal topo_features
 def _get_topo_feats(rag, seg, use_2d_edges):
-
     feats = []
-
     # length / area of the edge
     edge_lens = rag.edgeLengths()
     feats.append(edge_lens[:,None])
-
     # extra feats for z-edges in 2,5 d
     if use_2d_edges:
-
-        # edge indications -> these are 0 (=z-edge) for all skip edges
-        feats.append(np.zeros(rag.edgeNum)[:,None])
-        # region sizes to build some features
-        statistics =  [ "Count", "RegionCenter" ]
-        extractor = vigra.analysis.extractRegionFeatures(
-                np.zeros_like(seg, dtype = 'float32'),
-                seg.astype('uint32'),
-                features = statistics )
-
-        sizes = extractor["Count"]
-        uvIds = rag.uvIds()
-        sizes_u = sizes[ uvIds[:,0] ]
-        sizes_v = sizes[ uvIds[:,1] ]
-
-        unions  = sizes_u + sizes_v - edge_lens
-        # Union features
-        feats.append( unions[:,None] )
-        # IoU features
-        feats.append( (edge_lens / unions)[:,None] )
-
-        # segment shape features
-        seg_coordinates = extractor["RegionCenter"]
-        len_bounds      = {n.id : 0. for n in rag.nodeIter()}
-
-        # iterate over the nodes, to get the boundary length of each node
-        for n in rag.nodeIter():
-            node_z = seg_coordinates[n.id][2]
-            for arc in rag.incEdgeIter(n):
-                edge = rag.edgeFromArc(arc)
-                edge_c = rag.edgeCoordinates(edge)
-                # only edges in the same slice!
-                if edge_c[0,2] == node_z:
-                    len_bounds[n.id] += edge_lens[edge.id]
-
-        # shape feature = Area / Circumference
-        shape_feats_u = sizes_u / np.array( [ len_bounds[u] for u in uvIds[:,0] ] )
-        shape_feats_v = sizes_v / np.array( [ len_bounds[v] for v in uvIds[:,1] ] )
-        # combine w/ min, max, absdiff
-        feats.append( np.minimum( shape_feats_u, shape_feats_v)[:,None] )
-        feats.append( np.maximum( shape_feats_u, shape_feats_v)[:,None] )
-        feats.append( np.absolute(shape_feats_u - shape_feats_v)[:,None] )
-
+        extra_feats, _ = _topology_features_impl(rag, seg, np.zeros(rag.edgeNum, dtype = 'uint8'), edge_lens)
+        feats.extend(extra_feats)
     return np.concatenate(feats, axis = 1)
 
 

@@ -42,6 +42,94 @@ def is_inp_name(file_name):
         return False
 
 
+# TODO use nifty cgp features instead + add curvature
+def _topology_features_impl(rag, seg, edge_indications, edge_lens):
+    extra_features = np.zeros( (rag.edgeNum, 6), dtype = 'float32' )
+
+    # edge indications and mask for z edges
+    extra_features[:,0] = edge_indications
+
+    extractor = vigra.analysis.extractRegionFeatures(
+            np.zeros_like(seg, dtype = 'float32'),
+            seg,
+            features = ['Count', 'RegionCenter'] )
+
+    sizes = extractor["Count"]
+    uv_ids = np.sort(rag.uvIds(), axis = 1)
+    sizes_u = sizes[ uv_ids[:,0] ]
+    sizes_v = sizes[ uv_ids[:,1] ]
+
+    # Features: Union + Intersection over Union
+    unions  = sizes_u + sizes_v - edge_lens
+    extra_features[:,1] = unions
+    extra_features[:,2] = edge_lens / unions
+
+    # Segment shape features
+    seg_coordinates = extractor["RegionCenter"]
+    len_bounds      = np.zeros(rag.nodeNum, dtype = 'float32')
+    # iterate over the nodes, to get the boundary length of each node
+    for n in rag.nodeIter():
+        node_z = seg_coordinates[n.id][2]
+        for arc in rag.incEdgeIter(n):
+            edge = rag.edgeFromArc(arc)
+            edge_c = rag.edgeCoordinates(edge)
+            # only edges in the same slice!
+            if edge_c[0,2] == node_z:
+                len_bounds[n.id] += edge_lens[edge.id]
+    # shape feature = Area / Circumference
+    shape_feats_u = sizes_u / len_bounds[uv_ids[:,0]]
+    shape_feats_v = sizes_v / len_bounds[uv_ids[:,1]]
+    # combine w/ min, max, absdiff
+    extra_features[:,3] = np.minimum(shape_feats_u, shape_feats_v)
+    extra_features[:,4] = np.maximum(shape_feats_u, shape_feats_v)
+    extra_features[:,5] = np.absolute(shape_feats_u - shape_feats_v)
+
+    # the feature names
+    extra_names = [ 'TopologyFeatures_' + name for name in \
+            ['indication', 'union', 'IoU', 'shapeSegment_min', 'shapeSegment_max', 'shapeSegment_absdiff'] ]
+
+    # edge shape features
+    # this is too hacky, don't use it for now !
+    #edge_bounds = np.zeros(rag.edgeNum)
+    #adjacent_edges = self._adjacent_edges(seg_id)
+    ## TODO no loop or CPP
+    #for edge in rag.edgeIter():
+    #    edge_coords = rag.edgeCoordinates(edge)
+    #    edge_coords_up = np.ceil(edge_coords)
+    #    #edge_coords_dn = np.floor(edge_coords)
+    #    edge_z = edge_coords[0,2]
+    #    for adj_edge_id in adjacent_edges[edge.id]:
+    #        adj_coords = rag.edgeCoordinates(adj_edge_id)
+    #        # only consider this edge, if it is in the same slice
+    #        if adj_coords[0,2] == edge_z:
+    #            # find the overlap and add it to the boundary
+    #            #adj_coords_up = np.ceil(adj_coords)
+    #            adj_coords_dn = np.floor(adj_coords)
+    #            # overlaps (set magic...)
+    #            ovlp0 = np.array(
+    #                    [x for x in set(tuple(x) for x in edge_coords_up[:,:2])
+    #                        & set(tuple(x) for x in adj_coords_dn[:,:2])] )
+    #            #print edge_coords_up
+    #            #print adj_coords_dn
+    #            #print ovlp0
+    #            #quit()
+    #            #ovlp1 = np.array(
+    #            #        [x for x in set(tuple(x) for x in edge_coords_dn[:,:2])
+    #            #            & set(tuple(x) for x in adj_coords_up[:,:2])])
+    #            #assert len(ovlp0) == len(ovlp1), str(len(ovlp0)) + " , " + str(len(ovlp1))
+    #            edge_bounds[edge.id] += len(ovlp0)
+
+    ## shape feature = Area / Circumference
+    #topology_features[:,6][z_mask] = edge_lens[z_mask] / edge_bounds[z_mask]
+    #topology_features_names.append("TopologyFeature_shapeEdge")
+
+    extra_features[np.isinf(extra_features)] = 0.
+    extra_features[np.isneginf(extra_features)] = 0.
+    extra_features = np.nan_to_num(extra_features)
+
+    return extra_features, extra_names
+
+
 class DataSet(object):
 
     def __init__(self, meta_folder, ds_name):
@@ -717,6 +805,7 @@ class DataSet(object):
                     sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
                 _calc_filter = _calc_filter_3d
 
+            #n_workers = 1
             n_workers = ExperimentSettings().n_threads
             with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                 tasks = []
@@ -1034,39 +1123,6 @@ class DataSet(object):
         return vigra.readHDF5(save_file,"region_features_names")
 
 
-    # Find the number of faces (= connected components), that make up the edge
-    # Could find some more features based on the ccs
-    @cacher_hdf5()
-    def edge_connected_components(self, seg_id):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        rag = self._rag(seg_id)
-        n_edges = rag.edgeNum
-
-        n_ccs = np.zeros(n_edges)
-
-        for edge_id in range( n_edges ):
-            edge_coords = rag.edgeCoordinates(edge_id)
-            # need to map grid graph coords to normal coords
-            edge_coords = np.floor(edge_coords).astype(np.uint32)
-            x_min = np.min(edge_coords[:,0])
-            y_min = np.min(edge_coords[:,1])
-            z_min = np.min(edge_coords[:,2])
-            edge_coords[:,0] -= x_min
-            edge_coords[:,1] -= y_min
-            edge_coords[:,2] -= z_min
-            x_max = np.max(edge_coords[:,0])
-            y_max = np.max(edge_coords[:,1])
-            z_max = np.max(edge_coords[:,2])
-            edge_mask = np.zeros( (x_max + 1, y_max + 1, z_max + 1), dtype = np.uint32 )
-            # bring edge_coords in np.where format
-            edge_coords = (edge_coords[:,0], edge_coords[:,1], edge_coords[:,2])
-            edge_mask[edge_coords] = 1
-            ccs = vigra.analysis.labelVolumeWithBackground(edge_mask, neighborhood = 26)
-            # - 1, because we have to substract for the background label
-            n_ccs[edge_id] = len(np.unique(ccs)) - 1
-
-        return n_ccs
-
     @cacher_hdf5()
     def node_z_coord(self, seg_id):
         rag = self._rag(seg_id)
@@ -1117,155 +1173,39 @@ class DataSet(object):
         return edge_indications
 
 
-    # TODO refactor the actual calculation to use the same code here and in defect ppl
     # Features from edge_topology
     @cacher_hdf5("feature_folder")
     def topology_features(self, seg_id, use_2d_edges):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert isinstance( use_2d_edges, bool ), type(use_2d_edges)
 
-        if not use_2d_edges:
-            n_feats = 1
-        else:
-            n_feats = 7
-
         rag = self._rag(seg_id)
 
-        n_edges = rag.edgeNum
-        topology_features = np.zeros( (n_edges, n_feats) )
-
         # length / area of the edge
-        edge_lens = rag.edgeLengths()
-        assert edge_lens.shape[0] == n_edges
-        topology_features[:,0] = edge_lens
-        topology_features_names = ["TopologyFeature_EdgeLength"]
-
-        # deactivated for now, because it segfaults for large ds
-        # TODO look into this
-        ## number of connected components of the edge
-        #n_ccs = self.edge_connected_components(seg_id)
-        #assert n_ccs.shape[0] == n_edges
-        #topology_features[:,1] = n_ccs
-        #topology_features_names = ["TopologyFeature_NumFaces"]
+        topo_feats      = rag.edgeLengths()[:,None].astype('float32')
+        topo_feat_names = ["TopologyFeatures_EdgeLengths"]
 
         # extra feats for z-edges in 2,5 d
         if use_2d_edges:
+            extra_feats, extra_names = _topology_features_impl(
+                    rag,
+                    self.seg(seg_id),
+                    self.edge_indications(seg_id),
+                    topo_feats.squeeze() )
+            topo_feats = np.concatenate([topo_feats, extra_feats], axis = 1)
+            topo_feat_names.extend(extra_names)
 
-            # edge indications
-            edge_indications = self.edge_indications(seg_id)
-            assert edge_indications.shape[0] == n_edges
-            topology_features[:,1] = edge_indications
-            topology_features_names.append("TopologyFeature_xy_vs_z_indication")
+        save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
+        vigra.writeHDF5(topo_feat_names, save_file, "topology_features_names")
 
-            # region sizes to build some features
-            statistics =  [ "Count", "RegionCenter" ]
-
-            extractor = vigra.analysis.extractRegionFeatures(
-                    self.inp(0).astype(np.float32),
-                    self.seg(seg_id).astype(np.uint32),
-                    features = statistics )
-
-            z_mask = edge_indications == 0
-
-            sizes = extractor["Count"]
-            uvIds = self._adjacent_segments(seg_id)
-            sizes_u = sizes[ uvIds[:,0] ]
-            sizes_v = sizes[ uvIds[:,1] ]
-            # union = size_up + size_dn - intersect
-            unions  = sizes_u + sizes_v - edge_lens
-            # Union features
-            topology_features[:,2][z_mask] = unions[z_mask]
-            topology_features_names.append("TopologyFeature_union")
-            # IoU features
-            topology_features[:,3][z_mask] = edge_lens[z_mask] / unions[z_mask]
-            topology_features_names.append("TopologyFeature_intersectionoverunion")
-
-            # segment shape features
-            seg_coordinates = extractor["RegionCenter"]
-            len_bounds      = np.zeros(rag.nodeNum)
-            # iterate over the nodes, to get the boundary length of each node
-            for n in rag.nodeIter():
-                node_z = seg_coordinates[n.id][2]
-                for arc in rag.incEdgeIter(n):
-                    edge = rag.edgeFromArc(arc)
-                    edge_c = rag.edgeCoordinates(edge)
-                    # only edges in the same slice!
-                    if edge_c[0,2] == node_z:
-                        len_bounds[n.id] += edge_lens[edge.id]
-            # shape feature = Area / Circumference
-            shape_feats_u = sizes_u / len_bounds[uvIds[:,0]]
-            shape_feats_v = sizes_v / len_bounds[uvIds[:,1]]
-            # combine w/ min, max, absdiff
-            topology_features[:,4][z_mask] = np.minimum(
-                    shape_feats_u[z_mask], shape_feats_v[z_mask])
-            topology_features[:,5][z_mask] = np.maximum(
-                    shape_feats_u[z_mask], shape_feats_v[z_mask])
-            topology_features[:,6][z_mask] = np.absolute(
-                    shape_feats_u[z_mask] - shape_feats_v[z_mask])
-            topology_features_names.append("TopologyFeature_shapeSegment_min")
-            topology_features_names.append("TopologyFeature_shapeSegment_max")
-            topology_features_names.append("TopologyFeature_shapeSegment_absdiff")
-
-            # edge shape features
-            # this is too hacky, don't use it for now !
-            #edge_bounds = np.zeros(rag.edgeNum)
-            #adjacent_edges = self._adjacent_edges(seg_id)
-            ## TODO no loop or CPP
-            #for edge in rag.edgeIter():
-            #    edge_coords = rag.edgeCoordinates(edge)
-            #    edge_coords_up = np.ceil(edge_coords)
-            #    #edge_coords_dn = np.floor(edge_coords)
-            #    edge_z = edge_coords[0,2]
-            #    for adj_edge_id in adjacent_edges[edge.id]:
-            #        adj_coords = rag.edgeCoordinates(adj_edge_id)
-            #        # only consider this edge, if it is in the same slice
-            #        if adj_coords[0,2] == edge_z:
-            #            # find the overlap and add it to the boundary
-            #            #adj_coords_up = np.ceil(adj_coords)
-            #            adj_coords_dn = np.floor(adj_coords)
-            #            # overlaps (set magic...)
-            #            ovlp0 = np.array(
-            #                    [x for x in set(tuple(x) for x in edge_coords_up[:,:2])
-            #                        & set(tuple(x) for x in adj_coords_dn[:,:2])] )
-            #            #print edge_coords_up
-            #            #print adj_coords_dn
-            #            #print ovlp0
-            #            #quit()
-            #            #ovlp1 = np.array(
-            #            #        [x for x in set(tuple(x) for x in edge_coords_dn[:,:2])
-            #            #            & set(tuple(x) for x in adj_coords_up[:,:2])])
-            #            #assert len(ovlp0) == len(ovlp1), str(len(ovlp0)) + " , " + str(len(ovlp1))
-            #            edge_bounds[edge.id] += len(ovlp0)
-
-            ## shape feature = Area / Circumference
-            #topology_features[:,7][z_mask] = edge_lens[z_mask] / edge_bounds[z_mask]
-            #topology_features_names.append("TopologyFeature_shapeEdge")
-
-        save_folder = os.path.join(self.cache_folder, "features")
-        if not os.path.exists(save_folder):
-            os.mkdir(save_folder)
-        save_name = "topology_features_" + str(seg_id) + "_" + str(use_2d_edges) + ".h5"
-        save_file = os.path.join(save_folder, save_name )
-        vigra.writeHDF5(topology_features_names, save_file, "topology_features_names")
-
-        topology_features[np.isinf(topology_features)] = 0.
-        topology_features[np.isneginf(topology_features)] = 0.
-        topology_features = np.nan_to_num(topology_features)
-
-        return topology_features
+        return topo_feats
 
 
     # get the names of the region features
     def topology_features_names(self, seg_id, use_2d_edges):
-
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         self.topology_features(seg_id, use_2d_edges)
-
-        save_folder = os.path.join(self.cache_folder, "features")
-        save_name = "topology_features_" + str(seg_id) + "_" + str(use_2d_edges) + ".h5"
-        save_file = os.path.join(save_folder, save_name )
-        assert os.path.exists(save_file)
-
+        save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
         return vigra.readHDF5(save_file,"topology_features_names")
 
     #
