@@ -48,10 +48,10 @@ def clusteringFeatures(ds,
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
-        where_uv_local = (uvs_local != ds.ignore_seg_value).all(axis = 1)
+        where_uv_local = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis = 1)
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        assert np.sum( (extraUV == ds.ignore_seg_value).any(axis = 1) ) == 0
+        assert np.sum( (extraUV == ExperimentSettings().ignore_seg_value).any(axis = 1) ) == 0
     assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
@@ -244,7 +244,7 @@ def compute_lifted_feature_multicut(
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        ignore_seg_mask = (uv_ids_local == ds.ignore_seg_value).any(axis = 1)
+        ignore_seg_mask = (uv_ids_local == ExperimentSettings().ignore_seg_value).any(axis = 1)
 
     def single_mc(beta, weight):
         # copy the probabilities
@@ -388,7 +388,7 @@ def compute_and_save_lifted_nh(ds,
     # remove the local uv_ids that are connected to a ignore-segment-value
     # this has to be done to prevent large ignore segments from short-cutting lifted edges
     if ds.has_seg_mask:
-        where_uv = (uvs_local != ds.ignore_seg_value).all(axis=1)
+        where_uv = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis=1)
         uvs_local = uvs_local[where_uv]
 
     originalGraph = agraph.Graph(n_nodes)
@@ -497,7 +497,7 @@ def mask_lifted_edges(ds,
     # ignore all edges that are connected to the ignore label (==0) in the seg mask
     # they should all be removed from the lifted edges -> check
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
+        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)
         assert np.sum(ignore_mask) == 0
         #assert ignore_mask.shape[0] == labels.shape[0]
         #labeled[ ignore_mask ] = False
@@ -779,6 +779,6 @@ def lifted_probs_to_energies(ds,
     # set the edges within the segmask to be maximally repulsive
     # these should all be removed, check !
     if ds.has_seg_mask:
-        assert np.sum((uv_ids == ds.ignore_seg_value).any(axis = 1)) == 0
+        assert np.sum((uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)) == 0
 
     return e

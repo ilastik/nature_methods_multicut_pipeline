@@ -5,6 +5,8 @@ import numpy as np
 from functools import wraps
 from itertools import combinations, product
 
+from .. import ExperimentSettings
+
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
     arg_id = 1
@@ -12,8 +14,8 @@ def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
         # for the edgefeats we have to clip the anisotropy
         # factor if it is larger than max. aniso factor
         if edge_feat_cache and arg_id == 3:
-            if arg >= self.aniso_max:
-                arg = self.aniso_max
+            if arg >= ExperimentSettings().aniso_max:
+                arg = ExperimentSettings().aniso_max
         if isinstance(arg, np.ndarray) and not ignoreNp:
             fname += "_" + str(arg)
         elif isinstance(arg, np.ndarray):
@@ -54,7 +56,8 @@ def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArra
                 print args[1:]
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
-                vigra.writeHDF5(_res, filepath, fkey, compression = self.compression)
+                vigra.writeHDF5(_res, filepath, fkey)
+                #vigra.writeHDF5(_res, filepath, fkey, compression = ExperimentSettings().compression) # compressing does not make much sense for most of the files we cache
             else:
                 _res = vigra.readHDF5(filepath, fkey)
             return _res

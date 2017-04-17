@@ -88,41 +88,6 @@ def _topology_features_impl(rag, seg, edge_indications, edge_lens):
     extra_names = [ 'TopologyFeatures_' + name for name in \
             ['indication', 'union', 'IoU', 'shapeSegment_min', 'shapeSegment_max', 'shapeSegment_absdiff'] ]
 
-    # edge shape features
-    # this is too hacky, don't use it for now !
-    #edge_bounds = np.zeros(rag.edgeNum)
-    #adjacent_edges = self._adjacent_edges(seg_id)
-    ## TODO no loop or CPP
-    #for edge in rag.edgeIter():
-    #    edge_coords = rag.edgeCoordinates(edge)
-    #    edge_coords_up = np.ceil(edge_coords)
-    #    #edge_coords_dn = np.floor(edge_coords)
-    #    edge_z = edge_coords[0,2]
-    #    for adj_edge_id in adjacent_edges[edge.id]:
-    #        adj_coords = rag.edgeCoordinates(adj_edge_id)
-    #        # only consider this edge, if it is in the same slice
-    #        if adj_coords[0,2] == edge_z:
-    #            # find the overlap and add it to the boundary
-    #            #adj_coords_up = np.ceil(adj_coords)
-    #            adj_coords_dn = np.floor(adj_coords)
-    #            # overlaps (set magic...)
-    #            ovlp0 = np.array(
-    #                    [x for x in set(tuple(x) for x in edge_coords_up[:,:2])
-    #                        & set(tuple(x) for x in adj_coords_dn[:,:2])] )
-    #            #print edge_coords_up
-    #            #print adj_coords_dn
-    #            #print ovlp0
-    #            #quit()
-    #            #ovlp1 = np.array(
-    #            #        [x for x in set(tuple(x) for x in edge_coords_dn[:,:2])
-    #            #            & set(tuple(x) for x in adj_coords_up[:,:2])])
-    #            #assert len(ovlp0) == len(ovlp1), str(len(ovlp0)) + " , " + str(len(ovlp1))
-    #            edge_bounds[edge.id] += len(ovlp0)
-
-    ## shape feature = Area / Circumference
-    #topology_features[:,6][z_mask] = edge_lens[z_mask] / edge_bounds[z_mask]
-    #topology_features_names.append("TopologyFeature_shapeEdge")
-
     extra_features[np.isinf(extra_features)] = 0.
     extra_features[np.isneginf(extra_features)] = 0.
     extra_features = np.nan_to_num(extra_features)
@@ -173,15 +138,6 @@ class DataSet(object):
         self.gt_false_splits = set()
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
-
-        # TODO the following constants should be more global, e.g. in exp_params once it is a singleton
-        # compression method used
-        self.compression = 'gzip'
-        # maximal anisotropy factor for filter calculation
-        self.aniso_max = 20.
-        # ignore values, because we don't want to hardcode this
-        # TODO different values for different maskings ?!
-        self.ignore_seg_value = 0 # for now this has to be zero, because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
 
 
     def __str__(self):
@@ -273,20 +229,36 @@ class DataSet(object):
                 if inp_folder[-1] == inp_id:
                     shutil.rmtree(os.path.join(subsub, inp_folder))
 
-    # TODO implement 'replace_from_data' for all inputs
-    # replacing inputs:
-    def replace_raw(self, new_path, new_key):
+    #
+    # replace input data that was already added
+    #
+
+    def replace_raw(self, new_path, new_key, clear_cache = True):
         assert self.has_raw
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
         if os.path.exists(internal_raw_path):
             os.remove(internal_raw_path)
         self.external_inp_paths[0] = new_path
         self.external_inp_keys[0]  = new_key
-        self.clear_regular_caches()
-        self.clear_filters(0)
+        if clear_cache:
+            self.clear_regular_caches()
+            self.clear_filters(0)
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
-        self.raw()
+        self.inp(0)
+
+    def replace_raw_from_data(self, new_data, clear_cache = True):
+        assert self.has_raw
+        internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
+        if os.path.exists(internal_raw_path):
+            os.remove(internal_raw_path)
+        vigra.writeHDF5(new_data, internal_raw_path, 'data')
+        self.external_inp_paths[0] = internal_raw_path
+        self.external_inp_keys[0]  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+            self.clear_filters(0)
+        self.save()
 
     def replace_inp(self, inp_id, new_path, new_key):
         assert inp_id > 0, "Use replace raw instead"
@@ -315,44 +287,81 @@ class DataSet(object):
             self.clear_regular_caches()
             self.clear_filters(inp_id)
         self.save()
-        # we need to make the cache to be compatible with cutouts that load it
-        self.inp(inp_id)
 
-    def replace_seg(self, seg_id, new_path, new_key):
+    def replace_seg(self, seg_id, new_path, new_key, clear_cache = True):
         assert seg_id < self.n_seg
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % seg_id)
         if os.path.exists(internal_seg_path):
             os.remove(internal_seg_path)
         self.external_seg_paths[seg_id] = new_path
         self.external_seg_keys[seg_id]  = new_key
-        self.clear_regular_caches()
+        if clear_cache:
+            self.clear_regular_caches()
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
         self.seg(seg_id)
 
-    def replace_gt(self, new_path, new_key):
+    def replace_seg_from_data(self, seg_id, new_data, clear_cache = True):
+        assert seg_id < self.n_seg
+        internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % seg_id)
+        if os.path.exists(internal_seg_path):
+            os.remove(internal_seg_path)
+        vigra.writeHDF5(new_data, internal_seg_path, 'data', compression = ExperimentSettings().compression)
+        self.external_seg_paths[seg_id] = internal_seg_path
+        self.external_seg_keys[seg_id]  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+        self.save()
+
+    def replace_gt(self, new_path, new_key, clear_cache = True):
         assert self.has_gt
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
         if os.path.exists(internal_gt_path):
             os.remove(internal_gt_path)
         self.external_gt_path = new_path
         self.external_gt_key  = new_key
-        self.clear_regular_caches()
+        if clear_cache:
+            self.clear_regular_caches()
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
         self.gt()
 
-    def replace_seg_mask(self, new_path, new_key):
+    def replace_gt_from_data(self, new_data, clear_cache = True):
+        assert self.has_gt
+        internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
+        if os.path.exists(internal_gt_path):
+            os.remove(internal_gt_path)
+        vigra.writeHDF5(new_data, internal_gt_path, 'data', compression = ExperimentSettings().compression)
+        self.external_gt_path = internal_gt_path
+        self.external_gt_key  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+        self.save()
+
+    def replace_seg_mask(self, new_path, new_key, clear_cache = True):
         assert self.has_seg_mask
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         if os.path.exists(internal_mask_path):
             os.remove(internal_mask_path)
         self.external_mask_path = new_path
         self.external_mask_key  = new_key
-        self.clear_regular_caches()
+        if clear_cache:
+            self.clear_regular_caches()
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
         self.seg_mask()
+
+    def replace_seg_mask_from_data(self, new_data, clear_cache = True):
+        assert self.has_seg_mask
+        internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
+        if os.path.exists(internal_mask_path):
+            os.remove(internal_mask_path)
+        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        self.external_mask_path = internal_mask_path
+        self.external_mask_key  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+        self.save()
 
     def replace_defect_mask(self, new_path, new_key):
         assert self.external_defect_mask_path != None
@@ -365,6 +374,18 @@ class DataSet(object):
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
         self.defect_mask()
+
+    def replace_defect_mask_from_data(self, new_data, clear_cache = True):
+        assert self.has_seg_mask
+        internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
+        if os.path.exists(internal_mask_path):
+            os.remove(internal_mask_path)
+        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        self.external_mask_path = internal_mask_path
+        self.external_mask_key  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+        self.save()
 
     #
     # Masking
@@ -458,8 +479,8 @@ class DataSet(object):
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
             mask = self.seg_mask()
-            assert self.ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
-            seg[ np.logical_not(mask) ] = self.ignore_seg_value
+            assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
+            seg[ np.logical_not(mask) ] = ExperimentSettings().ignore_seg_value
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
                     start_label = 1,
                     keep_zeros = True)
@@ -481,7 +502,7 @@ class DataSet(object):
             raise RuntimeError("Add Rawdata before adding a segmentation")
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % self.n_seg)
         seg = self._process_seg(seg)
-        vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
+        vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
         self.external_seg_paths.append(internal_seg_path)
         self.external_seg_keys.append(internal_seg_key)
         self.save()
@@ -494,7 +515,7 @@ class DataSet(object):
         else:
             seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
             seg = self._process_seg(seg)
-            vigra.writeHDF5(seg, internal_seg_path, 'data', compression = 'gzip')
+            vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
             return seg
 
     def _process_gt(self, gt):
@@ -525,7 +546,7 @@ class DataSet(object):
             raise RuntimeError("Groundtruth has already been added")
         gt = _process_gt(gt)
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
-        vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
+        vigra.writeHDF5(gt, internal_gt_path, 'data', compression = ExperimentSettings().compression)
         self.external_gt_path = internal_gt_path
         self.external_gt_key  = 'data'
         self.save()
@@ -541,7 +562,7 @@ class DataSet(object):
         else:
             gt = vigra.readHDF5(self.external_gt_path, self.external_gt_key)
             gt = self._process_gt(gt)
-            vigra.writeHDF5(gt, internal_gt_path, 'data', compression = 'gzip')
+            vigra.writeHDF5(gt, internal_gt_path, 'data', compression = ExperimentSettings().compression)
             return gt
 
 
@@ -562,7 +583,7 @@ class DataSet(object):
         if not isinstance(self, Cutout): # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
-        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = 'gzip')
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
         self.external_seg_mask_path = internal_mask_path
         self.external_seg_mask_key  = 'data'
         self.save()
@@ -576,11 +597,10 @@ class DataSet(object):
         else:
             mask = vigra.readHDF5(self.external_seg_mask_path, self.external_seg_mask_key)
             assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
-            # TODO we could chek if any segs are already loaded and then warn
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
                 assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
             return mask
 
 
@@ -599,7 +619,7 @@ class DataSet(object):
         if not isinstance(self, Cutout): # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
-        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = 'gzip')
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
         self.external_defect_mask_path = internal_mask_path
         self.external_defect_mask_key  = 'data'
         self.save()
@@ -616,7 +636,7 @@ class DataSet(object):
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
                 assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = self.compression)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
             return mask
 
 
@@ -659,8 +679,6 @@ class DataSet(object):
 
 
     # get the adjacent edges for each edge
-    # TODO can't cache this
-    #@cacher_hdf5()
     def _adjacent_edges(self, seg_id):
         print "Getting adjacent edges from RAG:"
         rag = self._rag(seg_id)
@@ -684,7 +702,6 @@ class DataSet(object):
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
         seg = self.seg(seg_id)
-        n_threads = 20 # TODO get this from global params
         if is_2d_stacked: # if we have a stacked segmentation, we can parallelize over the slices
 
             # calculate the centers for a 2d slice
@@ -695,7 +712,7 @@ class DataSet(object):
                 centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
                 return [cent + (z,) for cent in centers] # extend by z coordinate
 
-            with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+            with futures.ThreadPoolExecutor(max_workers = ExperimentSettings().n_threads) as executor:
                 tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[2])]
                 centers = [t.result() for t in tasks]
                 # return flattened list
@@ -741,7 +758,7 @@ class DataSet(object):
 
         if anisotropy_factor == 1.:
             filter_folder = os.path.join(top_folder, "filters_3d")
-        elif anisotropy_factor >= self.aniso_max:
+        elif anisotropy_factor >= ExperimentSettings().aniso_max:
             filter_folder = os.path.join(top_folder, "filters_2d")
             calculation_2d = True
         else:
@@ -941,9 +958,6 @@ class DataSet(object):
         assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
 
         # save the feature names to file
-        # clip the anisotropy factor
-        if anisotropy_factor >= self.aniso_max:
-            anisotropy_factor = self.aniso_max
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         vigra.writeHDF5(edge_features_names, save_file, "edge_features_names")
 
@@ -1025,7 +1039,7 @@ class DataSet(object):
         # include 0 (== everything outside of the mask)
         # otherwise the ram consumption for the lmc can blow up...
         if self.has_seg_mask:
-            where_uv = (uv_ids != self.ignore_seg_value).all(axis = 1)
+            where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis = 1)
             # for lifted edges assert that no ignore segments are in lifted uvs
             if lifted_nh:
                 assert np.sum(where_uv) == where_uv.size

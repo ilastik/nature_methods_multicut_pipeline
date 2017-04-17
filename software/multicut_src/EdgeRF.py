@@ -223,7 +223,7 @@ def mask_edges(ds,
 
     # ignore all edges that are connected to the ignore segment label in the seg mask
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == ds.ignore_seg_value).any(axis = 1)
+        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)
         assert ignore_mask.shape[0] == labels.shape[0]
         labeled[ ignore_mask ] = False
 
