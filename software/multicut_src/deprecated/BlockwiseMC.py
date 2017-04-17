@@ -13,6 +13,158 @@ from ExperimentSettings import ExperimentSettings
 
 from concurrent import futures
 
+# find the coordinates of all blocks for a tesselation of
+# vol_shape with block_shape and n_blocks
+def find_block_coordinates(vol_shape, block_shape, n_blocks, is_covering):
+    assert n_blocks in (2,4,8)
+    # init block coordinates with 0 lists for all the cutouts
+    block_coordinates = []
+    for block_id in range(n_blocks):
+        block_coordinates.append( [0,0,0,0,0,0] )
+
+    # 2: block 0 = lower coordinate in non-spanning coordinate
+    if n_blocks == 2:
+        assert np.sum(is_covering) == 2, "Need exacly two dimensions fully covered to cover the volume with 2 blocks."
+        split_coord =  np.where( np.array( is_covering )  == False )[0][0]
+
+        for dim in range(3):
+            index_dn = 2*dim
+            index_up = 2*dim + 1
+            if dim == split_coord:
+                block_coordinates[0][index_dn] = 0
+                block_coordinates[0][index_up] = block_shape[dim]
+                block_coordinates[1][index_dn] = vol_shape[dim] - block_shape[dim]
+                block_coordinates[1][index_up] = vol_shape[dim]
+            else:
+                assert block_shape[dim] == vol_shape[dim]
+                block_coordinates[0][index_dn] = 0
+                block_coordinates[0][index_up] = vol_shape[dim]
+                block_coordinates[1][index_dn] = 0
+                block_coordinates[1][index_up] = vol_shape[dim]
+
+    # 4 : block 0 -> 0:split1,0:split2
+    # block 1 -> split1:,0:split2
+    # block 2 -> 0:split1,split2:
+    # block 3 -> split1:,split2:
+    if n_blocks == 4:
+        assert np.sum(is_covering) == 1, "One dimension must be fully covered by a single block for 4 subblocks."
+        split_coords = np.where( np.array( is_covering )  == False )[0]
+        for dim in range(3):
+
+            index_dn = 2*dim
+            index_up = 2*dim + 1
+
+            if dim in split_coords:
+                block_coordinates[0][index_dn] = 0
+                block_coordinates[0][index_up] = block_shape[dim]
+
+                block_coordinates[3][index_dn] = vol_shape[dim] - block_shape[dim]
+                block_coordinates[3][index_up] = vol_shape[dim]
+
+                if dim == split_coords[0]:
+                    block_coordinates[1][index_dn] = vol_shape[dim] - block_shape[dim]
+                    block_coordinates[1][index_up] = vol_shape[dim]
+
+                    block_coordinates[2][index_dn] = 0
+                    block_coordinates[2][index_up] = block_shape[dim]
+
+                else:
+                    block_coordinates[1][index_dn] = 0
+                    block_coordinates[1][index_up] = block_shape[dim]
+
+                    block_coordinates[2][index_dn] = vol_shape[dim] - block_shape[dim]
+                    block_coordinates[2][index_up] = vol_shape[dim]
+            else:
+                for block_id in range(n_blocks):
+                    assert block_shape[dim] == vol_shape[dim]
+                    block_coordinates[block_id][index_dn] = 0
+                    block_coordinates[block_id][index_up] = block_shape[dim]
+
+    # 8 : block 0 -> 0:split1,0:split2,0:split3
+    # block 1 -> split1: ,0:split2,0:split3
+    # block 2 -> 0:split1,split2: , 0:split3
+    # block 3 -> 0:split1,0:split2, split3:
+    # block 4 -> split1: ,split2: ,0:split3
+    # block 5 -> split1: ,0:split2,split3:
+    # block 6 -> 0:split1,split2: ,split3:
+    # block 7 -> split1:,split2:,split3:
+    if n_blocks == 8:
+        assert np.sum(is_covering) == 0, "No dimension can be fully covered by a single block for 8 subblocks."
+        # calculate the split coordinates
+        x_split = vol_shape[0] - block_shape[0]
+        y_split = vol_shape[1] - block_shape[1]
+        z_split = vol_shape[2] - block_shape[2]
+        # all coords are split coords, this makes life a little easier
+        block_coordinates[0] = [0,block_shape[0],
+                                0,block_shape[1],
+                                0,block_shape[2]]
+        block_coordinates[1] = [x_split, vol_shape[0],
+                                0,block_shape[1],
+                                0,block_shape[2]]
+        block_coordinates[2] = [0, block_shape[0],
+                                y_split,vol_shape[1],
+                                0,block_shape[2]]
+        block_coordinates[3] = [0, block_shape[0],
+                                0, block_shape[1],
+                                z_split,vol_shape[2]]
+        block_coordinates[4] = [x_split, vol_shape[0],
+                                y_split, vol_shape[1],
+                                0, block_shape[2]]
+        block_coordinates[5] = [x_split, vol_shape[0],
+                                0, block_shape[1],
+                                z_split, vol_shape[2]]
+        block_coordinates[6] = [0, block_shape[0],
+                               y_split, vol_shape[1],
+                               z_split, vol_shape[2]]
+        block_coordinates[7] = [x_split, vol_shape[0],
+                                y_split, vol_shape[1],
+                                z_split, vol_shape[2]]
+
+    return block_coordinates
+
+
+# find the coordinate overlaps between block_coordinates
+# for the given pairs of blocks and the vol_shape
+def find_overlaps(pairs, vol_shape, block_coordinates, is_covering):
+    #assert len(block_coordinates) - 1 == np.max(pairs), str(len(block_coordinates) - 1) + " , " + str(np.max(pairs))
+    overlaps = {}
+    for pair in pairs:
+        ovlp = [0,0,0,0,0,0]
+        for dim in range(3):
+            index_dn = 2*dim
+            index_up = 2*dim + 1
+            if is_covering[dim]:
+                # if the dimension is fully covered, the overlap is over the whole dimension
+                ovlp[index_dn] = 0
+                ovlp[index_up] = vol_shape[dim]
+            else:
+                # if the dimension is not fully covered, we have to find the overlap
+                # either the pair has the same span in this dimension
+                # (than the whole dim is overlapping))
+                # or we have a real overlap and have to get this!
+                dn_0 = block_coordinates[pair[0]][index_dn]
+                dn_1 = block_coordinates[pair[1]][index_dn]
+                up_0 = block_coordinates[pair[0]][index_up]
+                up_1 = block_coordinates[pair[1]][index_up]
+                if dn_0 == dn_1:
+                    assert up_0 == up_1, "DIM:" + str(dim) + " , " + str(up_0) + " , " + str(up_1)
+                    ovlp[index_dn] = dn_0
+                    ovlp[index_up] = up_0
+                else:
+                    min_pair = pair[ np.argmin( [dn_0, dn_1] ) ]
+                    max_pair = pair[ np.argmax( [dn_0, dn_1] ) ]
+                    assert min_pair != max_pair
+                    ovlp[index_dn] = block_coordinates[max_pair][index_dn]
+                    ovlp[index_up] = block_coordinates[min_pair][index_up]
+
+        overlaps[pair] = ovlp
+    return overlaps
+
+
+# get all blockpairs
+def get_block_pairs(n_blocks):
+    return combinations( range(n_blocks), 2 )
+
 def blockwise_multicut_workflow(ds_train, ds_test,
         seg_id_train, seg_id_test,
         offset_list, feature_list,
