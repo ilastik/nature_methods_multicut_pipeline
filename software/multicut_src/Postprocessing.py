@@ -3,14 +3,7 @@ import vigra
 from concurrent import futures
 
 import nifty
-
-# TODO move this to numpy tools
-# numpy.replace: replcaces the values in array according to dict
-# cf. SO: http://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
-def replace_from_dict(array, dict_like):
-    replace_keys, replace_vals = np.array(list(zip( *sorted(dict_like.items() ))))
-    indices = np.digitize(array, replace_keys, right = True)
-    return replace_vals[indices].astype(array.dtype)
+from tools import replace_from_dict
 
 
 # TODO 10,000 seems to be a pretty large default value !
