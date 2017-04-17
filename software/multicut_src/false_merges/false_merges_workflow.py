@@ -1,4 +1,4 @@
-from compute_paths_and_features import shortest_paths
+from compute_paths_and_features import shortest_paths, distance_transform
 from multicut_src import probs_to_energies
 from multicut_src import remove_small_segments
 from multicut_src import compute_and_save_long_range_nh, optimizeLifted
@@ -26,11 +26,10 @@ def extract_paths_from_segmentation(
         key,
         params):
 
+    # TODO we don't remove small objects for now, because this would relabel the segmentation, which we don't want in this case
     seg = vigra.readHDF5(seg_path, key)
-    # FIXME we don't remove small objects for now, because this would relabel the segmentation, which we don't want in this case
+    dt = ds.inp_id(ds.n_inp-1) # we assume that the last input is the distance transform
 
-    # Compute distance transform on beta
-    dt = ds.distance_transform(seg, [1., 1., params.anisotropy_factor])
     # Compute path end pairs
     # TODO parallelize this function !
     border_contacts = compute_border_contacts(seg, dt)
@@ -40,13 +39,10 @@ def extract_paths_from_segmentation(
     paths_to_objs = np.array(paths_to_objs)[order].tolist()
     path_pairs = np.array(path_pairs)[order].tolist()
 
-    # Invert the distance transform
+    # Invert the distance transform and take penalty power
     dt = np.amax(dt) - dt
-    # Penalty power on distance transform
     dt = np.power(dt, 10)
 
-    # TODO FIXME as far as I can see, we don't need this loop, it does not bring anything,
-    # but makes the computations inefficient as hell...
     all_paths = []
     for obj in np.unique(paths_to_objs):
 
@@ -76,8 +72,7 @@ def extract_paths_from_segmentation(
 # TODO refactor params
 def extract_paths_and_labels_from_segmentation(
         ds,
-        seg_path,
-        key,
+        seg,
         params,
         gt,
         correspondence_list):
@@ -85,13 +80,8 @@ def extract_paths_and_labels_from_segmentation(
     params:
     """
 
-    # load the segmentation
-    seg = vigra.readHDF5(seg_path, key)
     assert seg.shape == gt.shape
-    seg = remove_small_segments(seg)
-
-    # Compute distance transform on beta
-    dt = ds.distance_transform(seg, [1., 1., params.anisotropy_factor])
+    dt = ds.inp_id(ds.n_inp-1) # we assume that the last input is the distance transform
 
     # Compute path end pairs
     # TODO parallelize this function !
@@ -102,20 +92,10 @@ def extract_paths_and_labels_from_segmentation(
         border_contacts, gt, correspondence_list
     )
 
-    # # Paths may switch objects on the way since there is no infinity border
-    # Invert the distance transform
+    # Invert the distance transform and take penalty power
     dt = np.amax(dt) - dt
-    # Penalty power on distance transform
     dt = np.power(dt, 10)
-    #
-    # # TODO FIXME This is a lot more efficient than the path calculation below but is not entirely correct.
-    # # compute the actual paths
-    # # TODO implement shortest paths with labels
-    # # TODO clean paths for duplicate paths in this function
-    # all_paths = shortest_paths(dt, path_pairs, n_threads = 20)
 
-    # TODO FIXME as far as I can see, we don't need this loop, it does not brinng anything,
-    # but makes the computations inefficient as hell...
     all_paths = []
     for obj in np.unique(paths_to_objs):
 
@@ -202,6 +182,9 @@ def train_random_forest_for_merges(
                 paths_save_folder,
                 'path_%s.pkl' % '_'.join([trainsets[ds_id].ds_name])
             )
+
+            # TODO check if we still need this caching monstrosity once the paths are sped up
+            # if we still do, this needs to be refactored!
             cached_paths = []
             print "Looking for paths folder: {}".format(paths_save_path)
             if caching and os.path.exists(paths_save_path):
@@ -216,6 +199,9 @@ def train_random_forest_for_merges(
 
             # Load ground truth
             gt = current_ds.gt()
+            # add a fake distance transform
+            # we need this to safely replace this with the actual distance transforms later
+            current_ds.add_input_from_data(np.zeros_like(gt.shape))
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
             # multiple mc segmentations
@@ -228,20 +214,19 @@ def train_random_forest_for_merges(
             for seg_id, seg_path in enumerate(paths_to_betas):
                 key = keys_to_betas[seg_id]
 
-                # Delete distance transform and filters from cache
-                # Generate file name according to how the cacher generated it (append parameters)
-                # Find and delete the file if it is there
-                dt_args = (current_ds, [1., 1., params.anisotropy_factor])
-                filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
-                if os.path.isfile(filepath):
-                    os.remove(filepath)
+                # Calculate the new distance transform and replace it in the dataset inputs
+                seg = remove_small_segments(vigra.readHDF5(seg_path, key))
+                dt  = distance_transform(seg, [1.,1.,params.anisotropy_factor])
+                # NOTE IMPORTANT: We assume that the distance transform always has the last inp_id and that a (dummy) dt was already added in the beginning
+                ds.replace_inp_from_data(ds.n_inp - 1, dt, clear_cache = False)
+                # we delete all filters based on the distance transform
+                ds.clear_filters(ds.n_inp - 1)
 
                 if not cached_paths:
                     # Compute the paths
                     paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                             current_ds,
-                            seg_path,
-                            key,
+                            seg,
                             params,
                             gt,
                             correspondence_list)
@@ -256,19 +241,6 @@ def train_random_forest_for_merges(
                 all_paths.append(paths)
                 all_paths_to_objs.append(paths_to_objs)
                 all_path_classes.append(path_classes)
-
-                # Clear filter cache
-                filters_filepath = current_ds.cache_folder + '/filters/filters_10/distance_transform'
-                if os.path.isdir(filters_filepath):
-                    shutil.rmtree(filters_filepath)
-
-                if cached_paths:
-
-                    # load the segmentation and compute distance transform
-                    seg = vigra.readHDF5(seg_path, key)
-                    assert seg.shape == gt.shape
-                    seg = remove_small_segments(seg)
-                    current_ds.distance_transform(seg, *dt_args[1:])
 
                 if paths:
 
@@ -333,11 +305,12 @@ def compute_false_merges(
         Has to contain:
         ds_train.inp(0) := raw image
         ds_train.inp(1) := probs image
+        ds_train.gt()   := groundtruth
 
     :param ds_test:
         Has to contain:
-        ds_train.inp(0) := raw image
-        ds_train.inp(1) := probs image
+        ds_test.inp(0) := raw image
+        ds_test.inp(1) := probs image
 
     :param mc_segs_train: Multiple multicut segmentations on ds_train
         Different betas for each ds_train; [N x len(betas)]
@@ -379,9 +352,10 @@ def compute_false_merges(
         paths_test = cached_paths['paths']
         paths_to_objs_test = cached_paths['paths_to_objs']
 
-        # load the segmentation and compute distance transform
+        # load the segmentation, compute distance transform and add it to the test dataset
         seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
-        ds_test.distance_transform(seg, [1., 1., params.anisotropy_factor])
+        dt = distance_transform(seg, [1., 1., params.anisotropy_factor])
+        ds_test.add_input_from_data(dt)
 
     else:
         paths_test, paths_to_objs_test = extract_paths_from_segmentation(
@@ -418,6 +392,11 @@ def compute_false_merges(
     return paths_test, rf.predict_proba(features_test)[:,1], paths_to_objs_test
 
 
+# FIXME:
+# resolve_merges_with_lifted_edges_global and
+# resolve_merges_with_lifted_edges
+# copy a lot of code that could be refactored to a single function
+
 def resolve_merges_with_lifted_edges(
         ds,
         seg_id,
@@ -431,7 +410,9 @@ def resolve_merges_with_lifted_edges(
 ):
     assert isinstance(false_paths, dict)
 
-    disttransf = ds.distance_transform(mc_segmentation, [1.,1.,exp_params.anisotropy_factor])
+    # NOTE: We assume that the dataset already has a distance transform added as last input
+    # This should work out, because we have already detected false merge paths for this segmentation
+    disttransf = ds.inp(ds.n_inp - 1)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -675,7 +656,9 @@ def resolve_merges_with_lifted_edges_global(
 ):
     assert isinstance(false_paths, dict)
 
-    disttransf = ds.distance_transform(mc_segmentation, [1.,1.,exp_params.anisotropy_factor])
+    # NOTE: We assume that the dataset already has a distance transform added as last input
+    # This should work out, because we have already detected false merge paths for this segmentation
+    disttransf = ds.inp(ds.n_inp - 1)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -922,6 +905,7 @@ def project_resolved_objects_to_segmentation(ds,
     return rag.projectLabelsToBaseGraph(mc_labeling)
 
 
+# FIXME why ?! this is just code copy from the function that trains the rf
 def pre_compute_paths(
         data_sets,
         mc_segs,
@@ -950,6 +934,8 @@ def pre_compute_paths(
 
         # Load ground truth
         gt = current_ds.gt()
+        # we need this to safely replace this with the actual distance transforms later
+        current_ds.add_input_from_data(np.zeros_like(gt.shape))
 
         # Initialize correspondence list which makes sure that the same merge is not extracted from
         # multiple mc segmentations
@@ -962,19 +948,19 @@ def pre_compute_paths(
         for seg_id, seg_path in enumerate(paths_to_betas):
             key = keys_to_betas[seg_id]
 
-            # Delete distance transform and filters from cache
-            # Generate file name according to how the cacher generated it (append parameters)
-            # Find and delete the file if it is there
-            dt_args = (current_ds, [1., 1., params.anisotropy_factor])
-            filepath = cache_name('distance_transform', 'dset_folder', True, False, *dt_args)
-            if os.path.isfile(filepath):
-                os.remove(filepath)
+            # Calculate the new distance transform and replace it in the dataset inputs
+            seg = vigra.readHDF5(seg_path, key)
+            seg = remove_small_segments(seg)
+            dt  = distance_transform(seg, [1.,1.,params.anisotropy_factor])
+            # NOTE IMPORTANT: We assume that the distance transform always has the last inp_id and that a (dummy) dt was already added in the beginning
+            ds.replace_inp_from_data(ds.n_inp - 1, dt, clear_cache = False)
+            # we delete all filters based on the distance transform
+            ds.clear_filters(ds.n_inp - 1)
 
             # Compute the paths
             paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                 current_ds,
-                seg_path,
-                key,
+                seg,
                 params,
                 gt,
                 correspondence_list)
@@ -984,11 +970,9 @@ def pre_compute_paths(
             all_path_classes.append(path_classes)
 
             if paths:
-
                 pass
 
             else:
-
                 print "No paths found for seg_id = {}".format(seg_id)
 
         print "Saving paths to:", paths_save_path

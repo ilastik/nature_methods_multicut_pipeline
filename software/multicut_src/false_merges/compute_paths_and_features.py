@@ -18,6 +18,16 @@ from concurrent import futures
 #         self.sigmas=sigmas
 
 
+# calculate the distance transform for the given segmentation
+def distance_transform(segmentation, anisotropy):
+    edge_volume = np.concatenate(
+            [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
+            axis = 2)
+    dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
+    return dt
+
+
+# TODO take nifty shortest paths and parallelize
 def shortest_paths(indicator,
         pairs,
         n_threads = 1):
@@ -74,7 +84,7 @@ def path_feature_aggregator(ds, paths, params):
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor, params),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor, params),
-        path_features_from_feature_images(ds, 'distance_transform', paths, anisotropy_factor, params),
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor, params), # we assume that the distance transform is added as inp_id 2
         compute_path_lengths(paths, [1.,1.,anisotropy_factor]) ],
         axis = 1)
 

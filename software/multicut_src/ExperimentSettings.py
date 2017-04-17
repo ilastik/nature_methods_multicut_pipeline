@@ -1,6 +1,16 @@
+# singleton type
+#class Singleton(type):
+#    _instances = {}
+#    def __call__(cls, *args, **kwargs):
+#        if cls not in cls._instances:
+#            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+#        return cls._instances[cls]
+
+# TODO make singleton
 # class, holding all experiment parameters
-# TODO make singleton!
+# singleton
 class ExperimentSettings(object):
+    #__metaclass__ = Singleton
 
     # init the experiment setttings, setting all parameter to their default
     def __init__(self):

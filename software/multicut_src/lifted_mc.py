@@ -78,6 +78,7 @@ def clusteringFeatures(ds,
     nodeSizes_ = vgraph.getNodeSizes(originalGraph)
 
     # FIXME GIL is not lifted for vigra function (probably cluster)
+    # TODO -> check GIL again once using nifty
     def cluster(wardness):
 
         edgeLengthsNew = numpy.concatenate([eLen,numpy.zeros(nAdditionalEdges)]).astype('float32')
@@ -113,6 +114,7 @@ def clusteringFeatures(ds,
         assert mg.edgeNum == 0, str(mg.edgeNum)
 
         # FIXME I am disabling these checks for now, but will need to investigate this further
+        # TODO -> check again once using nifty
         # They can fail because with defects and seg mask we can get unconnected pieces in the graph
 
         # if we have completely defected slcies, we get a non-connected merge graph

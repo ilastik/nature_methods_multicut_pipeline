@@ -184,7 +184,7 @@ class DataSet(object):
                 if inp_folder[-1] == inp_id:
                     shutil.rmtree(os.path.join(subsub, inp_folder))
 
-    # TODO implement 'replace_from_data'
+    # TODO implement 'replace_from_data' for all inputs
     # replacing inputs:
     def replace_raw(self, new_path, new_key):
         assert self.has_raw
@@ -209,6 +209,22 @@ class DataSet(object):
         self.external_inp_keys[inp_id]  = new_key
         self.clear_regular_caches()
         self.clear_filters(inp_id)
+        self.save()
+        # we need to make the cache to be compatible with cutouts that load it
+        self.inp(inp_id)
+
+    def replace_inp_from_data(self, inp_id, new_data, clear_cache = True):
+        assert inp_id > 0, "Use replace raw instead"
+        assert inp_id < self.n_inp
+        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
+        if os.path.exists(internal_inp_path):
+            os.remove(internal_inp_path)
+        vigra.writeHDF5(new_data, internal_inp_path, 'data')
+        self.external_inp_paths[inp_id] = internal_inp_path
+        self.external_inp_keys[inp_id]  = 'data'
+        if clear_cache:
+            self.clear_regular_caches()
+            self.clear_filters(inp_id)
         self.save()
         # we need to make the cache to be compatible with cutouts that load it
         self.inp(inp_id)
@@ -606,35 +622,6 @@ class DataSet(object):
     # Feature Calculation
     #
 
-    # TODO:  we should add this as input and not cache it this way
-    # FIXME: Apperently the cacher does not accept keyword arguments
-    # this will be ignorant of using a different segmentation
-    @cacher_hdf5(ignoreNumpyArrays=True)
-    def distance_transform(self, segmentation, anisotropy):
-
-        # # if that does what I think it does (segmentation to edge image), we can use vigra...
-        # def pixels_at_boundary(image, axes=[1, 1, 1]):
-        #    return axes[0] * ((np.concatenate((image[(0,), :, :], image[:-1, :, :]))
-        #                       - np.concatenate((image[1:, :, :], image[(-1,), :, :]))) != 0) \
-        #           + axes[1] * ((np.concatenate((image[:, (0,), :], image[:, :-1, :]), 1)
-        #                         - np.concatenate((image[:, 1:, :], image[:, (-1,), :]), 1)) != 0) \
-        #           + axes[2] * ((np.concatenate((image[:, :, (0,)], image[:, :, :-1]), 2)
-        #                         - np.concatenate((image[:, :, 1:], image[:, :, (-1,)]), 2)) != 0)
-        #
-        # anisotropy = np.array(anisotropy).astype(np.float32)
-        # image = image.astype(np.float32)
-        # # Compute boundaries
-        # # FIXME why ?!
-        # axes = (anisotropy ** -1).astype(np.uint8)
-        # image = pixels_at_boundary(image, axes)
-
-        edge_volume = np.concatenate(
-                [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
-                axis = 2)
-        dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
-        return dt
-
-
     # make pixelfilter for the given input.
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
@@ -652,17 +639,8 @@ class DataSet(object):
         print "Calculating filters for input id:", inp_id
         import fastfilters
 
-        # TODO this is ugly, think of something else, add distance trafo as extra input !
-        # FIXME dirty hack to calculate features on the ditance trafo
-        # FIXME the dt must be pre-computed for this to work
-        if inp_id == 'distance_transform':
-            fake_seg = np.zeros((10,10))
-            input_name = 'distance_transform'
-            use_dt = True
-        else:
-            assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
-            input_name = "inp_" + str(inp_id)
-            use_dt = False
+        assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
+        input_name = "inp_" + str(inp_id)
 
         top_folder = os.path.join(self.cache_folder, "filters")
         if not os.path.exists(top_folder):
@@ -712,7 +690,7 @@ class DataSet(object):
                     filter_and_sigmas_to_compute.append((filt_name, sig))
 
         if filter_and_sigmas_to_compute:
-            inp = self.distance_transform(fake_seg, [1.,1.,anisotropy_factor]) if use_dt else self.inp(inp_id)
+            inp = self.inp(inp_id)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
                 filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
@@ -1289,50 +1267,6 @@ class DataSet(object):
         assert os.path.exists(save_file)
 
         return vigra.readHDF5(save_file,"topology_features_names")
-
-
-    # safely combine features
-    # TODO loading the rag may consume some time and concatenate should also catch
-    # non-matching shapes, so we could get rid of the asserts
-    def combine_features(self, feat_list, seg_id):
-        n_edges = self._rag(seg_id).edgeNum
-        for f in feat_list:
-            assert f.shape[0] == n_edges, str(f.shape[0]) + " , " +  str(n_edges)
-        return np.concatenate(feat_list, axis = 1)
-
-
-    # features based on curvature of xy edges
-    # FIXME very naive implementation
-    # FIXME this only works for sorted coordinates !!
-    @cacher_hdf5("feature_folder")
-    def curvature_features(self, seg_id):
-        rag = self._rag(seg_id)
-        curvature_feats = np.zeros( (rag.edgeNum, 4) )
-        edge_ind = self.edge_indications(seg_id)
-        for edge in xrange(rag.edgeNum):
-            if edge_ind[edge] == 0:
-                continue
-            coords = rag.edgeCoordinates(edge)[:,:-1]
-            try:
-                dx_dt = np.gradient(coords[:,0])
-            except IndexError as e:
-                #print coords
-                continue
-            dy_dt = np.gradient(coords[:,1])
-            d2x_dt2 = np.gradient(dx_dt)
-            d2y_dt2 = np.gradient(dy_dt)
-
-            # curvature implemented after:
-            # http://stackoverflow.com/questions/28269379/curve-curvature-in-numpy
-            curvature = np.abs(d2x_dt2 * dy_dt - dx_dt * d2y_dt2) / (dx_dt * dx_dt + dy_dt + dy_dt * dy_dt)**1.5
-
-            curvature_feats[edge,0] = np.mean(curvature)
-            curvature_feats[edge,1] = np.min(curvature)
-            curvature_feats[edge,2] = np.max(curvature)
-            curvature_feats[edge,3] = np.std(curvature)
-
-        return np.nan_to_num(curvature_feats)
-
 
     #
     # Groundtruth projection
