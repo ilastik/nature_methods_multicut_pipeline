@@ -14,7 +14,7 @@ def replace_from_dict(array, dict_like):
 
 
 # TODO 10,000 seems to be a pretty large default value !
-# TODO FIXME rethink the relabeling here, in which cases do we want it, can it hurt?
+# TODO rethink the relabeling here, in which cases do we want it, can it hurt?
 def remove_small_segments(segmentation,
         size_thresh = 10000,
         relabel = True):
@@ -58,11 +58,7 @@ def merge_small_segments(mc_seg, min_seg_size):
 
     n_nodes = seg_rag.nodeNum
 
-    # FIXME This caused a yet not investigated error
-    # assert n_nodes == mc_seg.max(), str(n_nodes) + " , " + str(mc_seg.max())
-    if not n_nodes == mc_seg.max():
-        print "Warning: (n_nodes = {}) != (mc_seg.max() = {})".format(n_nodes, mc_seg.max())
-
+    assert n_nodes == mc_seg.max(), str(n_nodes) + " , " + str(mc_seg.max())
     print "Merging segments in mc-result with size smaller than", min_seg_size
 
     seg_sizes = np.bincount(mc_seg.ravel())
