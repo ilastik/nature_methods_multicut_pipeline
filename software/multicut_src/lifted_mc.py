@@ -758,6 +758,7 @@ def optimizeLifted(uvs_local,
 
 
 # TODO weight connections in plane: kappa=20
+@cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_probs_to_energies(ds,
         edge_probs,
         seg_id,
