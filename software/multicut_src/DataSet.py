@@ -11,6 +11,7 @@ import cPickle as pickle
 import graph as agraph
 
 from tools import cacher_hdf5, cache_name
+from ExperimentSettings import ExperimentSettings
 
 # this can be used in 2 different ways:
 # ds_name = None: -> called with cache folder and loads from there
@@ -27,6 +28,7 @@ def load_dataset(meta_folder, ds_name = None):
     with open(ds_obj_path) as f:
         return pickle.load(f)
 
+
 def is_inp_name(file_name):
     if file_name.startswith('seg'):
         return True
@@ -39,8 +41,7 @@ def is_inp_name(file_name):
     else:
         return False
 
-# TODO Flag that tells us, if we have flat or 3d superpixel
-#      -> we can assert this every time we need flat superpix for a specific function
+
 class DataSet(object):
 
     def __init__(self, meta_folder, ds_name):
@@ -676,8 +677,6 @@ class DataSet(object):
 
         # list of paths to the filters, that will be calculated
         return_paths = []
-        # TODO set max_workers with ppl param value!
-        n_workers = 8
 
         # first pass over the paths to check if we have to compute anything
         filter_and_sigmas_to_compute = []
@@ -718,6 +717,7 @@ class DataSet(object):
                     sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
                 _calc_filter = _calc_filter_3d
 
+            n_workers = ExperimentSettings().n_threads
             with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
                 tasks = []
                 for filt_name, sigma in filter_and_sigmas_to_compute:

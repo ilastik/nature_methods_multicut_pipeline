@@ -2,9 +2,10 @@ import numpy as np
 import vigra
 import os
 import time
+
 from DataSet import DataSet
+from ExperimentSettings import ExperimentSettings
 from tools import cacher_hdf5
-import sys
 
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:
@@ -29,7 +30,14 @@ except ImportError:
 # calculate the energies for the multicut from membrane probabilities
 # the last argument is only for caching correctly with different feature combinations
 @cacher_hdf5(ignoreNumpyArrays=True)
-def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
+def probs_to_energies(
+        ds,
+        edge_probs,
+        seg_id,
+        weighting_scheme,
+        weight,
+        beta,
+        feat_cache):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
@@ -38,22 +46,22 @@ def probs_to_energies(ds, edge_probs, seg_id, exp_params, feat_cache):
     edge_probs = (p_max - p_min) * edge_probs + p_min
 
     # probabilities to energies, second term is boundary bias
-    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - exp_params.beta_local) / exp_params.beta_local )
+    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - beta) / beta )
 
-    if exp_params.weighting_scheme in ("z", "xyz", "all"):
+    if weighting_scheme in ("z", "xyz", "all"):
         edge_areas       = ds._rag(seg_id).edgeLengths()
         edge_indications = ds.edge_indications(seg_id)
 
     # weight edges
-    if exp_params.weighting_scheme == "z":
+    if weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
-    elif exp_params.weighting_scheme == "xyz":
+        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, weight)
+    elif weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
-    elif exp_params.weighting_scheme == "all":
+        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight)
+    elif weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(edge_energies, edge_areas, exp_params.weight)
+        edge_energies = weight_all_edges(edge_energies, edge_areas, weight)
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
@@ -121,7 +129,6 @@ def weight_all_edges(edge_energies, edge_areas, weight):
 def multicut_exact(n_var,
         uv_ids,
         edge_energies,
-        exp_params,
         return_obj = False):
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
@@ -142,7 +149,7 @@ def multicut_exact(n_var,
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
 
-    if exp_params.verbose:
+    if ExperimentSettings().verbose:
         visitor = obj.multicutVerboseVisitor(1)
         ret = solver.optimize(visitor=visitor)
     else:
@@ -162,7 +169,6 @@ def multicut_exact(n_var,
 def multicut_fusionmoves(n_var,
         uv_ids,
         edge_energies,
-        exp_params,
         nThreads=0,
         return_obj=False):
 
@@ -190,17 +196,17 @@ def multicut_fusionmoves(n_var,
     factory = obj.fusionMoveBasedFactory(
         verbose=1,
         fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
-        proposalGen=obj.watershedProposals(sigma=10,seedFraction=exp_params.seed_fraction),
-        numberOfIterations=exp_params.num_it,
+        proposalGen=obj.watershedProposals(sigma=10,seedFraction=ExperimentSettings().seed_fraction),
+        numberOfIterations=ExperimentSettings().num_it,
         numberOfParallelProposals=2*nThreads,
         numberOfThreads=nThreads,
-        stopIfNoImprovement=exp_params.num_it_stop,
+        stopIfNoImprovement=ExperimentSettings().num_it_stop,
         fuseN=2,
     )
 
     solver = factory.create(obj)
 
-    if exp_params.verbose:
+    if ExperimentSettings().verbose:
         visitor = obj.multicutVerboseVisitor(1)
         ret = solver.optimize(nodeLabels=ret,visitor=visitor)
     else:

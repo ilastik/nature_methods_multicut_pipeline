@@ -96,12 +96,10 @@ def multicut_workflow_no_learning(
         ds_test,
         seg_id,
         feature,
-        mc_params,
         with_defects = False):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_test, DataSet)
-    assert isinstance(mc_params, ExperimentSettings )
 
     print "Running Multicut with weights from affinities"
 
@@ -119,9 +117,9 @@ def multicut_workflow_no_learning(
             seg_id,
             (inp_xy, inp_z),
             feature,
-            mc_params.beta_local,
-            mc_params.weighting_scheme,
-            mc_params.weight,
+            ExperimentSettings().beta_local,
+            ExperimentSettings().weighting_scheme,
+            ExperimentSettings().weight,
             with_defects
         )
 

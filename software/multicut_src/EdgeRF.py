@@ -211,13 +211,12 @@ def local_feature_aggregator_with_defects(ds,
 def mask_edges(ds,
         seg_id,
         labels,
-        exp_params,
         uv_ids,
         with_defects):
 
     labeled = np.ones_like(labels, dtype = bool)
     # set ignore mask to 0.5
-    if exp_params.use_ignore_mask: # ignore mask not yet supported for defect pipeline
+    if ExperimentSettings().use_ignore_mask: # ignore mask not yet supported for defect pipeline
         ignore_mask = ds.ignore_mask(seg_id, uv_ids, with_defects)
         assert ignore_mask.shape[0] == labels.shape[0]
         labeled[ ignore_mask ] = False
@@ -229,7 +228,7 @@ def mask_edges(ds,
         labeled[ ignore_mask ] = False
 
     # set z edges to 0.5
-    if exp_params.learn_2d:
+    if ExperimentSettings().learn_2d:
         edge_indications = modified_edge_indications(ds, seg_id) if with_defects else ds.edge_indications(seg_id)
         labeled[edge_indications == 0] = False
 
@@ -306,7 +305,6 @@ def _learn_seperate_rfs(trainsets,
         features,
         labels,
         labeled,
-        exp_params,
         rf_path,
         features_skip = None,
         labels_skip = None,
@@ -340,20 +338,20 @@ def _learn_seperate_rfs(trainsets,
 
     print "Start learning random forest for xy edges"
     rf_xy = RandomForest(features_xy.astype('float32'), labels_xy,
-        n_trees = exp_params.n_trees,
-        n_threads = exp_params.n_threads)
+        n_trees   = ExperimentSettings().n_trees,
+        n_threads = ExperimentSettings().n_threads)
 
     print "Start learning random forest for z edges"
     rf_z = RandomForest(features_z.astype('float32'), labels_z,
-        n_trees = exp_params.n_trees,
-        n_threads = exp_params.n_threads)
+        n_trees = ExperimentSettings().n_trees,
+        n_threads = ExperimentSettings().n_threads)
 
     if features_skip is not None:
         assert labels_skip is not None
         print "Start learning defect random forest"
         rf_defects = RandomForest(features_skip.astype('float32'), labels_skip,
-        n_trees = exp_params.n_trees,
-        n_threads = exp_params.n_threads)
+        n_trees = ExperimentSettings().n_trees,
+        n_threads = ExperimentSettings().n_threads)
 
     if rf_path is not None:
         rf_xy.write(rf_path, 'rf_xy')
@@ -370,7 +368,6 @@ def _learn_seperate_rfs(trainsets,
 def _learn_single_rfs(
         features,
         labels,
-        exp_params,
         rf_path,
         features_skip = None,
         labels_skip = None):
@@ -383,15 +380,15 @@ def _learn_single_rfs(
 
     print "Start learning random forest"
     rf = RandomForest(features.astype('float32'), labels,
-        n_trees = exp_params.n_trees,
-        n_threads = exp_params.n_threads)
+        n_trees = ExperimentSettings().n_trees,
+        n_threads = ExperimentSettings().n_threads)
 
     if features_skip is not None:
         assert labels_skip is not None
         print "Start learning defect random forest"
         rf_defects = RandomForest(features_skip.astype('float32'), labels_skip,
-            n_trees = exp_params.n_trees,
-            n_threads = exp_params.n_threads)
+            n_trees = ExperimentSettings().n_trees,
+            n_threads = ExperimentSettings().n_threads)
 
     if rf_path is not None:
         rf.write(rf_path, 'rf')
@@ -404,17 +401,19 @@ def _learn_single_rfs(
         return [rf]
 
 
-def learn_rf(cache_folder,
+def learn_rf(
         trainsets,
         seg_id,
         feature_aggregator,
-        exp_params,
         trainstr,
         paramstr,
         with_defects = False,
         use_2rfs = False):
 
+    cache_folder = ExperimentSettings().rf_cache_folder
     if cache_folder is not None: # we use caching for the rf => look if already exists
+        if not os.path.exists(cache_folder):
+            os.mkdir(cache_folder)
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
         rf_name = "rf_" + "_".join( [trainstr, paramstr] )
         if not os.path.exists(rf_folder):
@@ -424,14 +423,14 @@ def learn_rf(cache_folder,
             print "Loading random forest from:"
             print rf_path
             if use_2rfs:
-                rfs = [RandomForest.load_from_file(rf_path, 'rf_xy', exp_params.n_threads),
-                        RandomForest.load_from_file(rf_path, 'rf_z', exp_params.n_threads) ]
+                rfs = [RandomForest.load_from_file(rf_path, 'rf_xy', ExperimentSettings().n_threads),
+                        RandomForest.load_from_file(rf_path, 'rf_z', ExperimentSettings().n_threads) ]
             else:
-                rfs = [RandomForest.load_from_file(rf_path, 'rf', exp_params.n_threads) ]
+                rfs = [RandomForest.load_from_file(rf_path, 'rf', ExperimentSettings().n_threads) ]
             # we need to check if the defect rf actually exists
             if RandomForest.has_defect_rf(rf_path):
                 assert with_defects
-                rfs.append( RandomForest.load_from_file(rf_path, 'rf_defects', exp_params.n_threads) )
+                rfs.append( RandomForest.load_from_file(rf_path, 'rf_defects', ExperimentSettings().n_threads) )
             return rfs
 
     features_train = []
@@ -453,12 +452,12 @@ def learn_rf(cache_folder,
                 else ds._adjacent_segments(seg_id)
         assert features_sub.shape[0] == uv_ids.shape[0]
 
-        if exp_params.learn_fuzzy:
+        if ExperimentSettings().learn_fuzzy:
             # TODO implement for defects
             if with_defects:
                 raise AttributeError("Fuzzy learning not supported for defect pipeline yet")
             labels_sub = ds.edge_gt_fuzzy(seg_id,
-                    exp_params.positive_threshold, exp_params.negative_threshold)
+                    ExperimentSettings().positive_threshold, ExperimentSettings().negative_threshold)
         else:
             labels_sub = modified_edge_gt(
                     ds,
@@ -470,7 +469,6 @@ def learn_rf(cache_folder,
         labeled = mask_edges(ds,
                 seg_id,
                 labels_sub,
-                exp_params,
                 uv_ids,
                 with_defects)
 
@@ -522,17 +520,18 @@ def learn_rf(cache_folder,
 
     # TODO move this to learn_single_rf / learn_seperate_rfs
     if use_2rfs:
-        return _learn_seperate_rfs(trainsets, seg_id,
+        return _learn_seperate_rfs(
+                trainsets, seg_id,
                 features_train, labels_train,
-                labeled_train, exp_params,
+                labeled_train,
                 rf_path if cache_folder is not None else None,
                 features_skip if with_defects else None,
                 labels_skip if with_defects else None,
                 with_defects
                 )
     else:
-        return _learn_single_rfs(features_train, labels_train,
-                exp_params,
+        return _learn_single_rfs(
+                features_train, labels_train,
                 rf_path if cache_folder is not None else None,
                 features_skip if with_defects else None,
                 labels_skip if with_defects else None
@@ -540,11 +539,10 @@ def learn_rf(cache_folder,
 
 
 # set cache folder to None if you dont want to cache the resulting rf
-# TODO use cacher hdf5 for caching!
-def learn_and_predict_rf_from_gt(cache_folder,
+def learn_and_predict_rf_from_gt(
         trainsets, ds_test,
         seg_id_train, seg_id_test,
-        feature_list, exp_params,
+        feature_list,
         with_defects = False,
         use_2rfs     = False
         ):
@@ -552,7 +550,6 @@ def learn_and_predict_rf_from_gt(cache_folder,
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(ds_test, DataSet)
-    assert isinstance(exp_params, ExperimentSettings)
 
     # for only a single ds, put it in a list
     if isinstance(trainsets, DataSet):
@@ -561,36 +558,31 @@ def learn_and_predict_rf_from_gt(cache_folder,
     if with_defects:
         feature_aggregator = partial( local_feature_aggregator_with_defects,
             feature_list = feature_list,
-            anisotropy_factor = exp_params.anisotropy_factor,
-            use_2d = exp_params.use_2d )
+            anisotropy_factor = ExperimentSettings().anisotropy_factor,
+            use_2d = ExperimentSettings().use_2d )
     else:
         feature_aggregator = partial( local_feature_aggregator,
-            feature_list = feature_list, anisotropy_factor = exp_params.anisotropy_factor,
-            use_2d = exp_params.use_2d )
+            feature_list = feature_list, anisotropy_factor = ExperimentSettings().anisotropy_factor,
+            use_2d = ExperimentSettings().use_2d )
 
     # strings for caching
     # str for all relevant params
-    paramstr = "_".join( ["_".join(feature_list), str(exp_params.anisotropy_factor),
-        str(exp_params.learn_2d), str(exp_params.learn_fuzzy),
-        str(exp_params.n_trees), str(exp_params.negative_threshold),
-        str(exp_params.positive_threshold), str(exp_params.use_2d),
-        str(exp_params.use_ignore_mask), str(with_defects), str(use_2rfs)] )
+    paramstr = "_".join( ["_".join(feature_list), str(ExperimentSettings().anisotropy_factor),
+        str(ExperimentSettings().learn_2d), str(ExperimentSettings().learn_fuzzy),
+        str(ExperimentSettings().n_trees), str(ExperimentSettings().negative_threshold),
+        str(ExperimentSettings().positive_threshold), str(ExperimentSettings().use_2d),
+        str(ExperimentSettings().use_ignore_mask), str(with_defects), str(use_2rfs)] )
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets ]) + "_" + str(seg_id_train)
 
-    if cache_folder is not None: # cache-folder exists => look if we already have a prediction
+    # we cache this in the ds_test cache folder
+    # if caching random forests is activated (== rf_cache_folder is not None)
+    if ExperimentSettings().rf_cache_folder is not None: # cache-folder exists => look if we already have a prediction
 
-        pred_folder = os.path.join(cache_folder, "pred_" + trainstr)
         pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
-        if with_defects:
-            pred_name =  pred_name[:-3] + "_with_defects.h5"
         if len(pred_name) >= 256:
             pred_name = str(hash(pred_name[:-3])) + ".h5"
-        if not os.path.exists(cache_folder):
-            os.mkdir(cache_folder)
-        if not os.path.exists(pred_folder):
-            os.mkdir(pred_folder)
-        pred_path = os.path.join(pred_folder, pred_name)
+        pred_path = os.path.join(ds_test.cache_folder, pred_name)
 
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
@@ -599,11 +591,10 @@ def learn_and_predict_rf_from_gt(cache_folder,
             return vigra.readHDF5(pred_path, 'data')
 
     # get the random forest(s)
-    rfs = learn_rf(cache_folder,
+    rfs = learn_rf(
         trainsets,
         seg_id_train,
         feature_aggregator,
-        exp_params,
         trainstr,
         paramstr,
         with_defects,
@@ -653,7 +644,7 @@ def learn_and_predict_rf_from_gt(cache_folder,
         pmem_skip = rf_defects.predictProbabilities( features_test_skip.astype('float32') )[:,1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
 
-    if cache_folder is not None:
+    if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(pmem_test, pred_path, 'data')
 
     return pmem_test

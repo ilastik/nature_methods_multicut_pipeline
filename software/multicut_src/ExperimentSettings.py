@@ -1,16 +1,14 @@
 # singleton type
-#class Singleton(type):
-#    _instances = {}
-#    def __call__(cls, *args, **kwargs):
-#        if cls not in cls._instances:
-#            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-#        return cls._instances[cls]
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
-# TODO make singleton
-# class, holding all experiment parameters
-# singleton
+# singleton class, holding all experiment parameters
 class ExperimentSettings(object):
-    #__metaclass__ = Singleton
+    __metaclass__ = Singleton
 
     # init the experiment setttings, setting all parameter to their default
     def __init__(self):
@@ -85,6 +83,7 @@ class ExperimentSettings(object):
         self.lifted_path_weights_factor = 1.
 
 
+    # TODO this is obsolete, make sure that it is not used anywhere and then remove it
     # overloadd str to reliably cache this
     def __str__(self):
         members = vars(self)
@@ -99,81 +98,3 @@ class ExperimentSettings(object):
         # all values in alphabetic order...
         string = string.join( [str(members[n]) for n in names] )
         return str(hash(string))
-
-
-    # set the lifted neighborhood
-    def set_lifted_neighborhood(self, lifted_neighborhood):
-        self.lifted_neighborhood = lifted_neighborhood
-
-
-    # setter functions for the parameters
-
-    def set_rfcache(self, rf_cache_folder):
-        self.rf_cache_folder = rf_cache_folder
-
-    def set_nthreads(self, n_threads):
-        self.n_threads = n_threads
-
-    def set_weighting_scheme(self, scheme_str):
-        assert scheme_str in ("z", "all", "xyz", "none"), scheme_str
-        self.weighting_scheme = scheme_str
-
-    def set_solver(self, solver):
-        assert solver in ("multicut_exact", "multicut_fusionmoves")
-        self.solver = solver
-
-    def set_weight(self, weight):
-        assert weight > 0.
-        self.weight = weight
-
-    def set_ntrees(self, n_trees):
-        assert n_trees > 10
-        self.n_trees = n_trees
-
-    def set_ignore_mask(self, use_ignore_mask):
-        assert isinstance(use_ignore_mask, bool)
-        self.use_ignore_mask = use_ignore_mask
-
-    def set_beta_local(self, beta_local):
-        assert beta_local > 0. and beta_local < 1.
-        self.beta_local = beta_local
-
-    def set_verbose(self, verbose):
-        assert isinstance(verbose, bool)
-        self.verbose = verbose
-
-    def set_anisotropy(self, anisotropy_factor):
-        assert isinstance(anisotropy_factor, float)
-        self.anisotropy_factor = anisotropy_factor
-
-    def set_use2d(self, use_2d):
-        assert isinstance(use_2d, bool)
-        self.use_2d = use_2d
-
-    def set_learn2d(self, learn_2d):
-        assert isinstance(learn_2d, bool)
-        self.learn_2d = learn_2d
-
-    def set_fuzzy_learning(self, learn_fuzzy):
-        assert isinstance(learn_fuzzy, bool)
-        self.learn_fuzzy = learn_fuzzy
-
-    def set_negative_threshold(self, negative_threshold):
-        assert isinstance(negative_threshold, float)
-        self.negative_threshold = negative_threshold
-
-    def set_positive_threshold(self, positive_threshold):
-        assert isinstance(positive_threshold, float)
-        self.positive_threshold = positive_threshold
-
-    def set_seed_fraction(self, seed_fraction):
-        assert seed_fraction <= 1., str(seed_fraction)
-        self.seed_fraction = seed_fraction
-
-    def set_num_it(self, num_it):
-        assert isinstance(num_it, int)
-        self.num_it = num_it
-
-    def set_num_it_stop(self, num_it_stop):
-        assert isinstance(num_it_stop, int)
-        self.num_it_stop = num_it_stop

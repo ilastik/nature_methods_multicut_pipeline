@@ -6,6 +6,7 @@ from tools import cacher_hdf5, cache_name
 
 from DataSet import DataSet, Cutout
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
+from ExperimentSettings import ExperimentSettings
 
 
 # TODO move the numpy tools somewhere else
@@ -737,7 +738,15 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
 
 # the last argument is only for caching results with different features correctly
 @cacher_hdf5(ignoreNumpyArrays=True)
-def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_cache):
+def modified_probs_to_energies(
+        ds,
+        edge_probs,
+        seg_id,
+        uv_ids,
+        weighting_scheme,
+        weight,
+        beta,
+        feat_cache):
 
     assert edge_probs.shape[0] == uv_ids.shape[0], "%s, %s" % ( str(edge_probs.shape) , str(uv_ids.shape) )
 
@@ -748,22 +757,22 @@ def modified_probs_to_energies(ds, edge_probs, seg_id, uv_ids, exp_params, feat_
     edge_probs = (p_max - p_min) * edge_probs + p_min
 
     # probabilities to energies, second term is boundary bias
-    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - exp_params.beta_local) / exp_params.beta_local )
+    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - beta) / beta )
 
-    if exp_params.weighting_scheme in ("z", "xyz", "all"):
+    if weighting_scheme in ("z", "xyz", "all"):
         edge_areas       = modified_topology_features(ds, seg_id, False)[:,0]
         edge_indications = modified_edge_indications(ds, seg_id)
 
     # weight edges
-    if exp_params.weighting_scheme == "z":
+    if weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
-    elif exp_params.weighting_scheme == "xyz":
+        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, weight)
+    elif weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, exp_params.weight)
-    elif exp_params.weighting_scheme == "all":
+        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight)
+    elif weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(edge_energies, edge_areas, exp_params.weight)
+        edge_energies = weight_all_edges(edge_energies, edge_areas, weight)
 
     # set ignore edges to be maximally repulsive
     ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
