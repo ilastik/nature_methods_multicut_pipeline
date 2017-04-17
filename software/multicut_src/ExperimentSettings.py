@@ -53,7 +53,6 @@ class ExperimentSettings(object):
         # beta for the lifteed multicut
         self.beta_global   = 0.5
         # seed fraction for fusion moves
-        # TODO find better options her
         self.seed_fraction = 0.001
         # total number of iterations for fusion moves
         self.num_it = 3000
@@ -81,20 +80,3 @@ class ExperimentSettings(object):
         self.max_sample_size = 20
         self.paths_penalty_power = 10
         self.lifted_path_weights_factor = 1.
-
-
-    # TODO this is obsolete, make sure that it is not used anywhere and then remove it
-    # overloadd str to reliably cache this
-    def __str__(self):
-        members = vars(self)
-        # names sorted alphabetically
-        names = members.keys()
-        # remove irrelevant things
-        names.remove("rf_cache_folder")
-        names.remove("n_threads")
-        names.remove("verbose")
-        names.sort()
-        string = ","
-        # all values in alphabetic order...
-        string = string.join( [str(members[n]) for n in names] )
-        return str(hash(string))

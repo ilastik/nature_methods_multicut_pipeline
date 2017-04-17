@@ -6,7 +6,7 @@ from functools import partial
 
 from DataSet import DataSet
 from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_features_from_affinity_maps
-from defect_handling import modified_edge_indications, modified_edge_gt
+from defect_handling import modified_edge_indications, modified_edge_gt, modified_edge_gt_fuzzy
 from defect_handling import get_skip_edges, modified_adjacency, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
 from tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
@@ -453,15 +453,19 @@ def learn_rf(
         assert features_sub.shape[0] == uv_ids.shape[0]
 
         if ExperimentSettings().learn_fuzzy:
-            # TODO implement for defects
-            if with_defects:
-                raise AttributeError("Fuzzy learning not supported for defect pipeline yet")
-            labels_sub = ds.edge_gt_fuzzy(seg_id,
-                    ExperimentSettings().positive_threshold, ExperimentSettings().negative_threshold)
+            labels_sub = modified_edge_gt_fuzzy(
+                    ds,
+                    seg_id,
+                    ExperimentSettings().positive_threshold,
+                    ExperimentSettings().negative_threshold) \
+                            if with_defects and ds.has_defects else ds.edge_gt_fuzzy(
+                                seg_id,
+                                ExperimentSettings().positive_threshold,
+                                ExperimentSettings().negative_threshold)
         else:
             labels_sub = modified_edge_gt(
                     ds,
-                    seg_id) if with_defects else ds.edge_gt(seg_id)
+                    seg_id) if with_defects and ds.has_defects else ds.edge_gt(seg_id)
 
         assert labels_sub.shape[0] == features_sub.shape[0], "%i, %i" % (labels_sub.shape[0], features_sub.shape[0])
 
@@ -518,7 +522,6 @@ def learn_rf(
         else: # if not set with_defects to false, beacause we can't learn a defect rf
             with_defects = False
 
-    # TODO move this to learn_single_rf / learn_seperate_rfs
     if use_2rfs:
         return _learn_seperate_rfs(
                 trainsets, seg_id,

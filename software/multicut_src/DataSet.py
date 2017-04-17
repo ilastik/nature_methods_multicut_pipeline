@@ -1239,28 +1239,17 @@ class DataSet(object):
     def edge_gt_fuzzy(self, seg_id, positive_threshold, negative_threshold):
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
-        print negative_threshold, positive_threshold
-        edge_overlaps = self.edge_overlaps(seg_id)
-        edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape )
-        edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
-        edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
-
-        return edge_gt_fuzzy
-
-
-    # get edge overlaps
-    # with values from 0 (= no overlap) to 1 (= max overlap)
-    @cacher_hdf5()
-    def edge_overlaps(self, seg_id):
-        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        assert self.has_gt
 
         edge_overlaps = agraph.candidateSegToRagSeg(
                 self.seg(seg_id).astype('uint32'),
                 self.gt().astype('uint32'),
                 self._adjacent_segments(seg_id).astype(np.uint64))
 
-        return edge_overlaps
+        edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape )
+        edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
+        edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
+        return edge_gt_fuzzy
+
 
     # return mask that hides edges that lie between 2 superpixel
     # which are projected to an ignore label
