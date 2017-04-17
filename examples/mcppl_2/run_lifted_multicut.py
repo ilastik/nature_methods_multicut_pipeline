@@ -1,10 +1,10 @@
 import vigra
 import os
 
-from init_exp import meta
+from init_exp import meta_folder
 
 from multicut_src import lifted_multicut_workflow, lifted_multicut_workflow_with_defect_correction
-from multicut_src import ExperimentSettings
+from multicut_src import ExperimentSettings, load_dataset
 
 def run_lmc(ds_train_name, ds_test_name, mc_params, save_path):
 
@@ -23,9 +23,8 @@ def run_lmc(ds_train_name, ds_test_name, mc_params, save_path):
     # this factor determines the weighting of lifted vs. local edge costs
     gamma = 2.
 
-    meta.load()
-    ds_train = meta.get_dataset(ds_train_name)
-    ds_test  = meta.get_dataset(ds_test_name)
+    ds_train = load_(meta_folder, ds_train_name)
+    ds_test  = load_(meta_folder, ds_test_name)
 
     # need to make filters for the trainset beforehand
     ds_train.make_filters(0, mc_params.anisotropy_factor)
@@ -52,7 +51,7 @@ if __name__ == '__main__':
 
     # this object stores different  experiment settings
     mc_params = ExperimentSettings()
-    mc_params.set_rfcache(os.path.join(meta.meta_folder, "rf_cache"))
+    mc_params.set_rfcache(meta_folder, "rf_cache")
 
     anisotropy = 25. # the anisotropy of the data, this is used in the filter calculation
     # set to 1. for isotropic data, to the actual degree for mildly anisotropic data or to > 20. to compute filters in 2d

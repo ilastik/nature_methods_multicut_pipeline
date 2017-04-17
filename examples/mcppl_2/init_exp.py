@@ -1,15 +1,13 @@
 import os
-from multicut_src import MetaSet, Dataset
+from multicut_src import Dataset
 
 meta_folder = '/path/to/cachedir' # need path to directory for storing caches
 if not os.path.exists(meta_folder):
     os.mkdir(meta_folder)
-# metaset, caching all datasets that are used for the actual experiments
-meta = MetaSet(meta_folder)
 
 
 def init_trainset(train_name):
-    meta.load()
+
     ds = DataSet(meta_folder, train_name) # init the dataset
 
     # filepaths to the input data
@@ -47,13 +45,9 @@ def init_trainset(train_name):
     ds.make_cutout([0,shape[0],0,shape[1],15,shape[2]-15])
     ds.make_cutout([0,shape[0],0,shape[1],shape[2]-15,shape[2]])
 
-    # add the dataset to the metaset
-    meta.add_dataset(train_name, ds)
-    meta.save()
-
 
 def init_testset(test_name):
-    meta.load()
+
     ds = DataSet(meta_folder, test_name) # init the dataset
 
     # filepaths to the input data
@@ -81,10 +75,6 @@ def init_testset(test_name):
     ds.add_seg(seg_path, 'data') # here we assume that everything has the key 'data', change accordingly
 
     # in addition, you can make cutouts here that can be used e.g. for validation
-
-    # add the dataset to the metaset
-    meta.add_dataset(test_name, ds)
-    meta.save()
 
 
 if __name__ == '__main__':

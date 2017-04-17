@@ -1,10 +1,10 @@
 import vigra
 import os
 
-from init_exp import meta
+from init_exp import meta_folder
 
 from multicut_src import multicut_workflow, multicut_workflow_with_defect_correction
-from multicut_src import ExperimentSettings
+from multicut_src import ExperimentSettings, load_dataset
 
 def run_mc(ds_train_name, ds_test_name, mc_params, save_path):
 
@@ -17,9 +17,8 @@ def run_mc(ds_train_name, ds_test_name, mc_params, save_path):
     # these strings encode the features that are used for the local features
     feature_list = ['raw', 'prob', 'reg']
 
-    meta.load()
-    ds_train = meta.get_dataset(ds_train_name)
-    ds_test  = meta.get_dataset(ds_test_name)
+    ds_train = load_dataset(meta_folder, ds_train_name)
+    ds_test  = load_dataset(meta_folder, ds_test_name)
 
     # use this for running the mc without defected slices
     mc_nodes, _, _, _ = multicut_workflow(
@@ -35,6 +34,7 @@ def run_mc(ds_train_name, ds_test_name, mc_params, save_path):
 
     segmentation = ds_test.project_mc_result(seg_id, mc_nodes)
     vigra.writeHDF5(segmentation, save_path, 'data', compression = 'gzip')
+
 
 if __name__ == '__main__':
 
