@@ -29,13 +29,15 @@ def extract_paths_from_segmentation(
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
             os.mkdir(paths_cache_folder)
-        paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s' % ds.ds_name)
+        paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s.h5' % ds.ds_name)
     else:
         paths_save_file = ''
 
     # if the cache exists, load paths from cache
     if os.path.exists(paths_save_file):
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
+        # we need to reshape the paths again to revover the coordinates
+        all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
 
     # otherwise compute the paths
@@ -65,7 +67,7 @@ def extract_paths_from_segmentation(
             masked_dt[seg != obj] = np.inf
 
             # Take only the relevant path pairs
-            pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+            pairs_in = path_pairs[paths_to_objs == obj]
 
             paths = shortest_paths(masked_dt,
                     pairs_in,
@@ -75,10 +77,9 @@ def extract_paths_from_segmentation(
             all_paths.extend(paths)
 
         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
-        keep_mask = [x is not None for x in all_paths]
-        keep_indices = np.where(keep_mask)[0]
-        all_paths = np.array(all_paths)[keep_indices].tolist()
-        paths_to_objs = np.array(paths_to_objs)[keep_indices].tolist()
+        keep_mask = np.array([isinstance(x, np.ndarray) for x in all_paths], dtype = np.bool)
+        all_paths = np.array(all_paths)[keep_mask]
+        paths_to_objs = paths_to_objs[keep_mask]
 
         # if we cache paths save the results
         if paths_cache_folder is not None:
@@ -105,16 +106,18 @@ def extract_paths_and_labels_from_segmentation(
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
             os.mkdir(paths_cache_folder)
-        paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s_seg_%i' % (ds.ds_name, seg_id))
+        paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s_seg_%i.h5' % (ds.ds_name, seg_id))
     else:
         paths_save_file = ''
 
     # if the cache exists, load paths from cache
     if os.path.exists(paths_save_file):
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
+        # we need to reshape the paths again to revover the coordinates
+        all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
         path_classes = vigra.readHDF5(paths_save_file, 'path_classes')
-        correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list')
+        correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list').tolist()
 
     # otherwise compute paths
     else:
@@ -122,7 +125,6 @@ def extract_paths_and_labels_from_segmentation(
         dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
-        # TODO parallelize this function !
         border_contacts = compute_border_contacts(seg, dt)
         # This is supposed to only return those pairs that will be used for path computation
         # TODO: Throw out some under certain conditions (see also within function)
@@ -137,19 +139,20 @@ def extract_paths_and_labels_from_segmentation(
         all_paths = []
         for obj in np.unique(paths_to_objs):
 
-           # Mask distance transform to current object
-           masked_dt = deepcopy(dt)
-           masked_dt[seg != obj] = np.inf
+            # Mask distance transform to current object
+            # TODO use a mask in dijkstra instead
+            masked_dt = deepcopy(dt)
+            masked_dt[seg != obj] = np.inf
 
-           # Take only the relevant path pairs
-           pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
+            # Take only the relevant path pairs
+            pairs_in = path_pairs[paths_to_objs == obj]
 
-           paths = shortest_paths(masked_dt,
-                   pairs_in,
-                   #1)
-                   n_threads = ExperimentSettings().n_threads)
-           # paths is now a list of numpy arrays
-           all_paths.extend(paths)
+            paths = shortest_paths(masked_dt,
+                    pairs_in,
+                    1)
+                    #n_threads = ExperimentSettings().n_threads)
+            # paths is now a list of numpy arrays
+            all_paths.extend(paths)
 
         # TODO: Here we have to ensure that every path is actually computed
         # TODO:  --> Throw not computed paths out of the lists
@@ -161,11 +164,10 @@ def extract_paths_and_labels_from_segmentation(
         # TODO implement stuff here
 
         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
-        keep_mask = [x is not None for x in all_paths]
-        keep_indices = np.where(keep_mask)[0]
-        all_paths = np.array(all_paths)[keep_indices]
-        paths_to_objs = np.array(paths_to_objs)[keep_indices]
-        path_classes = np.array(path_classes)[keep_indices]
+        keep_mask = np.array( [isinstance(x,np.ndarray) for x in all_paths], dtype = np.bool )
+        all_paths = np.array(all_paths)[keep_mask]
+        paths_to_objs = paths_to_objs[keep_mask]
+        path_classes  = path_classes[keep_mask]
 
         # if caching is enabled, write the results to cache
         if paths_cache_folder is not None:
@@ -211,10 +213,6 @@ def train_random_forest_for_merges(
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
-            all_paths = []
-            all_paths_to_objs = []
-            all_path_classes = []
-
             current_ds = trainsets[ds_id]
             keys_to_betas = mc_segs_train_keys[ds_id]
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
@@ -245,17 +243,13 @@ def train_random_forest_for_merges(
                 ds.clear_filters(ds.n_inp - 1)
 
                 # Compute the paths
-                paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
+                paths, _, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                         current_ds,
                         seg,
                         seg_id,
                         gt,
                         correspondence_list,
                         paths_cache_folder)
-
-                all_paths.append(paths)
-                all_paths_to_objs.append(paths_to_objs)
-                all_path_classes.append(path_classes)
 
                 if paths.size:
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)

@@ -2,6 +2,31 @@ import numpy as np
 import vigra
 import itertools
 
+
+# TODO this could probably be done more elegantly
+def get_face_slice(dim, is_front):
+    assert dim < 3
+    select = 0 if is_front else -1
+    if dim == 0:
+        return np.s_[select,:,:]
+    elif dim == 1:
+        return np.s_[:,select,:]
+    elif dim == 2:
+        return np.s_[:,:,select]
+
+
+def extract_border_contacts(seg):
+    assert seg.ndim == 3
+
+    # iterate over the faces
+    for dd in range(seg.ndim):
+        for is_front in (False, True):
+            # get the slice for this face and extract the corresponding labels
+            face = get_face_slice(dd, is_front)
+            labels_face = np.unique(seg[face])
+            # TODO for find the centroids for all unique labels in this face
+
+
 # FIXME AAAAAAHHH THE HORROR
 def get_faces_with_neighbors(image):
 
@@ -109,8 +134,10 @@ def find_centroids(seg, dt, bounds):
         mask = seg == lbl
 
         # Connected component analysis to detect when a label touches the border multiple times
-        conncomp = vigra.analysis.labelImageWithBackground(mask.astype(np.uint32), neighborhood=8,
-                                                           background_value=0)
+        conncomp = vigra.analysis.labelImageWithBackground(
+                mask.astype(np.uint32),
+                neighborhood=8,
+                background_value=0)
 
         # Only these labels will be used for further processing
         # FIXME expose radius as parameter
@@ -120,13 +147,16 @@ def find_centroids(seg, dt, bounds):
         # print 'opened_labels = {}'.format(opened_labels)
         # print 'unopened_labels = {}'.format(unopened_labels)
 
+        # FIXME why do we use the dt here ?
+        # as far as I can see, this only takes the mean of each coordinate anyway
+        # -> probably best to take the eccentricity centers instead
         for l in opened_labels[1:]:
 
             # Get the current label object
             curobj = conncomp == l
 
             # Get disttancetransf of the object
-            cur_dt = np.array(dt)
+            cur_dt = dt.copy()
             cur_dt[curobj == False] = 0
 
             # Detect the global maximum of this object
@@ -278,7 +308,7 @@ def compute_path_end_pairs_and_labels(
     correspondence_list = uniques.view(correspondence_list.dtype)
     correspondence_list = correspondence_list.reshape((correspondence_list.shape[0]/2, 2))
 
-    return pairs, labels, classes, gt_labels, correspondence_list.tolist()
+    return np.array(pairs), np.array(labels), np.array(classes), np.array(gt_labels), correspondence_list.tolist()
 
 
 # FIXME this seems to be very inefficient
