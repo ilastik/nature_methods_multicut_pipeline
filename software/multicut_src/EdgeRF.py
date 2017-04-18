@@ -369,7 +369,8 @@ def _learn_single_rfs(
         labels,
         rf_path,
         features_skip = None,
-        labels_skip = None):
+        labels_skip = None,
+        with_defects = False):
 
     features = np.concatenate(features)
     labels  = np.concatenate(labels)
@@ -536,7 +537,8 @@ def learn_rf(
                 features_train, labels_train,
                 rf_path if cache_folder is not None else None,
                 features_skip if with_defects else None,
-                labels_skip if with_defects else None
+                labels_skip if with_defects else None,
+                with_defects
                 )
 
 
