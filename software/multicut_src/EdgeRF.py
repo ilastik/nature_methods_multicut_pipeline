@@ -84,12 +84,11 @@ class RandomForest(object):
         self.rf.fit(train_data, train_labels)
 
     def _learn_rf_vigra(self, train_data, train_labels):
-        mdepth = self.max_depth if self.max_depth is not None else 0
         self.rf = RFType(train_data,
                 train_labels,
                 treeCount = self.n_trees,
                 n_threads = self.n_threads,
-                max_depth = mdepth)
+                max_depth = self.max_depth if self.max_depth is not None else 0)
 
     def predictProbabilities(self, test_data):
         if use_sklearn:

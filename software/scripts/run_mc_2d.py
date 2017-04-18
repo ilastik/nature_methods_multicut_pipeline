@@ -27,7 +27,7 @@ from wsdt import wsDtSegmentation
 from multicut_src import DataSet, load_dataset
 from multicut_src import multicut_workflow, lifted_multicut_workflow
 from multicut_src import ExperimentSettings
-from multicut_src import edges_to_binary
+from multicut_src import edges_to_volume
 
 
 def process_command_line():
@@ -249,7 +249,7 @@ def main():
     vigra.impex.writeVolume(mc_seg, save_path_seg, '')
 
     # need to bring results back to the isbi challenge format...
-    edge_vol = edges_to_binary(ds_test._rag(seg_id), mc_edges)
+    edge_vol = edges_to_volume(ds_test._rag(seg_id), mc_edges)
     print "Saving Edge Labeling Result to", save_path_edge
     vigra.impex.writeVolume(edge_vol, save_path_edge, '', dtype = np.uint8 )
 

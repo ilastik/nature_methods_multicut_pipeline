@@ -397,6 +397,7 @@ def compute_false_merges(
 # resolve_merges_with_lifted_edges
 # copy a lot of code that could be refactored to a single function
 
+# resolve each potential false merge individually with lifted edges
 def resolve_merges_with_lifted_edges(
         ds,
         seg_id,
@@ -467,8 +468,6 @@ def resolve_merges_with_lifted_edges(
         # Extract the sub graph lifted mc problem
         uv_mask = np.in1d(uv_ids_lifted, seg_ids)
         uv_mask = uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
-        #uv_mask = np.swapaxes(np.reshape(uv_mask, uv_ids_lifted.shape), 0, 1)
-        #uv_mask = np.logical_and(uv_mask[0], uv_mask[1])
         lifted_weights = lifted_weights_all[uv_mask]
 
         ids_in_mask = list(itertools.compress(xrange(len(uv_mask)), np.logical_not(uv_mask)))
@@ -713,8 +712,6 @@ def resolve_merges_with_lifted_edges_global(
         # Extract the sub graph lifted mc problem
         uv_mask = np.in1d(uv_ids_lifted, seg_ids)
         uv_mask = uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
-        #uv_mask = np.swapaxes(np.reshape(uv_mask, uv_ids_lifted.shape), 0, 1)
-        #uv_mask = np.logical_and(uv_mask[0], uv_mask[1])
         lifted_weights = lifted_weights_all[uv_mask]
 
         ids_in_mask = list(itertools.compress(xrange(len(uv_mask)), np.logical_not(uv_mask)))
