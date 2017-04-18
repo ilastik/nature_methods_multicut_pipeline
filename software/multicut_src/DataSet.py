@@ -504,7 +504,7 @@ class DataSet(object):
         seg = self._process_seg(seg)
         vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
         self.external_seg_paths.append(internal_seg_path)
-        self.external_seg_keys.append(internal_seg_key)
+        self.external_seg_keys.append('data')
         self.save()
 
     def seg(self, seg_id):
