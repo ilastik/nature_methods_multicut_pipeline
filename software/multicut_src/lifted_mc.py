@@ -253,7 +253,7 @@ def compute_lifted_feature_multicut(
         p_max = 1. - p_min
         costs = (p_max - p_min) * costs + p_min
         # probs to energies
-        costs = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+        costs = np.log( (1. - costs) / costs ) + np.log( (1. - beta) / beta )
 
         # weight the energies
         if weighting_scheme == "z":
