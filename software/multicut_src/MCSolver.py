@@ -9,7 +9,7 @@ from ExperimentSettings import ExperimentSettings
 
 from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves
 from EdgeRF import learn_and_predict_rf_from_gt
-from lifted_mc import learn_and_predict_lifted_rf, optimizeLifted
+from lifted_mc import learn_and_predict_lifted_rf, optimizeLifted, lifted_probs_to_energies
 from defect_handling import modified_adjacency, modified_probs_to_energies
 
 import graph as agraph
