@@ -535,7 +535,7 @@ class DataSet(object):
             raise RuntimeError("Groundtruth has already been added")
         self._check_input(gt_path, gt_key)
         self.external_gt_path = gt_path
-        self.external_gt_key = gt_key
+        self.external_gt_key  = gt_key
         self.save()
 
 
@@ -544,7 +544,7 @@ class DataSet(object):
         assert isinstance(gt, np.ndarray)
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
-        gt = _process_gt(gt)
+        gt = self._process_gt(gt)
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
         vigra.writeHDF5(gt, internal_gt_path, 'data', compression = ExperimentSettings().compression)
         self.external_gt_path = internal_gt_path
