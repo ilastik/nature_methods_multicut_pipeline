@@ -432,7 +432,7 @@ class DataSet(object):
         self.shape = raw.shape
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
         internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
-        vigra.writeHDF5(internal_raw_path, 'data')
+        vigra.writeHDF5(raw, internal_raw_path, 'data')
         self.external_inp_paths.append(internal_raw_path)
         self.external_inp_keys.append('data')
         self.has_raw = True
