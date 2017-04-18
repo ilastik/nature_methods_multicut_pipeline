@@ -654,7 +654,7 @@ def learn_and_predict_lifted_rf(
             with_defects)
 
     print "Start prediction lifted random forest"
-    p_test = rf.predictProbabilities(features_test.astype('float32'))[:,1]
+    p_test = rf.predict_probabilities(features_test.astype('float32'))[:,1]
     if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 

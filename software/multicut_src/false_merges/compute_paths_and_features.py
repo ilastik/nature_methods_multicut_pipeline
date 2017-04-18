@@ -3,20 +3,7 @@ import vigra.graphs as graphs
 import numpy as np
 from concurrent import futures
 
-# from .. import DataSet
-#from .. import cacher_hdf5
-
-# class FeatureImageParams:
-#
-#     def __init__(self,
-#                  filter_names=["gaussianSmoothing",
-#                                "hessianOfGaussianEigenvalues",
-#                                "laplacianOfGaussian"],
-#                  sigmas=[1.6, 4.2, 8.3]
-#                  ):
-#         self.filter_names = filter_names
-#         self.sigmas=sigmas
-
+from multicut_src import ExperimentSettings
 
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):
@@ -70,21 +57,12 @@ def shortest_paths(indicator,
 
 # convenience function to combine path features
 # TODO code different features with some keys
-def path_feature_aggregator(ds, paths, params):
-    # TODO move all params to exp_params
-    # class Params:
-    #     def __init__(self):
-    #         #TODO use quantiles instead of Max and Min ?!
-    #         self.stats = ["Mean","Variance","Sum","Maximum","Minimum","Kurtosis","Skewness"]
-    #         self.max_threads = 8
-    # params = Params()
-    #
-    anisotropy_factor = params.anisotropy_factor
-
+def path_feature_aggregator(ds, paths):
+    anisotropy_factor = ExperimentSettings().anisotropy_factor
     return np.concatenate([
-        path_features_from_feature_images(ds, 0, paths, anisotropy_factor, params),
-        path_features_from_feature_images(ds, 1, paths, anisotropy_factor, params),
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor, params), # we assume that the distance transform is added as inp_id 2
+        path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
+        path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor), # we assume that the distance transform is added as inp_id 2
         compute_path_lengths(paths, [1.,1.,anisotropy_factor]) ],
         axis = 1)
 
@@ -123,8 +101,7 @@ def path_features_from_feature_images(
         ds,
         inp_id,
         paths,
-        anisotropy_factor,
-        params):
+        anisotropy_factor):
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
@@ -159,7 +136,7 @@ def path_features_from_feature_images(
                 feature_volumes.append(f['data'][roi][...,None])
             else:
                 feature_volumes.append(f['data'][roi])
-    stats = params.feature_stats
+    stats = ExperimentSettings().feature_stats
 
     def extract_features_for_path(path):
 
@@ -198,7 +175,7 @@ def path_features_from_feature_images(
         # we avoid the single threaded i/o in the beginning!
         # it also lessens memory requirements if we have less threads than filters
         # parallel
-        with futures.ThreadPoolExecutor(max_workers = params.n_threads) as executor:
+        with futures.ThreadPoolExecutor(max_workers = ExperimentSettings().n_threads) as executor:
             tasks = []
             for p_id, path in enumerate(paths_in_roi):
                 tasks.append( executor.submit( extract_features_for_path, path) )

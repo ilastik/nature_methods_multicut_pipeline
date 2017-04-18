@@ -90,7 +90,7 @@ class RandomForest(object):
                 n_threads = self.n_threads,
                 max_depth = self.max_depth if self.max_depth is not None else 0)
 
-    def predictProbabilities(self, test_data):
+    def predict_probabilities(self, test_data):
         if use_sklearn:
             return self._predict_sklearn(test_data)
         else:
@@ -100,7 +100,7 @@ class RandomForest(object):
         return self.rf.predict_proba(test_data)
 
     def _predict_vigra(self, test_data):
-        prediction = self.rf.predictProbabilities(test_data, n_threads = n_threads)
+        prediction = self.rf.predict_probabilities(test_data, n_threads = n_threads)
         # normalize the prediction
         prediction /= self.n_trees
         # normalize by the number of trees and remove nans
@@ -633,18 +633,18 @@ def learn_and_predict_rf_from_gt(
     if use_2rfs:
         edge_indications = modified_edge_indications(ds_test, seg_id_test)[:skip_transition] \
                 if (with_defects and ds_test.has_defects) else ds_test.edge_indications(seg_id_test)
-        pmem_xy = rf_xy.predictProbabilities(features_test[edge_indications==1].astype('float32') )[:,1]
-        pmem_z  = rf_z.predictProbabilities(features_test[edge_indications==0].astype('float32') )[:,1]
+        pmem_xy = rf_xy.predict_probabilities(features_test[edge_indications==1].astype('float32') )[:,1]
+        pmem_z  = rf_z.predict_probabilities(features_test[edge_indications==0].astype('float32') )[:,1]
         pmem_test = np.zeros_like(edge_indications, dtype = 'float32')
         pmem_test[edge_indications==1] = pmem_xy
         pmem_test[edge_indications==0] = pmem_z
     else:
         print "Start predicting random forest"
-        pmem_test = rf.predictProbabilities( features_test.astype('float32') )[:,1]
+        pmem_test = rf.predict_probabilities( features_test.astype('float32') )[:,1]
 
     if with_defects and ds_test.has_defects:
         print "Start predicting defect random forest"
-        pmem_skip = rf_defects.predictProbabilities( features_test_skip.astype('float32') )[:,1]
+        pmem_skip = rf_defects.predict_probabilities( features_test_skip.astype('float32') )[:,1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
 
     if ExperimentSettings().rf_cache_folder is not None:
