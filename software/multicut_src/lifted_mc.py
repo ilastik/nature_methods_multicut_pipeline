@@ -655,8 +655,7 @@ def learn_and_predict_lifted_rf(
 
     print "Start prediction lifted random forest"
     p_test = rf.predictProbabilities(
-            features_test.astype('float32'),
-            n_threads = ExperimentSettings().n_threads)[:,1]
+            features_test.astype('float32'))[:,1]
     p_test /= rf.treeCount()
     p_test[np.isnan(p_test)] = .5
     assert not np.isnan(p_test).any(), str(np.isnan(p_test).sum())
