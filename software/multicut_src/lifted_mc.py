@@ -619,6 +619,7 @@ def learn_and_predict_lifted_rf(
     # check if rf is already cached, if we use caching for random forests ( == rf_cache folder is not None )
     # we cache predictions in the ds_train cache folder
     if ExperimentSettings().rf_cache_folder is not None:
+        pred_name = "lifted_prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
         if len(pred_name) >= 256:
             pred_name = str(hash(pred_name[:-3])) + ".h5"
         pred_path = os.path.join(ds_test.cache_folder, pred_name)
