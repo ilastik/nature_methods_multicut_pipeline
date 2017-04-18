@@ -4,6 +4,7 @@ import os
 import cPickle as pickle
 import shutil
 import itertools
+import h5py
 from copy import deepcopy
 
 # relative imports from top level dir
@@ -66,7 +67,10 @@ def extract_paths_from_segmentation(
             # Take only the relevant path pairs
             pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-            paths = shortest_paths(masked_dt, pairs_in, n_threads = ExperimentSettings().n_threads)
+            paths = shortest_paths(masked_dt,
+                    pairs_in,
+                    1)
+                    #n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
 
@@ -78,7 +82,10 @@ def extract_paths_from_segmentation(
 
         # if we cache paths save the results
         if paths_cache_folder is not None:
-            vigra.writeHDF5(all_paths, paths_save_file, 'all_paths')
+            # need to write paths with vlen
+            with h5py.File(paths_save_file) as f:
+                dt = h5py.special_dtype(vlen=np.dtype(all_paths[0].dtype))
+                f.create_dataset('all_paths', data = all_paths, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
 
     return all_paths, paths_to_objs
@@ -137,7 +144,10 @@ def extract_paths_and_labels_from_segmentation(
            # Take only the relevant path pairs
            pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-           paths = shortest_paths(masked_dt, pairs_in, n_threads = ExperimentSettings().n_threads)
+           paths = shortest_paths(masked_dt,
+                   pairs_in,
+                   1)
+                   #n_threads = ExperimentSettings().n_threads)
            # paths is now a list of numpy arrays
            all_paths.extend(paths)
 
@@ -153,13 +163,16 @@ def extract_paths_and_labels_from_segmentation(
         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
         keep_mask = [x is not None for x in all_paths]
         keep_indices = np.where(keep_mask)[0]
-        all_paths = np.array(all_paths)[keep_indices].tolist()
-        paths_to_objs = np.array(paths_to_objs)[keep_indices].tolist()
-        path_classes = np.array(path_classes)[keep_indices].tolist()
+        all_paths = np.array(all_paths)[keep_indices]
+        paths_to_objs = np.array(paths_to_objs)[keep_indices]
+        path_classes = np.array(path_classes)[keep_indices]
 
         # if caching is enabled, write the results to cache
         if paths_cache_folder is not None:
-            vigra.writeHDF5(all_paths, paths_save_file, 'all_paths')
+            # need to write paths with vlen
+            with h5py.File(paths_save_file) as f:
+                dt = h5py.special_dtype(vlen=np.dtype(all_paths[0].dtype))
+                f.create_dataset('all_paths', data = all_paths, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
@@ -167,7 +180,6 @@ def extract_paths_and_labels_from_segmentation(
     return all_paths, paths_to_objs, path_classes, correspondence_list
 
 
-# TODO move all training related stuff here
 # cache the random forest here
 def train_random_forest_for_merges(
         trainsets, # list of datasets with training data
@@ -392,6 +404,7 @@ def sample_and_save_paths_from_lifted_edges(
             paths_obj = shortest_paths(
                 masked_disttransf,
                 uv_ids_paths_min_nh_coords,
+                #1)
                 ExperimentSettings().n_threads)
 
         else:
