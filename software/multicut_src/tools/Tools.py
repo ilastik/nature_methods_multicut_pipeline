@@ -5,7 +5,7 @@ import numpy as np
 from functools import wraps
 from itertools import combinations, product
 
-from .. import ExperimentSettings
+from multicut_src.ExperimentSettings import ExperimentSettings
 
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
