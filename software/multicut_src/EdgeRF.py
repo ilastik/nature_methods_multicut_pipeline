@@ -97,7 +97,6 @@ class RandomForest(object):
             return self._predict_vigra(test_data)
 
     def _predict_sklearn(self, test_data):
-        print test_data.shape
         return self.rf.predict_proba(test_data)
 
     def _predict_vigra(self, test_data):
