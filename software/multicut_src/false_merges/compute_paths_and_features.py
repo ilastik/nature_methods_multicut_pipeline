@@ -3,7 +3,7 @@ import vigra.graphs as graphs
 import numpy as np
 from concurrent import futures
 
-from multicut_src import ExperimentSettings
+from ..ExperimentSettings import ExperimentSettings
 
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):

@@ -1,18 +1,3 @@
-from compute_paths_and_features import shortest_paths, distance_transform
-from multicut_src import probs_to_energies
-from multicut_src import remove_small_segments
-from multicut_src import compute_and_save_long_range_nh, optimizeLifted
-from multicut_src import compute_and_save_lifted_nh
-from multicut_src import learn_and_predict_rf_from_gt
-from multicut_src import ExperimentSettings
-from multicut_src import find_matching_row_indices
-from multicut_src import RandomForest
-# from find_false_merges_src import path_features_from_feature_images
-# from find_false_merges_src import path_classification
-from compute_paths_and_features import path_feature_aggregator
-from multicut_src.tools import cache_name
-from compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
-
 import numpy as np
 import vigra
 import os
@@ -20,6 +5,18 @@ import cPickle as pickle
 import shutil
 import itertools
 from copy import deepcopy
+
+# relative imports from top level dir
+from ..MCSolverImpl   import probs_to_energies
+from ..Postprocessing import remove_small_segments
+from ..lifted_mc import compute_and_save_long_range_nh, optimizeLifted, compute_and_save_lifted_nh
+from ..EdgeRF import RandomForest
+from ..ExperimentSettings import ExperimentSettings
+from ..tools import find_matching_row_indices
+
+# imports from this dir
+from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator
+from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
 
 
 def extract_paths_from_segmentation(
@@ -69,7 +66,7 @@ def extract_paths_from_segmentation(
             # Take only the relevant path pairs
             pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-            paths = shortest_paths(masked_dt, pairs_in, n_threads = 32)
+            paths = shortest_paths(masked_dt, pairs_in, n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
 
@@ -115,7 +112,7 @@ def extract_paths_and_labels_from_segmentation(
     # otherwise compute paths
     else:
         assert seg.shape == gt.shape
-        dt = ds.inp_id(ds.n_inp-1) # we assume that the last input is the distance transform
+        dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
         # TODO parallelize this function !
@@ -128,7 +125,7 @@ def extract_paths_and_labels_from_segmentation(
 
         # Invert the distance transform and take penalty power
         dt = np.amax(dt) - dt
-        dt = np.power(dt, 10)
+        dt = np.power(dt, ExperimentSettings().paths_penalty_power)
 
         all_paths = []
         for obj in np.unique(paths_to_objs):
@@ -140,7 +137,7 @@ def extract_paths_and_labels_from_segmentation(
            # Take only the relevant path pairs
            pairs_in = np.array(path_pairs)[np.where(np.array(paths_to_objs) == obj)[0]]
 
-           paths = shortest_paths(masked_dt, pairs_in, n_threads = 32)
+           paths = shortest_paths(masked_dt, pairs_in, n_threads = ExperimentSettings().n_threads)
            # paths is now a list of numpy arrays
            all_paths.extend(paths)
 
@@ -190,7 +187,7 @@ def train_random_forest_for_merges(
     ) # TODO more meaningful save name
 
     # check if rf is already cached
-    if RandomForest.is_cached(rf_save_path, 'rf'):
+    if RandomForest.is_cached(rf_save_path):
         print "Loading rf from:", rf_save_path
         rf = RandomForest.load_from_file(rf_save_path, 'rf', ExperimentSettings().n_threads)
 
@@ -214,7 +211,7 @@ def train_random_forest_for_merges(
             gt = current_ds.gt()
             # add a fake distance transform
             # we need this to safely replace this with the actual distance transforms later
-            current_ds.add_input_from_data(np.zeros_like(gt.shape))
+            current_ds.add_input_from_data(np.zeros_like(gt, dtype = 'float32'))
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
             # multiple mc segmentations
@@ -553,7 +550,7 @@ def resolve_merges_with_lifted_edges(
         #    pickle.dump(features, f)
 
         # compute the lifted weights from rf probabilities
-        # FIXME TODO - I am not caching this for now -> should not be performance relevant
+        # FIXME TODO - not caching this for now -> should not be performance relevant
         lifted_path_weights = path_rf.predict_proba(features)[:,1]
 
         # Class 1: contain a merge

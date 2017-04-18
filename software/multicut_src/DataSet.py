@@ -222,12 +222,13 @@ class DataSet(object):
 
     def clear_filters(self, inp_id):
         filter_folder = os.path.join(self.cache_folder, 'filters')
-        for sub_folder in os.listdir(filter_folder):
-            subsub = os.path.join(filter_folder, sub_folder)
-            # This will only work for inp_ids <= 9
-            for inp_folder in os.listdir(subsub):
-                if inp_folder[-1] == inp_id:
-                    shutil.rmtree(os.path.join(subsub, inp_folder))
+        if os.path.exists(filter_folder):
+            for sub_folder in os.listdir(filter_folder):
+                subsub = os.path.join(filter_folder, sub_folder)
+                # This will only work for inp_ids <= 9
+                for inp_folder in os.listdir(subsub):
+                    if inp_folder[-1] == inp_id:
+                        shutil.rmtree(os.path.join(subsub, inp_folder))
 
     #
     # replace input data that was already added
@@ -452,7 +453,7 @@ class DataSet(object):
         assert isinstance(pixmap, np.ndarray)
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        assert pixmap.shape[:3] == self.shape
+        assert pixmap.shape[:3] == self.shape, "%s, %s" % (str(pixmap.shape), str(self.shape))
         internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
         vigra.writeHDF5(pixmap, internal_inp_path, 'data')
         self.external_inp_paths.append(internal_inp_path)
