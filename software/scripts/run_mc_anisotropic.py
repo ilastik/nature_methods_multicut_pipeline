@@ -186,11 +186,11 @@ def main():
     ds_test  = load_dataset(cache_folder, "ds_test")
 
     # experiment settings
-    ExperimentSettings().set_rfcache( os.path.join(cache_folder, "rf_cache") )
-    ExperimentSettings().set_use2d(True)
-    ExperimentSettings().set_fuzzy_learning(True)
-    ExperimentSettings().set_ntrees(500)
-    ExperimentSettings().set_lifted_neighborhood(3)
+    ExperimentSettings().rf_cache_folder = os.path.join(cache_folder, "rf_cache")
+    ExperimentSettings().use2d = True
+    ExperimentSettings().fuzzy_learning = True
+    ExperimentSettings().n_trees = 500
+    ExperimentSettings().lifted_neighborhood = 3
 
     # features used
     local_feats_list  = ("raw", "prob", "reg", "topo")
