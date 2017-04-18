@@ -15,7 +15,8 @@ def distance_transform(segmentation, anisotropy):
 
 
 # TODO take nifty shortest paths and parallelize
-def shortest_paths(indicator,
+def shortest_paths(
+        indicator,
         pairs,
         n_threads = 1):
     """
@@ -24,7 +25,7 @@ def shortest_paths(indicator,
     :return:
     """
 
-    gridgr = graphs.gridGraph(indicator.shape)
+    gridgr         = graphs.gridGraph(indicator.shape)
     gridgr_edgeind = graphs.implicitMeanEdgeMap(gridgr, indicator.astype('float32'))
 
     def single_path(pair, instance = None):

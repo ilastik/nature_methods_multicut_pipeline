@@ -69,8 +69,8 @@ def extract_paths_from_segmentation(
 
             paths = shortest_paths(masked_dt,
                     pairs_in,
-                    1)
-                    #n_threads = ExperimentSettings().n_threads)
+                    #1)
+                    n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
 
@@ -146,8 +146,8 @@ def extract_paths_and_labels_from_segmentation(
 
            paths = shortest_paths(masked_dt,
                    pairs_in,
-                   1)
-                   #n_threads = ExperimentSettings().n_threads)
+                   #1)
+                   n_threads = ExperimentSettings().n_threads)
            # paths is now a list of numpy arrays
            all_paths.extend(paths)
 
