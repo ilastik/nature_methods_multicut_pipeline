@@ -23,9 +23,10 @@ class Cube(object):
                 {0 : 0, 1 : 3, 2 : 2, 3 : 1}, # face 0 -> lower z face
                 {0 : 0, 4 : 1, 7 : 3, 8 : 2}, # face 1 -> front y face
                 {1 : 0, 6 : 1, 7 : 3, 9 : 2}, # face 2 -> right x face
-                {2 : 0, 5 : 1, 6 : 3, 10: 2},# face 3 -> back y face
-                {3 : 0, 4 : 3, 5 : 1, 11: 2},# face 4 -> left x face
-                {8 : 0, 9 : 3, 10: 2, 11: 1}# face 5 -> upper z face,
+                {2 : 0, 5 : 1, 6 : 3, 10: 2}, # face 3 -> back y face
+                {3 : 0, 4 : 3, 5 : 1, 11: 2}, # face 4 -> left x face
+                {8 : 0, 9 : 3, 10: 2, 11: 1}  # face 5 -> upper z face,
+                ]
         self._faces_to_lines = [
                 [0,1], # line 0
                 [0,2], # line 1
@@ -102,12 +103,10 @@ class Cube(object):
             return [centr + (extra_coord_val,) for centr in centroids]
 
 
-# TODO if this is still performance critical, we can parallelize this
+# FIXME merge along lines == True not tested yet
 def compute_border_contacts(seg, merge_along_lines = False):
-    assert seg.ndim == 3
 
-    shape = seg.shape
-    cube = Cube(shape)
+    cube = Cube(seg.shape)
     min_size = 4*4 # removing smaller then 4*4 pixel segmentes -> TODO maybe this should be exposed ?!
 
     centroid_offset = 0
@@ -141,8 +140,13 @@ def compute_border_contacts(seg, merge_along_lines = False):
         # if we merge the centroids along the lines of the cube later,
         # we now assign each line pixel to its corresponding centroid id
         if merge_along_lines:
+
+            # match the relabeled segments to centroids
             other_labels_to_centroid_ids = {seg_labeled[centr] : i + centroid_offset for i, centr in enumerate(centroids)}
             line_id_to_centroid_lines = {}
+
+            # for each line adjacent to this face, make an array that records the centroid id for each
+            # pixel on the line
             for line_ids in cube.line_ids_from_face_id(face_id):
                 line = cube.line_slice_from_face_id(face_id, line_id)
                 seg_line = seg_labeled[line]
@@ -158,7 +162,6 @@ def compute_border_contacts(seg, merge_along_lines = False):
         centroid_list.extend( cube.centroids_face_to_vol(centroids, face_id) )
         centroid_offset += len(centroids)
 
-
     # FIXME this neglects some edge cases:
     # - large segments that are in more than 2 lines
 
@@ -166,19 +169,26 @@ def compute_border_contacts(seg, merge_along_lines = False):
     # merge the centroids of the adjacent labels, to avoid duplicate centroids of 'bend-over' segments
     ignore_centroid_ids = []
     if merge_along_lines:
+
+        # for each line, get the adjacent faces and the 2 lines with centroid ids
+        # discard the smaller of the 2 centroids sharing a line pixel if the labels agree
         for line_id in range(cube.n_lines):
             face_id1, face_id2 = cube.face_ids_from_line_id(line_id)
             line1 = centroid_id_lines[face_id1][line_id]
             line2 = centroid_id_lines[face_id2][line_id]
             assert len(line1) == len(line2)
-            have_merged = []
+
+            visited = []
+            # iterate over the line and discard one of the centroids of 2 centroids with same id
             for ii, cent_id1 in enumerate(line1):
                 cent_id2 = line2[ii]
-                if not (cent_id1, cent_id2) in have_merged and cent_id1 != -1 and cent_id2 != -1:
+                if not (cent_id1, cent_id2) in visited and cent_id1 != -1 and cent_id2 != -1:
+
                     if centroid_ids_to_labels[cent_id1] == centroid_ids_to_labels[cent_id2]:
-                        size_1, size2 = centroid_sizes[cent_id1], centroid_sizes[cent_id2]
-                        ignore_centroid_ids.append(cent_id1 if size_1 < size2 else cent_id2)
-                    have_merged.append(cent_id1, cent_id2)
+                        size1, size2 = centroid_sizes[cent_id1], centroid_sizes[cent_id2]
+                        ignore_centroid_ids.append(cent_id1 if size1 < size2 else cent_id2)
+
+                    visited.append( (cent_id1, cent_id2) )
 
     # now we invert the centroids to labels, potentially leaving out ignore ids
     labels_to_centroids = {}

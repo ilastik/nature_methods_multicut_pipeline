@@ -83,10 +83,11 @@ def extract_paths_from_segmentation(
 
         # if we cache paths save the results
         if paths_cache_folder is not None:
-            # need to write paths with vlen
+            # need to write paths with vlen and flatten before writing to properly save this
+            all_paths = np.array([pp.flatten() for pp in all_paths])
             with h5py.File(paths_save_file) as f:
-                dt = h5py.special_dtype(vlen=np.dtype(all_paths[0].dtype))
-                f.create_dataset('all_paths', data = all_paths, dtype = dt)
+                dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+                f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
 
     return all_paths, paths_to_objs
@@ -126,20 +127,18 @@ def extract_paths_and_labels_from_segmentation(
 
         # Compute path end pairs
         border_contacts = compute_border_contacts(seg, False)
-        print "Have border contacts"
         # This is supposed to only return those pairs that will be used for path computation
         # TODO: Throw out some under certain conditions (see also within function)
         path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs_and_labels(
             border_contacts, gt, correspondence_list
         )
-        print "Have paths"
 
         # Invert the distance transform and take penalty power
         dt = np.amax(dt) - dt
         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
 
         all_paths = []
-        for obj in np.unique(paths_to_objs)[:5]:
+        for obj in np.unique(paths_to_objs):#[:4]:
 
             # Mask distance transform to current object
             # TODO use a mask in dijkstra instead
@@ -151,10 +150,11 @@ def extract_paths_and_labels_from_segmentation(
 
             paths = shortest_paths(masked_dt,
                     pairs_in,
-                    1)
-                    #n_threads = ExperimentSettings().n_threads)
+                    #1)
+                    n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
+
 
         # TODO: Here we have to ensure that every path is actually computed
         # TODO:  --> Throw not computed paths out of the lists
@@ -173,10 +173,11 @@ def extract_paths_and_labels_from_segmentation(
 
         # if caching is enabled, write the results to cache
         if paths_cache_folder is not None:
-            # need to write paths with vlen
+            # need to write paths with vlen and flatten before writing to properly save this
+            all_paths_save = np.array([pp.flatten() for pp in all_paths])
             with h5py.File(paths_save_file) as f:
-                dt = h5py.special_dtype(vlen=np.dtype(all_paths[0].dtype))
-                f.create_dataset('all_paths', data = all_paths, dtype = dt)
+                dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+                f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
