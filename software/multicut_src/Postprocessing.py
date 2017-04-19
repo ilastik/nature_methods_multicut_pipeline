@@ -10,13 +10,16 @@ from tools import replace_from_dict
 # TODO rethink the relabeling here, in which cases do we want it, can it hurt?
 def remove_small_segments(segmentation,
         size_thresh = 10000,
-        relabel = True):
+        relabel = True,
+        return_sizes = False):
 
     # Make sure all objects have their individual label
     # NOTE this is very dangerous for sample C (black slices in groundtruth)
     if relabel:
-        segmentation = vigra.analysis.labelVolumeWithBackground(
-            segmentation.astype('uint32'), neighborhood=6, background_value=0)
+        segmentation = vigra.analysis.labelMultiArrayWithBackground(
+            segmentation.astype('uint32'),
+            background_value = 0,
+            neighborhood = 'indirect')
 
     # Get the unique values of the segmentation including counts
     uniq, counts = np.unique(segmentation, return_counts=True)
@@ -35,7 +38,11 @@ def remove_small_segments(segmentation,
     else:
         obj_dict = {obj_id : 0 if obj_id in small_objs else obj_id for obj_id in uniq}
     segmentation = replace_from_dict(segmentation, obj_dict)
-    return segmentation
+
+    if return_sizes:
+        return segmentation, counts[counts >= size_thresh]
+    else:
+        return segmentation
 
 
 # merge segments that are smaller than min_seg_size

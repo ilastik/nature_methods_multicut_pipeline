@@ -47,8 +47,8 @@ def extract_paths_from_segmentation(
         dt = ds.inp_id(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
-        # TODO parallelize this function !
-        border_contacts = compute_border_contacts(seg, dt)
+        border_contacts = compute_border_contacts(seg, False)
+        print "Have border contacts"
         path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
         # Sort the paths_to_objs by size (not doing that leads to a possible bug in the next loop)
         order = np.argsort(paths_to_objs)
@@ -125,19 +125,21 @@ def extract_paths_and_labels_from_segmentation(
         dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
-        border_contacts = compute_border_contacts(seg, dt)
+        border_contacts = compute_border_contacts(seg, False)
+        print "Have border contacts"
         # This is supposed to only return those pairs that will be used for path computation
         # TODO: Throw out some under certain conditions (see also within function)
         path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs_and_labels(
             border_contacts, gt, correspondence_list
         )
+        print "Have paths"
 
         # Invert the distance transform and take penalty power
         dt = np.amax(dt) - dt
         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
 
         all_paths = []
-        for obj in np.unique(paths_to_objs):
+        for obj in np.unique(paths_to_objs)[:5]:
 
             # Mask distance transform to current object
             # TODO use a mask in dijkstra instead

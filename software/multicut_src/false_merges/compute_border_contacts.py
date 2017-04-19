@@ -2,29 +2,210 @@ import numpy as np
 import vigra
 import itertools
 
+from ..Postprocessing import remove_small_segments
 
-# TODO this could probably be done more elegantly
-def get_face_slice(dim, is_front):
-    assert dim < 3
-    select = 0 if is_front else -1
-    if dim == 0:
-        return np.s_[select,:,:]
-    elif dim == 1:
-        return np.s_[:,select,:]
-    elif dim == 2:
-        return np.s_[:,:,select]
+#######################
+# new border extraction
+#######################
+
+# for face and line numberings in cube, see:
+# https://drive.google.com/file/d/0B4_sYa95eLJ1VFZ5VjJtQlhXcEE/view?usp=sharing
+class Cube(object):
+
+    def __init__(self, shape):
+        assert len(shape) == 3
+        self.shape = shape
+        self.n_faces = 6
+        self.n_lines = 12
+        # list of dicts matching lines belonging to relative positions in faces
+        # 0 -> front in first dim, 1 -> front in second dim, 3 -> front in second dim, 4 -> back in second dim
+        self._lines_to_faces = [
+                {0 : 0, 1 : 3, 2 : 2, 3 : 1}, # face 0 -> lower z face
+                {0 : 0, 4 : 1, 7 : 3, 8 : 2}, # face 1 -> front y face
+                {1 : 0, 6 : 1, 7 : 3, 9 : 2}, # face 2 -> right x face
+                {2 : 0, 5 : 1, 6 : 3, 10: 2},# face 3 -> back y face
+                {3 : 0, 4 : 3, 5 : 1, 11: 2},# face 4 -> left x face
+                {8 : 0, 9 : 3, 10: 2, 11: 1}# face 5 -> upper z face,
+        self._faces_to_lines = [
+                [0,1], # line 0
+                [0,2], # line 1
+                [0,3], # line 2
+                [0,4], # line 3
+                [1,4], # line 4
+                [3,4], # line 5
+                [2,3], # line 6
+                [1,2], # line 7
+                [1,5], # line 8
+                [2,5], # line 9
+                [3,5], # line 10
+                [4,5]  # line 11
+                ]
+
+    def slice_from_line_id(self, line_id):
+        assert line_id < self.n_lines
+        # dim -> the dimension in which the coordinates varies
+        dim = 0 if line_id in (0,2,8,10) else (1 if line_id in (1,3,9,11) else 2)
+        # select 1 -> determines whether the first fixed coordinate is at the origin or at the end
+        select1 = 0 if line_id in (0,3,4,5,8,11) else -1
+        # select 2 -> determines whether the second fixed coordinate is at the origin or at the end
+        select2 = 0 if line_id in (0,1,2,3,4,7) else -1
+        if dim == 0:
+            return np.s_[:,select1,select2]
+        elif dim == 1:
+            return np.s_[select1,:,select2]
+        elif dim == 2:
+            return np.s_[select1,select2,:]
+
+    def slice_from_face_id(self, face_id):
+        assert face_id < self.n_faces
+        # dim -> the dimension in which the face is fixed
+        dim = 0 if face_id in (2,4) else (1 if face_id in (1,3) else 2)
+        # select -> determines whether dim is fixed at origin or at the end
+        select = 0 if face_id in (0,1,4) else -1
+        if dim == 0:
+            return np.s_[select,:,:]
+        elif dim == 1:
+            return np.s_[:,select,:]
+        elif dim == 2:
+            return np.s_[:,:,select]
+
+    def line_ids_from_face_id(self, face_id):
+        assert face_id < self.n_faces
+        return self._lines_to_faces[face_id].keys()
+
+    def face_ids_from_line_id(self, line_id):
+        assert line_id < self.n_lines
+        return self._faces_to_lines[line_id]
+
+    def line_slice_from_face_id(self, face_id, line_id):
+        assert face_id < self.n_faces
+        assert line_id in self._lines_to_faces[face_id].keys()
+        i = self._lines_to_faces[face_id][line_id]
+        # select -> determines whether line is at front or back of slice
+        select = 0 if i > 1 else -1
+        if i % 2 == 0:
+            return np.s_[:,select]
+        else:
+            return np.s_[select,:]
+
+    def centroids_face_to_vol(self, centroids, face_id):
+        assert face_id < self.n_faces
+        # dim -> the dimension in which the face is fixed
+        dim = 0 if face_id in (2,4) else (1 if face_id in (1,3) else 2)
+        # select -> determines whether dim is fixed at origin or at the end
+        extra_coord_val = 0 if face_id in (0,1,4) else self.shape[dim] - 1
+        if dim == 0:
+            return [(extra_coord_val,) + centr for centr in centroids]
+        elif dim == 1:
+            return [(centr[0], extra_coord_val, centr[1]) for centr in centroids]
+        elif dim == 2:
+            return [centr + (extra_coord_val,) for centr in centroids]
 
 
-def extract_border_contacts(seg):
+# TODO if this is still performance critical, we can parallelize this
+def compute_border_contacts(seg, merge_along_lines = False):
     assert seg.ndim == 3
 
-    # iterate over the faces
-    for dd in range(seg.ndim):
-        for is_front in (False, True):
-            # get the slice for this face and extract the corresponding labels
-            face = get_face_slice(dd, is_front)
-            labels_face = np.unique(seg[face])
-            # TODO for find the centroids for all unique labels in this face
+    shape = seg.shape
+    cube = Cube(shape)
+    min_size = 4*4 # removing smaller then 4*4 pixel segmentes -> TODO maybe this should be exposed ?!
+
+    centroid_offset = 0
+    centroid_list  = []
+    centroid_sizes = []
+    centroid_ids_to_labels = {}
+
+    centroid_id_lines = []
+
+    for face_id in range(cube.n_faces):
+
+        # get the slice for this face and extract the corresponding labels
+        face = cube.slice_from_face_id(face_id)
+        # find the centroids for all unique labels in this face
+        seg_face = seg[face]
+
+        # relabel and remove small border contacts
+        seg_labeled, seg_sizes =  remove_small_segments(
+                seg_face,
+                size_thresh = min_size,
+                relabel = True,
+                return_sizes = True)
+
+        # get the centroids via vigra eccentricity centers
+        centroids   = vigra.filters.eccentricityCenters(seg_labeled)[1:]
+
+        # associate centroid ids with labels
+        for i, centr in enumerate(centroids):
+            centroid_ids_to_labels[i+centroid_offset] = seg_face[centr]
+
+        # if we merge the centroids along the lines of the cube later,
+        # we now assign each line pixel to its corresponding centroid id
+        if merge_along_lines:
+            other_labels_to_centroid_ids = {seg_labeled[centr] : i + centroid_offset for i, centr in enumerate(centroids)}
+            line_id_to_centroid_lines = {}
+            for line_ids in cube.line_ids_from_face_id(face_id):
+                line = cube.line_slice_from_face_id(face_id, line_id)
+                seg_line = seg_labeled[line]
+                line_to_centroid_ids = np.zeros_like(seg_line, dtype = 'int32')
+                for ii, label in enumerate(seg_line):
+                    line_to_centroid_ids[ii] = other_labels_to_centroid_ids[label] if label != 0 else -1
+                line_ids_to_centroid_lines[line_id] = line_to_centroid_ids
+
+            centroid_id_lines.append(line_ids_to_centroid_lines)
+            centroid_sizes.extend( [ seg_sizes[seg_labeled[centr]] for centr in centroids] )
+
+        # extend centroid list with centroids mapped to global coordinates
+        centroid_list.extend( cube.centroids_face_to_vol(centroids, face_id) )
+        centroid_offset += len(centroids)
+
+
+    # FIXME this neglects some edge cases:
+    # - large segments that are in more than 2 lines
+
+    # if merge_along_lines is True, we iterate over the 12 lines of the cube and
+    # merge the centroids of the adjacent labels, to avoid duplicate centroids of 'bend-over' segments
+    ignore_centroid_ids = []
+    if merge_along_lines:
+        for line_id in range(cube.n_lines):
+            face_id1, face_id2 = cube.face_ids_from_line_id(line_id)
+            line1 = centroid_id_lines[face_id1][line_id]
+            line2 = centroid_id_lines[face_id2][line_id]
+            assert len(line1) == len(line2)
+            have_merged = []
+            for ii, cent_id1 in enumerate(line1):
+                cent_id2 = line2[ii]
+                if not (cent_id1, cent_id2) in have_merged and cent_id1 != -1 and cent_id2 != -1:
+                    if centroid_ids_to_labels[cent_id1] == centroid_ids_to_labels[cent_id2]:
+                        size_1, size2 = centroid_sizes[cent_id1], centroid_sizes[cent_id2]
+                        ignore_centroid_ids.append(cent_id1 if size_1 < size2 else cent_id2)
+                    have_merged.append(cent_id1, cent_id2)
+
+    # now we invert the centroids to labels, potentially leaving out ignore ids
+    labels_to_centroids = {}
+    for centroid_id, label in centroid_ids_to_labels.iteritems():
+        if not centroid_id in ignore_centroid_ids:
+            labels_to_centroids.setdefault(label, []).append(centroid_list[centroid_id])
+
+    # if we still have a zero-label, remove it
+    if 0 in labels_to_centroids:
+        del labels_to_centroids[0]
+
+    # TODO we could directly remove labels with only 1 endpoint here
+
+    # debugging
+    #print
+    #print len(labels_to_centroids)
+    #print
+    #for labs in labels_to_centroids:
+    #    print labs, ":", len(labels_to_centroids[labs])
+    #quit()
+
+    return labels_to_centroids
+
+
+#######################
+# old border extraction
+#######################
 
 
 # FIXME AAAAAAHHH THE HORROR
@@ -228,7 +409,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
     return rtrn_centers
 
 
-def compute_border_contacts(
+def compute_border_contacts_old(
         segmentation,
         disttransf
 ):
@@ -240,6 +421,11 @@ def compute_border_contacts(
     centroids = translate_centroids_to_volume(centroids, segmentation.shape)
 
     return centroids
+
+
+####################################
+# extract pairs from border contacts
+####################################
 
 
 # FIXME this seems to be very inefficient
@@ -311,10 +497,7 @@ def compute_path_end_pairs_and_labels(
     return np.array(pairs), np.array(labels), np.array(classes), np.array(gt_labels), correspondence_list.tolist()
 
 
-# FIXME this seems to be very inefficient
-def compute_path_end_pairs(
-        border_contacts,
-):
+def compute_path_end_pairs(border_contacts):
 
     # Convert border_contacts to path_end_pairs
     pairs = []
@@ -329,14 +512,3 @@ def compute_path_end_pairs(
             pairs.extend(ps)
             labels.extend([lbl] * len(ps))
     return pairs, labels
-
-
-# def find_border_contacts_arr(segmentation, disttransf, tkey='bc', debug=False):
-#
-#     data = IPL()
-#     data[tkey] = segmentation
-#     data['disttransf'][tkey] = disttransf
-#
-#     find_border_contacts(data, (tkey,), 'rtrn', debug=debug)
-#
-#     return data['rtrn']
