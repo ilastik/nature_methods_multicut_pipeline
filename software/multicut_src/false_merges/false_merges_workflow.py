@@ -44,7 +44,7 @@ def extract_paths_from_segmentation(
     else:
         # TODO we don't remove small objects for now, because this would relabel the segmentation, which we don't want in this case
         seg = vigra.readHDF5(seg_path, key)
-        dt = ds.inp_id(ds.n_inp-1) # we assume that the last input is the distance transform
+        dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
         border_contacts = compute_border_contacts(seg, False)
@@ -52,8 +52,8 @@ def extract_paths_from_segmentation(
         path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
         # Sort the paths_to_objs by size (not doing that leads to a possible bug in the next loop)
         order = np.argsort(paths_to_objs)
-        paths_to_objs = np.array(paths_to_objs)[order].tolist()
-        path_pairs = np.array(path_pairs)[order].tolist()
+        paths_to_objs = np.array(paths_to_objs)[order]
+        path_pairs = np.array(path_pairs)[order]
 
         # Invert the distance transform and take penalty power
         dt = np.amax(dt) - dt
@@ -71,7 +71,6 @@ def extract_paths_from_segmentation(
 
             paths = shortest_paths(masked_dt,
                     pairs_in,
-                    #1)
                     n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
@@ -84,7 +83,7 @@ def extract_paths_from_segmentation(
         # if we cache paths save the results
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
-            all_paths = np.array([pp.flatten() for pp in all_paths])
+            all_paths_save = np.array([pp.flatten() for pp in all_paths])
             with h5py.File(paths_save_file) as f:
                 dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                 f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
@@ -138,7 +137,7 @@ def extract_paths_and_labels_from_segmentation(
         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
 
         all_paths = []
-        for obj in np.unique(paths_to_objs):#[:4]:
+        for obj in np.unique(paths_to_objs):
 
             # Mask distance transform to current object
             # TODO use a mask in dijkstra instead
@@ -150,7 +149,6 @@ def extract_paths_and_labels_from_segmentation(
 
             paths = shortest_paths(masked_dt,
                     pairs_in,
-                    #1)
                     n_threads = ExperimentSettings().n_threads)
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
