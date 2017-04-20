@@ -450,12 +450,10 @@ def combine_paths(
             duplicate_mask[matches[:,1]] = False
             extra_path_uvs = extra_path_uvs[duplicate_mask]
             extra_paths = extra_paths[duplicate_mask]
-        return np.concatenate([paths_obj, extra_paths])
-        return np.concatenate([uv_ids_paths_min_nh, extra_path_uvs], axis = 0)
+        return np.concatenate([paths_obj, extra_paths]), np.concatenate([uv_ids_paths_min_nh, extra_path_uvs], axis = 0)
 
     else:
-        return extra_paths
-        return extra_path_uvs
+        return extra_paths, extra_path_uvs
 
 
 # resolve each potential false merge individually with lifted edges

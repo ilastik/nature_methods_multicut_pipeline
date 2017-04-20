@@ -1,3 +1,5 @@
+#! /bin/bash
+
 # download the data
 wget http://files.ilastik.org/multicut/NaturePaperDataUpl.zip
 
@@ -5,9 +7,10 @@ wget http://files.ilastik.org/multicut/NaturePaperDataUpl.zip
 unzip NaturePaperDataUpl.zip
 rm NaturePaperDataUpl.zip
 
+cwd=$(pwd)
 # make cache directories
-mkdir cache
-cd cache
+mkdir $1
+cd $1
 mkdir cache_isbi
 mkdir cache_snemi
-cd ..
+cd $cwd

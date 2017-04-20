@@ -1,3 +1,3 @@
-./prepare_tests.sh
-./run_tests.sh
-./clean_up.sh
+./prepare_tests.sh $1
+./run_tests.sh $1
+./clean_up.sh $1
