@@ -364,7 +364,7 @@ def sample_and_save_paths_from_lifted_edges(
 
     # check if the cache already exists
     if os.path.exists(save_path): # if True, load paths from file
-        paths_objs = vigra.readHDF5(save_path, 'paths')
+        paths_obj = vigra.readHDF5(save_path, 'paths')
         uv_ids_paths_min_nh = vigra.readHDF5(save_path, 'uv_ids')
 
     else: # if False, compute the paths
@@ -379,6 +379,7 @@ def sample_and_save_paths_from_lifted_edges(
         )
 
         if uv_ids_paths_min_nh.any():
+            print "Here"
             uv_ids_paths_min_nh = np.sort(uv_ids_paths_min_nh_local, axis = 1)
 
             # -------------------------------------------------------------
@@ -399,20 +400,20 @@ def sample_and_save_paths_from_lifted_edges(
             paths_obj = shortest_paths(
                 masked_disttransf,
                 uv_ids_paths_min_nh_coords,
-                #1)
                 ExperimentSettings().n_threads)
 
         else:
+            print "There"
             paths_obj = []
 
         # cache the paths if we have caching activated
         if cache_folder is not None:
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
-            vigra.writeHDF5(paths_objs, save_path, 'paths')
+            vigra.writeHDF5(paths_obj, save_path, 'paths')
             vigra.writeHDF5(uv_ids_paths_min_nh, save_path, 'uv_ids')
 
-    return paths_objs, uv_ids_min_nh
+    return paths_obj, uv_ids_paths_min_nh
 
 
 # combine sampled and extra paths
@@ -542,10 +543,13 @@ def resolve_merges_with_lifted_edges(
         # add the paths that were initially classified
         paths_obj, uv_ids_paths_min_nh = combine_paths(
             paths_obj,
-            false_paths[merge_id], # <- initial paths
+            np.array(false_paths[merge_id]), # <- initial paths
             uv_ids_paths_min_nh,
             seg,
             mapping)
+
+        if not paths_obj.size:
+            continue
 
         # Compute the path features
         features = path_feature_aggregator(ds, paths_obj)
@@ -557,7 +561,7 @@ def resolve_merges_with_lifted_edges(
 
         # compute the lifted weights from rf probabilities
         # FIXME TODO - not caching this for now -> should not be performance relevant
-        lifted_path_weights = path_rf.predict_proba(features)[:,1]
+        lifted_path_weights = path_rf.predict_probabilities(features)[:,1]
 
         # Class 1: contain a merge
         # Class 0: don't contain a merge
@@ -576,14 +580,18 @@ def resolve_merges_with_lifted_edges(
         mc_weights /= mc_weights.shape[0]
 
         # Concatenate all lifted weights and edges
-        lifted_weights = np.concatenate(
-            (lifted_path_weights, lifted_weights),
-            axis=0
-        )
-        uv_ids_lifted_nh_total = np.concatenate(
-            (uv_ids_paths_min_nh_local, uv_local_lifted),
-            axis=0
-        )
+        if lifted_weights.size: # only concatenate if we have lifted edges from sampling
+            lifted_weights = np.concatenate(
+                (lifted_path_weights, lifted_weights),
+                axis=0
+            )
+            uv_ids_lifted_nh_total = np.concatenate(
+                (uv_ids_paths_min_nh, uv_local_lifted),
+                axis=0
+            )
+        else:
+            lifted_weights = lifted_path_weights
+            uv_ids_lifted_nh_total = uv_ids_paths_min_nh
 
         resolved_nodes = optimizeLifted(
             uv_local,
@@ -663,7 +671,7 @@ def resolve_merges_with_lifted_edges_global(
         # add the paths that were initially classified
         paths_obj, uv_ids_paths_min_nh = combine_paths(
             paths_obj,
-            false_paths[merge_id], # <- initial paths
+            np.array(false_paths[merge_id]), # <- initial paths
             uv_ids_paths_min_nh,
             seg)
 
@@ -679,7 +687,7 @@ def resolve_merges_with_lifted_edges_global(
         #    pickle.dump(features, f)
 
         # compute the lifted weights from rf probabilities
-        lifted_path_weights = path_rf.predict_proba(features)[:,1]
+        lifted_path_weights = path_rf.predict_probabilities(features)[:,1]
 
         # Class 1: contain a merge
         # Class 0: don't contain a merge
