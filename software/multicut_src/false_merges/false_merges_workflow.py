@@ -47,8 +47,10 @@ def extract_paths_from_segmentation(
         dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
-        border_contacts = compute_border_contacts(seg, False)
-        print "Have border contacts"
+        # TODO debug the new border contact computation, which is much faster
+        #border_contacts = compute_border_contacts(seg, False)
+        border_contacts = compute_border_contacts_old(seg, dt)
+
         path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
         # Sort the paths_to_objs by size (not doing that leads to a possible bug in the next loop)
         order = np.argsort(paths_to_objs)
@@ -125,7 +127,10 @@ def extract_paths_and_labels_from_segmentation(
         dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
 
         # Compute path end pairs
-        border_contacts = compute_border_contacts(seg, False)
+        # TODO debug the new border contact computation, which is much faster
+        #border_contacts = compute_border_contacts(seg, False)
+        border_contacts = compute_border_contacts_old(seg, dt)
+
         # This is supposed to only return those pairs that will be used for path computation
         # TODO: Throw out some under certain conditions (see also within function)
         path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs_and_labels(
