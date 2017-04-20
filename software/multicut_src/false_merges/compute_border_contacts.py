@@ -200,7 +200,10 @@ def compute_border_contacts(seg, merge_along_lines = False):
     if 0 in labels_to_centroids:
         del labels_to_centroids[0]
 
-    # TODO we could directly remove labels with only 1 endpoint here
+    # remove paths with only 1 end point
+    for label in labels_to_centroids:
+        if len(labels_to_centroids[label]) == 1:
+            del labels[label]
 
     # debugging
     #print
@@ -211,6 +214,30 @@ def compute_border_contacts(seg, merge_along_lines = False):
     #quit()
 
     return labels_to_centroids
+
+
+##############################
+# extract paths from skeletons
+# (using skeletopyze)
+##############################
+
+def paths_from_skeletons(seg, labels):
+    import skeletopyze
+
+    params = skeletopyze.Parameters()
+    def _to_skeleton(label_id):
+        label_mask = seg.copy()
+        label_mask[seg != label_id] = 0
+        skeleton = skeletopyze.get_skeleton_graph(seg, params)
+
+    def _paths_from_skeleton(label_id):
+        skeleton = _to_skeleton(label_id)
+        # TODO extract all paths from skeletons
+
+    # TODO if this is performance critical, parallelize
+    # (dunno if skeletopyze lifts the gil...)
+    labels_to_paths = {label_id : _paths_from_skeleton(label_id)}
+    return labels_to_paths
 
 
 #######################
@@ -521,4 +548,4 @@ def compute_path_end_pairs(border_contacts):
             # ps = [ps[0]]
             pairs.extend(ps)
             labels.extend([lbl] * len(ps))
-    return pairs, labels
+    return np.path(pairs), np.path(labels)
