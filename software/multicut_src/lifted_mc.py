@@ -14,7 +14,7 @@ from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
 
-from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features
+from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features, modified_edge_indications, get_ignore_edge_ids
 
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:

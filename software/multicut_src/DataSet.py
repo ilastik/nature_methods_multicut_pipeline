@@ -15,7 +15,7 @@ from ExperimentSettings import ExperimentSettings
 # ds_name = None: -> called with cache folder and loads from there
 # ds_name = string -> called with meta_folder and descends into cache folder
 def load_dataset(meta_folder, ds_name = None):
-    assert os.path.exists(meta_folder)
+    assert os.path.exists(meta_folder), meta_folder
     if ds_name is None:
         cache_folder = meta_folder
     else:
