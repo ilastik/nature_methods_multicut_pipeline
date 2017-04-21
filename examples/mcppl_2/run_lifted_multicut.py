@@ -23,8 +23,8 @@ def run_lmc(ds_train_name, ds_test_name, save_path):
     # this factor determines the weighting of lifted vs. local edge costs
     gamma = 2.
 
-    ds_train = load_(meta_folder, ds_train_name)
-    ds_test  = load_(meta_folder, ds_test_name)
+    ds_train = load_dataset(meta_folder, ds_train_name)
+    ds_test  = load_dataset(meta_folder, ds_test_name)
 
     # use this for running the mc without defected slices
     mc_nodes, _, _, _ = lifted_multicut_workflow(

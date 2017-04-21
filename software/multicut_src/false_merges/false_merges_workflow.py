@@ -244,9 +244,9 @@ def train_random_forest_for_merges(
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
                 dt  = distance_transform(seg, [1., 1., ExperimentSettings().anisotropy_factor])
                 # NOTE IMPORTANT: We assume that the distance transform always has the last inp_id and that a (dummy) dt was already added in the beginning
-                ds.replace_inp_from_data(ds.n_inp - 1, dt, clear_cache = False)
+                current_ds.replace_inp_from_data(current_ds.n_inp - 1, dt, clear_cache = False)
                 # we delete all filters based on the distance transform
-                ds.clear_filters(ds.n_inp - 1)
+                current_ds.clear_filters(current_ds.n_inp - 1)
 
                 # Compute the paths
                 paths, _, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
