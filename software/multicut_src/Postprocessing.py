@@ -2,7 +2,18 @@ import numpy as np
 import vigra
 from concurrent import futures
 
-import nifty
+# if build from sorce and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 from tools import replace_from_dict
 
 
