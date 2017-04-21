@@ -17,7 +17,7 @@ from ..tools import find_matching_row_indices
 
 # imports from this dir
 from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator
-from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts
+from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts_old, compute_border_contacts
 
 
 def extract_paths_from_segmentation(
