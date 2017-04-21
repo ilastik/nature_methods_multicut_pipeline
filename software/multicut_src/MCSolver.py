@@ -9,10 +9,8 @@ from ExperimentSettings import ExperimentSettings
 
 from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves
 from EdgeRF import learn_and_predict_rf_from_gt
-from lifted_mc import learn_and_predict_lifted_rf, optimizeLifted, lifted_probs_to_energies
+from lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs_to_energies
 from defect_handling import modified_adjacency, modified_probs_to_energies
-
-import graph as agraph
 
 def _get_feat_str(feature_list):
     feat_str = ""
@@ -216,21 +214,16 @@ def lifted_multicut_workflow(
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
     edge_energies_lifted /= edge_energies_lifted.shape[0]
-
-    print "build lifted model"
-    # remove me in functions
     uvs_local = ds_test._adjacent_segments(seg_id_test)
 
     # warmstart with multicut result
     if warmstart:
-        n_var_mc = uvs_local.max() + 1
-        mc_nodes, mc_edges, _, _ = run_mc_solver(n_var_mc, uv_ids_local, edge_energies_local)
-        starting_point = mc_nodes[uv_ids_lifted[:,0]] != mc_nodes[uv_ids_lifted[:,1]]
+        n_var = uvs_local.max() + 1
+        starting_point, _, _, _ = run_mc_solver(n_var, uv_ids_local, edge_energies_local)
     else:
         starting_point = None
 
-    print "optimize"
-    nodeLabels = optimizeLifted(uvs_local, uv_ids_lifted,
+    nodeLabels = optimize_lifted(uvs_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
 
@@ -288,7 +281,6 @@ def lifted_multicut_workflow_with_defect_correction(
 
     # get all parameters for the multicut
     uv_ids_local = modified_adjacency(ds_test, seg_id_test)
-    n_var = uv_ids_local.max() + 1
 
     # energies for the multicut
     edge_energies_local = modified_probs_to_energies(
@@ -320,28 +312,15 @@ def lifted_multicut_workflow_with_defect_correction(
     edge_energies_local  /= edge_energies_local.shape[0]
     edge_energies_lifted /= edge_energies_lifted.shape[0]
 
-    print "build lifted model"
-    # remove me in functions
-    originalGraph = agraph.Graph(uv_ids_local.max() + 1)
-    originalGraph.insertEdges(uv_ids_local)
-    model = agraph.liftedMcModel(originalGraph)
-
-    # set cost for local edges
-    model.setCosts(uv_ids_local,edge_energies_local)
-    # set cost for lifted edges
-    model.setCosts(uv_ids_lifted, edge_energies_lifted)
-
     # warmstart with multicut result
     if warmstart:
-        mc_nodes, mc_edges, _, _ = run_mc_solver(n_var_mc, uv_ids_local, edge_energies_local)
-        uvTotal = model.liftedGraph().uvIds()
-        starting_point = mc_nodes[uvTotal[:,0]] != mc_nodes[uvTotal[:,1]]
+        n_var = uv_ids_local.max() + 1
+        starting_point, _, _, _ = run_mc_solver(n_var, uv_ids_local, edge_energies_local)
     else:
         starting_point = None
 
-    print "optimize"
-    nodeLabels = optimizeLifted(uv_ids_local, uv_ids_lifted,
+    nodeLabels = optimize_lifted(uv_ids_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
-    edgeLabels = nodeLabels[uv_ids_local[:,0]]!=nodeLabels[uv_ids_local[:,1]]
+    edgeLabels = nodeLabels[uv_ids_local[:,0]] != nodeLabels[uv_ids_local[:,1]]
     return nodeLabels, edgeLabels, -14, 100

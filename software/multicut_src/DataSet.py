@@ -8,8 +8,6 @@ from concurrent import futures
 import itertools
 import cPickle as pickle
 
-import graph as agraph
-
 from tools import cacher_hdf5, cache_name
 from ExperimentSettings import ExperimentSettings
 
@@ -1252,14 +1250,15 @@ class DataSet(object):
     # edges with ovlp < negative_threshold are taken as negative training examples
     @cacher_hdf5()
     def edge_gt_fuzzy(self, seg_id, positive_threshold, negative_threshold):
+        # TODO implement in nifty or use existing nifty functionality
+        # -> we don't include the graph library anymore
+        import graph as agraph
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
-
         edge_overlaps = agraph.candidateSegToRagSeg(
                 self.seg(seg_id).astype('uint32'),
                 self.gt().astype('uint32'),
                 self._adjacent_segments(seg_id).astype(np.uint64))
-
         edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape )
         edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
         edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
