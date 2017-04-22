@@ -4,18 +4,29 @@ import numpy as np
 import vigra
 
 import vigra.graphs as vgraph
-import graph as agraph
 
 from concurrent import futures
 
 from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
-from tools import cacher_hdf5, find_matching_indices
+from tools import cacher_hdf5, find_matching_indices, find_matching_row_indices
 from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
 
 from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features, modified_edge_indications, get_ignore_edge_ids
+
+# if build from sorce and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
 
 
 # returns indices of lifted edges that are ignored due to defects
@@ -147,7 +158,6 @@ def clusteringFeatures(ds,
             np.concatenate([weights,mean,stddev],axis=1) )
     allFeat = np.require(allFeat, dtype = 'float32')
     assert allFeat.shape[0] == extraUV.shape[0]
-
     return allFeat
 
 #
@@ -377,12 +387,13 @@ def lifted_feature_aggregator(ds,
 
 
 @cacher_hdf5()
-def compute_and_save_lifted_nh(ds,
-        segId,
-        liftedNeighborhood,
+def compute_and_save_lifted_nh(
+        ds,
+        seg_id,
+        lifted_neighborhood,
         with_defects = False):
 
-    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds._adjacent_segments(segId)
+    uvs_local = modified_adjacency(ds, seg_id) if (with_defects and ds.has_defects) else ds._adjacent_segments(seg_id)
     n_nodes = uvs_local.max() + 1
 
     # remove the local uv_ids that are connected to a ignore-segment-value
@@ -391,77 +402,75 @@ def compute_and_save_lifted_nh(ds,
         where_uv = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis=1)
         uvs_local = uvs_local[where_uv]
 
-    originalGraph = agraph.Graph(n_nodes)
-    originalGraph.insertEdges(uvs_local)
+    original_graph = nifty.graph.UndirectedGraph(n_nodes)
+    original_graph.insertEdges(uvs_local)
 
     print ds.ds_name
-    print "Computing lifted neighbors for range:", liftedNeighborhood
-    lm = agraph.liftedMcModel(originalGraph)
-    agraph.addLongRangeNH(lm , liftedNeighborhood)
-    uvIds = lm.liftedGraph().uvIds()
-
-    return uvIds[uvs_local.shape[0]:,:]
+    print "Computing lifted neighbors for range:", lifted_neighborhood
+    lifted_graph = nifty.graph.lifted_multicut.liftedMulticutObjective(original_graph)
+    lifted_graph.insertLiftedEdgesBfs(lifted_neighborhood)
+    return lifted_graph.liftedUvIds()
 
 
 # TODO adapt to defects
 # we assume that uv is consecutive
 #@cacher_hdf5()
 # sample size 0 means we do not sample!
-def compute_and_save_long_range_nh(uvIds, min_range, max_sample_size=0):
+def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
     import random
     import itertools
 
-    originalGraph = agraph.Graph(uvIds.max()+1)
-    originalGraph.insertEdges(uvIds)
+    original_graph = nifty.graph.UndirectedGraph(uv_ids.max()+1)
+    original_graph.insertEdges(uv_ids)
+    lifted_graph = nifty.graph.lifted_multicut.liftedMulticutObjective(original_graph)
+    lifted_graph.insertLiftedEdgesBfs(min_range)
 
-    uv_long_range = np.array(list(itertools.combinations(np.arange(originalGraph.numberOfVertices), 2)), dtype=np.uint64)
+    # lifted and local edges -> short range lifted edges
+    uv_short_range = np.concatenate([uv_ids,
+        lifted_graph.liftedUvIds()
+        ], axis = 0 )
 
-    lm_short = agraph.liftedMcModel(originalGraph)
-    agraph.addLongRangeNH(lm_short, min_range)
-    uvs_short = lm_short.liftedGraph().uvIds()
+    # all lifted edges
+    uv_long_range = np.array(
+            list(itertools.combinations(np.arange(original_graph.numberOfNodes), 2)),
+            dtype = 'uint64')
 
-    # Remove uvs_short from uv_long_range
-    # -----------------------------------
+    # remove uvs_short from uv_long_range
+    matches = find_matching_row_indices(uv_long_range, uv_short_range)
+    # invert the matches
+    non_match_mask = np.ones(uv_long_range.shape[0], dtype = np.bool)
+    non_match_mask[matches[:,0]] = False
+    uv_long_range = uv_long_range[non_match_mask]
 
-    # Concatenate both lists
-    concatenated = np.concatenate((uvs_short, uv_long_range), axis=0)
-
-    # Find unique rows according to
-    # http://stackoverflow.com/questions/16970982/find-unique-rows-in-np-array
-    b = np.ascontiguousarray(concatenated).view(np.dtype((np.void, concatenated.dtype.itemsize * concatenated.shape[1])))
-    uniques, idx, counts = np.unique(b, return_index=True, return_counts=True)
-
-    # Extract those that have count == 1
-    # TODO this is not tested
-    long_range_idx = idx[counts == 1]
-    uv_long_range = concatenated[long_range_idx]
-
-    # Extract random sample
+    # extract random sample
     if max_sample_size:
-        sample_size = min(max_sample_size, uv_long_range.shape[0])
+        sample_size   = min(max_sample_size, uv_long_range.shape[0])
         uv_long_range = np.array(random.sample(uv_long_range, sample_size))
 
     return uv_long_range
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_fuzzy_gt(ds, segId, uvIds):
+def lifted_fuzzy_gt(ds, seg_id, uv_ids):
+    # TODO implement in nifty or use existing nifty functionality
+    # -> we don't include the graph library anymore
+    import graph as agraph
     if ds.has_seg_mask:
         assert False, "Fuzzy gt not supported yet for segmentation mask"
     gt = ds.gt()
-    oseg = ds.seg(segId)
-    fuzzyLiftedGt = agraph.candidateSegToRagSeg(
-    oseg.astype('uint32'), gt.astype('uint32'),
-        uvIds.astype(np.uint64))
-    return fuzzyLiftedGt
+    seg = ds.seg(seg_id)
+    fuzzy_lifted_gt = agraph.candidateSegToRagSeg(
+        seg.astype('uint32'), gt.astype('uint32'), uv_ids.astype('uint64')
+    )
+    return fuzzy_lifted_gt
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_hard_gt(ds, segId, uvIds):
-    rag = ds._rag(segId)
+def lifted_hard_gt(ds, seg_id, uv_ids):
+    rag = ds._rag(seg_id)
     gt = ds.gt()
-    nodeGt,_ =  rag.projectBaseGraphGt(gt)
-    labels   = (nodeGt[uvIds[:,0]] != nodeGt[uvIds[:,1]])
+    node_gt,_ =  rag.projectBaseGraphGt(gt)
+    labels   = (node_gt[uv_ids[:,0]] != node_gt[uv_ids[:,1]])
     return labels
 
 
@@ -662,7 +671,8 @@ def learn_and_predict_lifted_rf(
 
 
 # TODO use lifted multicut from nifty
-def optimizeLifted(uvs_local,
+def optimize_lifted(
+        uvs_local,
         uvs_lifted,
         costs_local,
         costs_lifted,
@@ -674,70 +684,88 @@ def optimizeLifted(uvs_local,
     n_nodes = uvs_local.max() + 1
     assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
 
-    # build the lifted model
-    graph = agraph.Graph(n_nodes)
+    # build the graph with local and lifted edges
+    graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
-    model = agraph.liftedMcModel(graph)
+    graph.insertEdges(uvs_lifted)
+    # build the lifted objective, insert local and lifted costs
+    lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
+    lifted_obj.setCosts(uvs_local, costs_local)
+    lifted_obj.setCosts(uvs_lifted, costs_lifted)
 
-    # set cost for local edges
-    model.setCosts(uvs_local, costs_local)
-    # set cost for lifted edges
-    model.setCosts(uvs_lifted, costs_lifted)
+    if ExperimentSettings().verbose:
+         visitor = lifted_obj.verboseVisitor(100)
 
     # if no starting point is given, start with ehc solver
     if starting_point is None:
+        print "optimize_lifted: start from ehc solver"
         # settings ehc
-        print "Starting from ehc solver result"
-        settingsGa = agraph.settingsLiftedGreedyAdditive(model)
-        ga = agraph.liftedGreedyAdditive(model, settingsGa)
-        ws = ga.run()
-    # else, we use the starting point that is given as argument
-    else:
-        print "Starting from external starting point"
-        ws = starting_point.astype('uint8')
+        solver_ehc = lifted_obj.liftedMulticutGreedyAdditiveFactory().create(lifted_obj)
+        result = solver_ehc.optimize(visitor) if ExperimentSettings().verbose else solver_ehc.optimize()
 
-    # setttings for kl
-    settingsKl = agraph.settingsLiftedKernighanLin(model)
-    kl = agraph.liftedKernighanLin(model, settingsKl)
-    ws2 = kl.run(ws)
+    else: # else, we use the starting point that is given as argument
+        print "optimize_lifted: start from external node result"
+        assert len(starting_point) == n_nodes
+        result = starting_point
+    # TODO report energies
 
-    # FM RAND
-    # settings for proposal generator
-    settingsProposalGen = agraph.settingsProposalsFusionMovesRandomizedProposals(model)
-    settingsProposalGen.sigma = 10.5
-    settingsProposalGen.nodeLimit = 0.5
+    # TODO why do we have two kernighan lins ??
+    # run kernighan lin solver
+    print "optimize_lifted: run kernighan lin"
 
-    # settings for solver itself
-    settings = agraph.settingsFusionMoves(settingsProposalGen)
-    settings.maxNumberOfIterations = 1
-    settings.nParallelProposals = 2
-    settings.reduceIterations = 1
-    settings.seed = 42
-    settings.verbose = 0
-    # solver
-    solver = agraph.fusionMoves(model, settings)
-    ws3 = solver.run(ws2)
+    # first kerninghan lin
+    solver_kl1 = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)
+    result = solver_kl1.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl1.optimize(result)
+    # TODO report energies
 
-    # FM SG
-    # settings for proposal generator
-    settingsProposalGen = agraph.settingsProposalsFusionMovesSubgraphProposals(model)
-    settingsProposalGen.subgraphRadius = 5
+    # second kerninghan lin
+    solver_kl2 = lifted_obj.liftedMulticutAndresKernighanLinFactory().create(lifted_obj)
+    result = solver_kl2.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl2.optimize(result)
+    # TODO report energies
 
-    # settings for solver itself
-    settings = agraph.settingsFusionMoves(settingsProposalGen)
-    settings.maxNumberOfIterations = 3
-    settings.nParallelProposals = 10
-    settings.reduceIterations = 0
-    settings.seed = 43
-    settings.verbose = 0
-    # solver
-    solver = agraph.fusionMoves(model, settings)
-    out = solver.run(ws3)
+    # TODO FIXME how do we set the parameters for the fusion move solver in nifty ?
+    # parameters for randomized proposals -> is there an equivalent solver in nifty ?
+    ## FM RAND
+    ## settings for proposal generator
+    #settingsProposalGen = agraph.settingsProposalsFusionMovesRandomizedProposals(model)
+    #settingsProposalGen.sigma = 10.5
+    #settingsProposalGen.nodeLimit = 0.5
 
-    nodeLabels = model.edgeLabelsToNodeLabels(out)
-    nodeLabels = nodeLabels.astype('uint32')
+    ## settings for solver itself
+    #settings = agraph.settingsFusionMoves(settingsProposalGen)
+    #settings.maxNumberOfIterations = 1
+    #settings.nParallelProposals = 2
+    #settings.reduceIterations = 1
+    #settings.seed = 42
+    #settings.verbose = 0
 
-    return nodeLabels
+    # TODO FIXME parameters for subgraph proposals -> is this equiv to the watershed
+    ## FM SG
+    ## settings for proposal generator
+    #settingsProposalGen = agraph.settingsProposalsFusionMovesSubgraphProposals(model)
+    #settingsProposalGen.subgraphRadius = 5
+
+    ## settings for solver itself
+    #settings = agraph.settingsFusionMoves(settingsProposalGen)
+    #settings.maxNumberOfIterations = 3
+    #settings.nParallelProposals = 10
+    #settings.reduceIterations = 0
+    #settings.seed = 43
+    #settings.verbose = 0
+
+    # run fusion move solver
+    print "optimize_lifted: run fusion move solver"
+
+    # TODO second fusion move ?!
+    # proposal generator -> watersheds
+    pgen = lifted_obj.watershedProposalGenerator('SEED_FROM_LOCAL')
+    solver_fm = lifted_obj.fusionMoveBasedFactory(proposalGenerator=pgen).create(lifted_obj)
+    result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
+    # TODO report energies
+
+    # TODO is this in the correct format (node result)
+    assert len(result) == n_nodes
+    return result.astype('uint32')
 
 
 # TODO weight connections in plane: kappa=20
