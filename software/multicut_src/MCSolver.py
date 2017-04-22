@@ -283,7 +283,7 @@ def lifted_multicut_workflow_with_defect_correction(
             seg_id_train,
             seg_id_test,
             feature_list_local,
-            with_defcts = True,
+            with_defects = True,
             use_2rfs = ExperimentSettings().use_2rfs)
 
     # get all parameters for the multicut
@@ -311,9 +311,9 @@ def lifted_multicut_workflow_with_defect_correction(
             seg_id_test,
             edgeZdistance,
             ExperimentSettings().lifted_neighborhood,
-            gamma = gamma,
-            betaGlobal = ExperimentSettings().beta_global,
-            with_defects = True)
+            ExperimentSettings().beta_global,
+            gamma,
+            True)
     assert not np.isnan(edge_energies_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling
