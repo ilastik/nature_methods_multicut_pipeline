@@ -525,7 +525,7 @@ def learn_lifted_rf(
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
-            return RandomForest.load_from_file(rf_path, 'rf')
+            return RandomForest.load_from_file(rf_path, 'rf', ExperimentSettings().n_threads)
 
     features_train = []
     labels_train   = []
