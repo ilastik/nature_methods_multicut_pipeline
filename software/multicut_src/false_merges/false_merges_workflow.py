@@ -758,6 +758,7 @@ def resolve_merges_with_lifted_edges_global(
     )
 
     resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
+    assert len(resolved_nodes) == uv_ids.max() + 1
     return resolved_nodes
 
 

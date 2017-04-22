@@ -22,7 +22,6 @@ requirements:
         - python 2.7*
     run:
         - python 2.7*
-        - graph 1.6 # TODO use nifty multicut to get rid of this dependency
         - vigra 1.11.0.post222
         - wsdt 0.2.post9
         - nifty-with-cplex
