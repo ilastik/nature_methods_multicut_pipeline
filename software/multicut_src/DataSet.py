@@ -871,6 +871,7 @@ class DataSet(object):
 
 
     # filters from affinity maps for xy and z edges
+    # TODO change acccumulation to only accumulate the relevant pixels for z edges
     @cacher_hdf5("feature_folder", cache_edgefeats=True)
     def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
