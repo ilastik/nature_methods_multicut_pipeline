@@ -2,6 +2,7 @@ import vigra
 import vigra.graphs as graphs
 import numpy as np
 from concurrent import futures
+from scipy import interpolate
 
 from ..ExperimentSettings import ExperimentSettings
 
@@ -63,38 +64,10 @@ def path_feature_aggregator(ds, paths):
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor), # we assume that the distance transform is added as inp_id 2
-        compute_path_lengths(paths, [1.,1.,anisotropy_factor]) ],
+        path_features_from_feature_images(ds, 'distance_transform', paths, anisotropy_factor),
+        features(paths, [1.,1.,anisotropy_factor])],
         axis = 1)
 
-
-# TODO this could be parallelized over the paths
-# compute the path lens for all paths
-def compute_path_lengths(paths, anisotropy):
-    """
-    Computes the length of a path
-
-    :param path:
-        list( np.array([[x11, x12, ..., x1n], [x21, x22, ..., x2n], ..., [xm1, xm2, ..., xmn]]) )
-        with n dimensions and m coordinates
-    :param anisotropy: [a1, a2, ..., an]
-    :return: path lengtht list(float)
-    """
-    def compute_path_length(path, aniso_temp):
-        #pathlen = 0.
-        #for i in xrange(1, len(path)):
-        #    add2pathlen = 0.
-        #    for j in xrange(0, len(path[0, :])):
-        #        add2pathlen += (anisotropy[j] * (path[i, j] - path[i - 1, j])) ** 2
-
-        #    pathlen += add2pathlen ** (1. / 2)
-        # TODO check that this actually agrees
-        path_euclidean_diff = aniso_temp * np.diff(path, axis=0)
-        path_euclidean_diff = np.sqrt(
-                np.sum( np.square(path_euclidean_diff), axis=1 ) )
-        return np.sum(path_euclidean_diff, axis=0)
-    aniso_temp = np.array(anisotropy)
-    return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:,None]
 
 
 # don't cache for now
@@ -198,4 +171,93 @@ def path_features_from_feature_images(
     # TODO checkfor correct number of features
 
     return out
+
+
+def features(paths, anisotropy):
+
+
+
+    def compute_path_length(path):
+        # TODO check that this actually agrees
+        path_euclidean_diff = np.diff(path, axis=0)
+        path_euclidean_diff = np.sqrt(
+            np.sum(np.square(path_euclidean_diff), axis=1))
+        return np.sum(path_euclidean_diff, axis=0)
+
+
+    def length(array, scale):
+        # gibt einen array mit (nummer des pixels i,laenge des vektors von dem pixel i bis zum pixel i+scale) zurueck
+
+
+        size = array.shape[0] - 3
+        new = np.zeros((size, 2))
+
+        for i in xrange(0, size):
+            new[i, 0] = scale + i
+            new[i, 1] = (np.linalg.norm(array[1 + i]) + np.linalg.norm(array[2 + i])) / 2
+
+        return new
+
+
+    def winkel(data):
+        size = data.shape[0] - 1
+        array = np.zeros(size)
+
+        for i in xrange(0, size):
+            x = data[i]
+            y = data[i + 1]
+            dot = np.dot(x, y)
+            x_modulus = np.sqrt((x * x).sum())
+            y_modulus = np.sqrt((y * y).sum())
+            cos_angle = dot / x_modulus / y_modulus
+            angle = np.arccos(cos_angle)  # Winkel in Bogenmas
+            array[i] = angle
+
+        array_dx2 = np.zeros(size - 2)
+
+        for i in xrange(0, size - 2):
+            array_dx2[i] = array[i] + array[2 + i] - 2 * array[1 + i]
+
+
+        return array_dx2
+
+    def curvature_berechnen(data):
+
+        len1 = length(np.diff(data, axis=0), 0)
+        array_winkel = winkel(np.diff(data, axis=0))
+        len = np.abs(array_winkel / len1[:, 1] / len1[:, 1])  # dphi/ds
+        len1[:, 1] = len
+        return len1
+
+    def maximum_ausgeben(path):
+
+
+        maximum = np.amax(curvature_berechnen(path), axis=0)
+
+        return maximum[1]
+
+
+
+
+    aniso_temp = np.array(anisotropy)
+
+    for number, data in enumerate(paths):
+
+        data = np.array([(elem1*aniso_temp[0], elem2*aniso_temp[1], elem3*aniso_temp[2]) for elem1, elem2, elem3 in data])
+        data = data.transpose()
+
+        tck, u = interpolate.splprep(data, s=3500, k=3)
+
+        new = interpolate.splev(np.linspace(0, 1, 100000), tck)
+
+        data = np.array(new).transpose()
+        paths[number] = data
+
+    features_computed=np.concatenate([
+        np.array([compute_path_length(path) for path in paths])[:,None],
+        np.array([maximum_ausgeben(path) for path in paths])[:,None]],
+        axis=1)
+
+    return features_computed
+
 
