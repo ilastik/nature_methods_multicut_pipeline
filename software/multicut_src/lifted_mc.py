@@ -190,17 +190,17 @@ def compute_lifted_feature_mala_agglomeration(
     indicators = rag.accumulateEdgeStatistics(edge_map_xy)[:,3] # 3 -> max
 
     # get the max affinities for z edges from z affinities
+    # TODO change acccumulation to only accumulate the relevant pixels for z edges
     aff_z  = ds.inp(inp_ids[1])
     edge_map_z  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_z)
     indicators_z = rag.accumulateEdgeStatistics(edge_map_z)[:,3] # 3 -> max
 
     # merge the indicators for xy and z edges
     indicators[edge_indications==1] = indicators_z[edge_indications==1]
+    graph = nifty.graph.UndirectedGraph(rag.numberOfNodes)
+    graph.insertEdges( np.sort( rag.uvIds(), axis = 1) )
 
     def agglomerate(threshold, use_edge_len):
-        graph = nifty.graph.UndirectedGraph(rag.numberOfNodes)
-        graph.insertEdges(ds._adjacent_segments(seg_id))
-
         policy = nifty.graph.agglo.malaClusterPolicy(
                 graph = graph,
                 edgeIndicators = indicators,
@@ -409,7 +409,7 @@ def compute_and_save_lifted_nh(
     print "Computing lifted neighbors for range:", lifted_neighborhood
     lifted_graph = nifty.graph.lifted_multicut.liftedMulticutObjective(original_graph)
     lifted_graph.insertLiftedEdgesBfs(lifted_neighborhood)
-    return lifted_graph.liftedUvIds()
+    return np.sort( lifted_graph.liftedUvIds(), axis = 1)
 
 
 # TODO adapt to defects
