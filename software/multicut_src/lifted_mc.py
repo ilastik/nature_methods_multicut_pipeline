@@ -712,7 +712,8 @@ def optimize_lifted(
     print "optimize_lifted: run kernighan lin"
     solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj) # standard settings
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
-    t_kl = time.time() - t0
+    t1   = time.time()
+    t_kl = t1 - t0
     print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
     print "Kernighan lin took %f s" % t_kl
 
@@ -730,7 +731,7 @@ def optimize_lifted(
             numberOfThreads = 1 # TODO only n = 1 implemented
             ).create(lifted_obj)
     result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
-    t_fm = time.time() - t_kl
+    t_fm = time.time() - t1
     energy_fm = lifted_obj.evalNodeLabels(result)
     print "Energy after fusion moves: %f" % energy_fm
     print "Fusion moves took %f s" % t_fm
