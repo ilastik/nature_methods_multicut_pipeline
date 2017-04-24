@@ -5,12 +5,11 @@ import cPickle as pickle
 import shutil
 import itertools
 import h5py
-from copy import deepcopy
 
 # relative imports from top level dir
 from ..MCSolverImpl   import probs_to_energies
 from ..Postprocessing import remove_small_segments
-from ..lifted_mc import compute_and_save_long_range_nh, optimizeLifted, compute_and_save_lifted_nh
+from ..lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh
 from ..EdgeRF import RandomForest
 from ..ExperimentSettings import ExperimentSettings
 from ..tools import find_matching_row_indices
@@ -65,7 +64,7 @@ def extract_paths_from_segmentation(
         for obj in np.unique(paths_to_objs):
 
             # Mask distance transform to current object
-            masked_dt = deepcopy(dt)
+            masked_dt = dt.copy()
             masked_dt[seg != obj] = np.inf
 
             # Take only the relevant path pairs
@@ -146,7 +145,7 @@ def extract_paths_and_labels_from_segmentation(
 
             # Mask distance transform to current object
             # TODO use a mask in dijkstra instead
-            masked_dt = deepcopy(dt)
+            masked_dt = dt.copy()
             masked_dt[seg != obj] = np.inf
 
             # Take only the relevant path pairs
@@ -358,18 +357,27 @@ def compute_false_merges(
 # We sample new lifted edges and save them if a cache folder is given
 def sample_and_save_paths_from_lifted_edges(
         cache_folder,
+        ds,
+        seg,
         obj_id,
         uv_local,
         distance_transform,
         eccentricity_centers,
         reverse_mapping = None):
 
-    # save path for the paths belonnging to this cache1
-    save_path = os.path.join(cache_folder, 'resolve_paths_{}.pkl'.format(obj_id)) if cache_folder is not None else ''
+    if cache_folder is not None:
+        if not os.path.exists(cache_folder):
+            os.mkdir(cache_folder)
+        save_path = os.path.join(cache_folder, 'paths_from_lifted_ds_%s_obj_%i.h5' % (ds.ds_name,obj_id))
+    else:
+        paths_save_file = ''
 
     # check if the cache already exists
     if os.path.exists(save_path): # if True, load paths from file
         paths_obj = vigra.readHDF5(save_path, 'paths')
+        # we need to reshape the paths again to revover the coordinates
+        if paths_obj.size:
+            paths_obj = np.array( [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ] )
         uv_ids_paths_min_nh = vigra.readHDF5(save_path, 'uv_ids')
 
     else: # if False, compute the paths
@@ -384,14 +392,13 @@ def sample_and_save_paths_from_lifted_edges(
         )
 
         if uv_ids_paths_min_nh.any():
-            print "Here"
-            uv_ids_paths_min_nh = np.sort(uv_ids_paths_min_nh_local, axis = 1)
+            uv_ids_paths_min_nh = np.sort(uv_ids_paths_min_nh, axis = 1)
 
             # -------------------------------------------------------------
             # Get the distance transform of the current object
 
-            masked_disttransf = deepcopy(distance_transform)
-            masked_disttransf[np.logical_not(mask)] = np.inf
+            masked_disttransf = distance_transform.copy()
+            masked_disttransf[seg != obj_id] = np.inf
 
             # If we have a reverse mapping, turn them to the original labels
             if reverse_mapping is not None:
@@ -405,17 +412,29 @@ def sample_and_save_paths_from_lifted_edges(
             paths_obj = shortest_paths(
                 masked_disttransf,
                 uv_ids_paths_min_nh_coords,
-                ExperimentSettings().n_threads)
+                1)
+                #ExperimentSettings().n_threads)
+            keep_mask = np.array([isinstance(x, np.ndarray) for x in paths_obj], dtype = np.bool)
+            paths_obj = np.array(paths_obj)[keep_mask]
+            uv_ids_paths_min_nh = uv_ids_paths_min_nh[keep_mask]
 
         else:
-            print "There"
             paths_obj = []
 
         # cache the paths if we have caching activated
         if cache_folder is not None:
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
-            vigra.writeHDF5(paths_obj, save_path, 'paths')
+
+            if paths_obj.size:
+                # need to write paths with vlen and flatten before writing to properly save this
+                paths_save = np.array([pp.flatten() for pp in paths_obj])
+                with h5py.File(save_path) as f:
+                    dt = h5py.special_dtype(vlen=np.dtype(paths_save[0].dtype))
+                    f.create_dataset('paths', data = paths_save, dtype = dt)
+            else:
+                vigra.writeHDF5([], save_path, 'paths')
+
             vigra.writeHDF5(uv_ids_paths_min_nh, save_path, 'uv_ids')
 
     return paths_obj, uv_ids_paths_min_nh
@@ -539,6 +558,8 @@ def resolve_merges_with_lifted_edges(
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
                 paths_cache_folder,
+                ds,
+                mc_segmentation,
                 merge_id,
                 uv_local,
                 disttransf,
@@ -598,7 +619,7 @@ def resolve_merges_with_lifted_edges(
             lifted_weights = lifted_path_weights
             uv_ids_lifted_nh_total = uv_ids_paths_min_nh
 
-        resolved_nodes = optimizeLifted(
+        resolved_nodes, _, _ = optimize_lifted(
             uv_local,
             uv_ids_lifted_nh_total,
             mc_weights,
@@ -668,6 +689,8 @@ def resolve_merges_with_lifted_edges_global(
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
                 paths_cache_folder,
+                ds,
+                mc_segmentation,
                 merge_id,
                 uv_ids_in_obj,
                 disttransf,
@@ -726,8 +749,7 @@ def resolve_merges_with_lifted_edges_global(
         axis=0
     )
 
-    # TODO: mc ?! this looks fine to me
-    resolved_nodes = optimizeLifted(
+    resolved_nodes, _, _ = optimize_lifted(
         uv_ids,
         all_uv_ids_lifted_nh_total,
         mc_weights_all,
@@ -735,6 +757,7 @@ def resolve_merges_with_lifted_edges_global(
     )
 
     resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
+    assert len(resolved_nodes) == uv_ids.max() + 1
     return resolved_nodes
 
 

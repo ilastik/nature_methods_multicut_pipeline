@@ -45,6 +45,8 @@ class ExperimentSettings(object):
         self.n_trees = 500
         # use different rfs for xy - and z edges
         self.use_2rfs = False
+        # verbosity settings for the pipeline
+        self.verbose = False
 
         # parameter for multicuts
         # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves"
@@ -57,13 +59,16 @@ class ExperimentSettings(object):
         self.beta_local   = 0.5
         # beta for the lifteed multicut
         self.beta_global   = 0.5
-        # seed fraction for fusion moves
-        self.seed_fraction = 0.001
-        # total number of iterations for fusion moves
-        self.num_it = 3000
-        # number of iterations without changes after which fusion moves stop
-        self.num_it_stop = 20
-        self.verbose = False
+
+        # mc fusion settings
+        self.seed_fraction = 0.001 # seed fraction for fusion moves
+        self.num_it      = 3000    # total number of iterations for fusion moves
+        self.num_it_stop = 20      # number of iterations without changes after which fusion moves stop
+
+        # lifted mc fusion settings
+        self.sigma_lifted = 1. # sigma for the watershed proposals
+        self.seed_fraction_lifted = 0.1 # seed fraction for the watershed proposals
+        self.seed_strategy_lifted = 'SEED_FROM_LOCAL' # seed strategy
 
         # parameters for lifted multicut
         # locacl training slices
