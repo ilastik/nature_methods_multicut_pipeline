@@ -427,7 +427,7 @@ class DataSet(object):
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
             raise RuntimeError("Rawdata has already been added")
-        self._check_input(raw_path, raw_key)
+        #self._check_input(raw_path, raw_key)
         with h5py.File(raw_path) as f:
             assert len(f[raw_key].shape) == 3, "Only 3d data supported"
             if not isinstance(self, Cutout):
@@ -453,7 +453,7 @@ class DataSet(object):
     def add_input(self, inp_path, inp_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
-        self._check_input(inp_path, inp_key)
+        #self._check_input(inp_path, inp_key)
         if not isinstance(self, Cutout): # don't check for cutouts
             self._check_shape(inp_path, inp_key)
         self.external_inp_paths.append(inp_path)
@@ -503,7 +503,7 @@ class DataSet(object):
     def add_seg(self, seg_path, seg_key):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before adding a segmentation")
-        self._check_input(seg_path, seg_key)
+        #self._check_input(seg_path, seg_key)
         self.external_seg_paths.append(seg_path)
         self.external_seg_keys.append(seg_key)
         self.save()
@@ -546,7 +546,7 @@ class DataSet(object):
     def add_gt(self, gt_path, gt_key):
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
-        self._check_input(gt_path, gt_key)
+        #self._check_input(gt_path, gt_key)
         self.external_gt_path = gt_path
         self.external_gt_key  = gt_key
         self.save()
@@ -582,7 +582,7 @@ class DataSet(object):
     def add_seg_mask(self, mask_path, mask_key):
         assert self.has_raw
         assert not self.has_seg_mask
-        self._check_input(mask_path, mask_key)
+        #self._check_input(mask_path, mask_key)
         if not isinstance(self, Cutout): # don't check for cutouts
             self._check_shape(mask_path, mask_key)
         self.external_seg_mask_path = mask_path
@@ -619,7 +619,7 @@ class DataSet(object):
 
     def add_defect_mask(self, mask_path, mask_key):
         assert self.external_defect_mask_path == None
-        self._check_input(mask_path, mask_key)
+        #self._check_input(mask_path, mask_key)
         if not isinstance(self, Cutout): # don't check for cutouts
             self._check_shape(mask_path, mask_key)
         self.external_defect_mask_path = mask_path
