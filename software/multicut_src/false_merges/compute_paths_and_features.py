@@ -64,7 +64,7 @@ def path_feature_aggregator(ds, paths):
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 'distance_transform', paths, anisotropy_factor),
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),
         features(paths, [1.,1.,anisotropy_factor])],
         axis = 1)
 
@@ -218,7 +218,7 @@ def features(paths, anisotropy):
         for i in xrange(0, size - 2):
             array_dx2[i] = array[i] + array[2 + i] - 2 * array[1 + i]
 
-
+        print "\n\n array_dx2: ", array_dx2,"\n\n"
         return array_dx2
 
     def curvature_berechnen(data):
