@@ -404,6 +404,7 @@ class DataSet(object):
     # Adding and loading external input data
     #
 
+    # FIXME: Doesn't work for internal paths as key (e.g., key = 'a/b/data')
     def _check_input(self, path, key):
         assert os.path.exists(path), path
         with h5py.File(path) as f:
