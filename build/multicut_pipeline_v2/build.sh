@@ -1,6 +1,8 @@
 # Install python modules
 mkdir -p ${PREFIX}/multicut_src
 cp software/multicut_src/*.py ${PREFIX}/multicut_src
+cp -r software/multicut_src/tools ${PREFIX}/multicut_src
+cp -r software/multicut_src/false_merges ${PREFIX}/multicut_src
 echo "${PREFIX}" > ${PREFIX}/lib/python2.7/site-packages/multicut_src.pth
 python -m compileall ${PREFIX}/multicut_src
 
