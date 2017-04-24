@@ -223,12 +223,11 @@ def lifted_multicut_workflow(
     else:
         starting_point = None
 
-    nodeLabels = optimize_lifted(uvs_local, uv_ids_lifted,
+    node_labels, e_lifted, t_lifted = optimize_lifted(uvs_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
-
-    edgeLabels = nodeLabels[uvs_local[:,0]] != nodeLabels[uvs_local[:,1]]
-    return nodeLabels, edgeLabels, -14, 100
+    edge_labels = node_labels[uvs_local[:,0]] != node_labels[uvs_local[:,1]]
+    return node_labels, edge_labels, e_lifted, t_lifted
 
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
@@ -319,8 +318,8 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         starting_point = None
 
-    nodeLabels = optimize_lifted(uv_ids_local, uv_ids_lifted,
+    node_labels, e_lifted, t_lifted = optimize_lifted(uv_ids_local, uv_ids_lifted,
             edge_energies_local, edge_energies_lifted,
             starting_point)
-    edgeLabels = nodeLabels[uv_ids_local[:,0]] != nodeLabels[uv_ids_local[:,1]]
-    return nodeLabels, edgeLabels, -14, 100
+    edge_labels = node_labels[uv_ids_local[:,0]] != node_labels[uv_ids_local[:,1]]
+    return node_labels, edge_labels, e_lifted, t_lifted

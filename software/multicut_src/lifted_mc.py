@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import vigra
@@ -16,7 +17,7 @@ from ExperimentSettings import ExperimentSettings
 
 from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features, modified_edge_indications, get_ignore_edge_ids
 
-# if build from sorce and not a conda pkg, we assume that we have cplex
+# if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
 except ImportError:
@@ -451,18 +452,16 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_fuzzy_gt(ds, seg_id, uv_ids):
-    # TODO implement in nifty or use existing nifty functionality
-    # -> we don't include the graph library anymore
-    import graph as agraph
-    if ds.has_seg_mask:
-        assert False, "Fuzzy gt not supported yet for segmentation mask"
-    gt = ds.gt()
-    seg = ds.seg(seg_id)
-    fuzzy_lifted_gt = agraph.candidateSegToRagSeg(
-        seg.astype('uint32'), gt.astype('uint32'), uv_ids.astype('uint64')
-    )
-    return fuzzy_lifted_gt
+def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
+    overlaps = nifty.groundtruth.Overlap(
+            uv_ids.max(),
+            ds.seg(seg_id),
+            ds.gt() )
+    edge_overlaps = overlaps.differentOverlaps(uv_ids)
+    edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape, dtype = 'float32')
+    edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
+    edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
+    return edge_gt_fuzzy
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
@@ -699,73 +698,46 @@ def optimize_lifted(
     # if no starting point is given, start with ehc solver
     if starting_point is None:
         print "optimize_lifted: start from ehc solver"
-        # settings ehc
-        solver_ehc = lifted_obj.liftedMulticutGreedyAdditiveFactory().create(lifted_obj)
+        solver_ehc = lifted_obj.liftedMulticutGreedyAdditiveFactory().create(lifted_obj) # we use the standard settings here
         result = solver_ehc.optimize(visitor) if ExperimentSettings().verbose else solver_ehc.optimize()
 
     else: # else, we use the starting point that is given as argument
         print "optimize_lifted: start from external node result"
         assert len(starting_point) == n_nodes
         result = starting_point
-    # TODO report energies
+    print "Start energy: %f" % lifted_obj.evalNodeLabels(result)
+    t0 = time.time()
 
-    # TODO why do we have two kernighan lins ??
     # run kernighan lin solver
     print "optimize_lifted: run kernighan lin"
-
-    # first kerninghan lin
-    solver_kl1 = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)
-    result = solver_kl1.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl1.optimize(result)
-    # TODO report energies
-
-    # second kerninghan lin
-    solver_kl2 = lifted_obj.liftedMulticutAndresKernighanLinFactory().create(lifted_obj)
-    result = solver_kl2.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl2.optimize(result)
-    # TODO report energies
-
-    # TODO FIXME how do we set the parameters for the fusion move solver in nifty ?
-    # parameters for randomized proposals -> is there an equivalent solver in nifty ?
-    ## FM RAND
-    ## settings for proposal generator
-    #settingsProposalGen = agraph.settingsProposalsFusionMovesRandomizedProposals(model)
-    #settingsProposalGen.sigma = 10.5
-    #settingsProposalGen.nodeLimit = 0.5
-
-    ## settings for solver itself
-    #settings = agraph.settingsFusionMoves(settingsProposalGen)
-    #settings.maxNumberOfIterations = 1
-    #settings.nParallelProposals = 2
-    #settings.reduceIterations = 1
-    #settings.seed = 42
-    #settings.verbose = 0
-
-    # TODO FIXME parameters for subgraph proposals -> is this equiv to the watershed
-    ## FM SG
-    ## settings for proposal generator
-    #settingsProposalGen = agraph.settingsProposalsFusionMovesSubgraphProposals(model)
-    #settingsProposalGen.subgraphRadius = 5
-
-    ## settings for solver itself
-    #settings = agraph.settingsFusionMoves(settingsProposalGen)
-    #settings.maxNumberOfIterations = 3
-    #settings.nParallelProposals = 10
-    #settings.reduceIterations = 0
-    #settings.seed = 43
-    #settings.verbose = 0
+    solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj) # standard settings
+    result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
+    t1   = time.time()
+    t_kl = t1 - t0
+    print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
+    print "Kernighan lin took %f s" % t_kl
 
     # run fusion move solver
     print "optimize_lifted: run fusion move solver"
-
-    # TODO second fusion move ?!
     # proposal generator -> watersheds
-    pgen = lifted_obj.watershedProposalGenerator('SEED_FROM_LOCAL')
-    solver_fm = lifted_obj.fusionMoveBasedFactory(proposalGenerator=pgen).create(lifted_obj)
+    pgen = lifted_obj.watershedProposalGenerator(
+            seedingStrategy = ExperimentSettings().seed_strategy_lifted,
+            sigma = ExperimentSettings().sigma_lifted,
+            numberOfSeeds = ExperimentSettings().seed_fraction_lifted
+            )
+    solver_fm = lifted_obj.fusionMoveBasedFactory( # we leave the number of iterations at default values for now
+            proposalGenerator = pgen,
+            #numberOfThreads = ExperimentSettings().n_threads
+            numberOfThreads = 1 # TODO only n = 1 implemented
+            ).create(lifted_obj)
     result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
-    # TODO report energies
+    t_fm = time.time() - t1
+    energy_fm = lifted_obj.evalNodeLabels(result)
+    print "Energy after fusion moves: %f" % energy_fm
+    print "Fusion moves took %f s" % t_fm
 
-    # TODO is this in the correct format (node result)
     assert len(result) == n_nodes
-    return result.astype('uint32')
+    return result.astype('uint32'), energy_fm, t_fm + t_kl
 
 
 # TODO weight connections in plane: kappa=20

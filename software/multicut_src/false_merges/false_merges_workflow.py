@@ -619,7 +619,7 @@ def resolve_merges_with_lifted_edges(
             lifted_weights = lifted_path_weights
             uv_ids_lifted_nh_total = uv_ids_paths_min_nh
 
-        resolved_nodes = optimize_lifted(
+        resolved_nodes, _, _ = optimize_lifted(
             uv_local,
             uv_ids_lifted_nh_total,
             mc_weights,
@@ -749,8 +749,7 @@ def resolve_merges_with_lifted_edges_global(
         axis=0
     )
 
-    # TODO: mc ?! this looks fine to me
-    resolved_nodes = optimize_lifted(
+    resolved_nodes, _, _ = optimize_lifted(
         uv_ids,
         all_uv_ids_lifted_nh_total,
         mc_weights_all,
