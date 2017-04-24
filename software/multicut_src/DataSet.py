@@ -11,6 +11,18 @@ import cPickle as pickle
 from tools import cacher_hdf5, cache_name
 from ExperimentSettings import ExperimentSettings
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 # this can be used in 2 different ways:
 # ds_name = None: -> called with cache folder and loads from there
 # ds_name = string -> called with meta_folder and descends into cache folder
@@ -38,6 +50,11 @@ def is_inp_name(file_name):
         return True
     else:
         return False
+
+# determine whether the superpixels of this segmentation are all flat (potentially modulo ignore label)
+# TODO
+def has_flat_superpixels(seg):
+    pass
 
 
 # TODO use nifty cgp features instead + add curvature
@@ -117,6 +134,7 @@ class DataSet(object):
         # additional flags
         self.has_raw = False
         self._has_defects = False
+        self.flat_superpixels = []
 
         # keys to external data
         self.external_raw_key  = None
@@ -493,6 +511,7 @@ class DataSet(object):
         self._check_input(seg_path, seg_key)
         self.external_seg_paths.append(seg_path)
         self.external_seg_keys.append(seg_key)
+        self.flat_superpixels.append(False) # we need to initialize this, will be properly set once the seg is loaded
         self.save()
 
     def add_seg_from_data(self, seg):
@@ -504,6 +523,7 @@ class DataSet(object):
         vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
         self.external_seg_paths.append(internal_seg_path)
         self.external_seg_keys.append('data')
+        self.flat_superpixels.append(False) # we need to initialize this, will be properly set once the seg is loaded
         self.save()
 
     def seg(self, seg_id):
@@ -514,7 +534,9 @@ class DataSet(object):
         else:
             seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
             seg = self._process_seg(seg)
+            #self.flat_superpixels[seg_id] = has_flat_superpixels(seg) # TODO !
             vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
+            self.save()
             return seg
 
     def _process_gt(self, gt):
@@ -665,6 +687,28 @@ class DataSet(object):
         return _rag
 
 
+    # TODO TODO TODO
+    # TODO use nifty rag for everything, for this, need to
+    # -> change all inputs (2.5 data) from xyz to zyx, for not having to transpose (though need to transpose for vigra functions then)
+    # -> determine whether segmentation has flat or non-flat superpixels to determine type of rag
+    # -> make stacked rag compatible with ignore label, that is not flat
+    #def nifty_rag(self, seg_id):
+    #    save_path = os.path.join(self.cache_folder, "nifty_rag%i" % seg_id)
+    #    if not os.path.exists(save_path):
+    #        seg = self.seg(seg_id)
+    #        # FIXME don't need transposing once all the inputs have the correct shape
+    #        seg = seg.transpose((2,1,0))
+    #        if self.flat_superpixels[seg_id]:
+    #            rag = nifty.graph.rag. # TODO figure out correct rag types
+    #        else:
+    #            rag = nifty.graph.rag.
+    #    else:
+    #        # TODO proper rag loading from hdf5 for all rags
+    #        rag = a
+    #    return rag
+
+    # TODO nifty 2 vigra rag converter
+
     # get the segments adjacent to the edges for each edge
     @cacher_hdf5()
     def _adjacent_segments(self, seg_id):
@@ -697,6 +741,7 @@ class DataSet(object):
         return adjacent_edges
 
 
+    # TODO replace is_2d_stacked with flag from ds, once this is implemented
     # calculates the eccentricity centers for given seg_id
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
@@ -1250,16 +1295,15 @@ class DataSet(object):
     # edges with ovlp < negative_threshold are taken as negative training examples
     @cacher_hdf5()
     def edge_gt_fuzzy(self, seg_id, positive_threshold, negative_threshold):
-        # TODO implement in nifty or use existing nifty functionality
-        # -> we don't include the graph library anymore
-        import graph as agraph
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
-        edge_overlaps = agraph.candidateSegToRagSeg(
-                self.seg(seg_id).astype('uint32'),
-                self.gt().astype('uint32'),
-                self._adjacent_segments(seg_id).astype(np.uint64))
-        edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape )
+        uv_ids = self._adjacent_segments(seg_id)
+        overlaps = nifty.groundtruth.Overlap(
+                uv_ids.max(),
+                self.seg(seg_id),
+                self.gt() )
+        edge_overlaps = overlaps.differentOverlaps(uv_ids)
+        edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape, dtype = 'float32')
         edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
         edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
         return edge_gt_fuzzy

@@ -365,17 +365,16 @@ def modified_edge_gt(ds, seg_id):
 
 @cacher_hdf5()
 def modified_edge_gt_fuzzy(ds, seg_id, positive_threshold, negative_threshold):
-    assert False, "Not Implemented Yet"
-    modified_edge_gt = ds.edge_gt_fuzzy(seg_id)
-    skip_edges   = get_skip_edges(ds, seg_id  )
-    delete_edge_ids = get_delete_edge_ids(ds, seg_id)
-    if not ds.has_defects:
-        return modified_edge_gt
-    modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
-    # TODO need to get the fuzzy gt for the modified edges
-    # -> loop over skip slices and find for each individual skip slice
-    return np.concatenate([modified_edge_gt, skip_gt])
-
+    uv_ids = modified_adjacency(ds, seg_id)
+    overlaps = nifty.groundtruth.Overlap(
+            uv_ids.max(),
+            ds.seg(seg_id),
+            ds.gt() )
+    edge_overlaps = overlaps.differentOverlaps(uv_ids)
+    edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape, dtype = 'float32')
+    edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
+    edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
+    return edge_gt_fuzzy
 
 #
 # Modified Features

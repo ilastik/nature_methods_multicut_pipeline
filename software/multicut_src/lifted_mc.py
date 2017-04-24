@@ -16,7 +16,7 @@ from ExperimentSettings import ExperimentSettings
 
 from defect_handling import defects_to_nodes, find_matching_indices, modified_adjacency, modified_topology_features, modified_edge_indications, get_ignore_edge_ids
 
-# if build from sorce and not a conda pkg, we assume that we have cplex
+# if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
 except ImportError:
@@ -451,18 +451,16 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_fuzzy_gt(ds, seg_id, uv_ids):
-    # TODO implement in nifty or use existing nifty functionality
-    # -> we don't include the graph library anymore
-    import graph as agraph
-    if ds.has_seg_mask:
-        assert False, "Fuzzy gt not supported yet for segmentation mask"
-    gt = ds.gt()
-    seg = ds.seg(seg_id)
-    fuzzy_lifted_gt = agraph.candidateSegToRagSeg(
-        seg.astype('uint32'), gt.astype('uint32'), uv_ids.astype('uint64')
-    )
-    return fuzzy_lifted_gt
+def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
+    overlaps = nifty.groundtruth.Overlap(
+            uv_ids.max(),
+            ds.seg(seg_id),
+            ds.gt() )
+    edge_overlaps = overlaps.differentOverlaps(uv_ids)
+    edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape, dtype = 'float32')
+    edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
+    edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
+    return edge_gt_fuzzy
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
@@ -709,18 +707,12 @@ def optimize_lifted(
         result = starting_point
     # TODO report energies
 
-    # TODO why do we have two kernighan lins ??
     # run kernighan lin solver
     print "optimize_lifted: run kernighan lin"
 
     # first kerninghan lin
-    solver_kl1 = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)
-    result = solver_kl1.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl1.optimize(result)
-    # TODO report energies
-
-    # second kerninghan lin
-    solver_kl2 = lifted_obj.liftedMulticutAndresKernighanLinFactory().create(lifted_obj)
-    result = solver_kl2.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl2.optimize(result)
+    solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)
+    result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
     # TODO report energies
 
     # TODO FIXME how do we set the parameters for the fusion move solver in nifty ?
@@ -756,7 +748,6 @@ def optimize_lifted(
     # run fusion move solver
     print "optimize_lifted: run fusion move solver"
 
-    # TODO second fusion move ?!
     # proposal generator -> watersheds
     pgen = lifted_obj.watershedProposalGenerator('SEED_FROM_LOCAL')
     solver_fm = lifted_obj.fusionMoveBasedFactory(proposalGenerator=pgen).create(lifted_obj)
