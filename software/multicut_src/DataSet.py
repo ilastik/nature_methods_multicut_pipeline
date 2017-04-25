@@ -688,16 +688,16 @@ class DataSet(object):
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):
             # FIXME don't need transposing once all the inputs have the correct shape
-            seg = seg.transpose((2,1,0))
-            rag = nifty.graph.rag.gridRag(seg, numberOfThreads = ExperimentSettings().numberOfThreads)
+            seg_ = seg.transpose((2,1,0))
+            rag = nifty.graph.rag.gridRag(seg_, numberOfThreads = ExperimentSettings().n_threads)
             serialization = rag.serialize()
             vigra.writeHDF5(serialization, save_path, 'data')
         else:
-            # TODO proper rag loading from hdf5 for all rags
-            serialization = vigra.readHDF5(save_path, 'data')
-            rag = nifty.graph.rag.gridRag(seg,
+            # FIXME don't need transposing once all the inputs have the correct shape
+            seg_ = seg.transpose((2,1,0))
+            rag = nifty.graph.rag.gridRag(seg_,
                     serialization = serialization,
-                    numberOfThreads = ExperimentSettings().numberOfThreads)
+                    numberOfThreads = ExperimentSettings().n_threads)
         return rag
 
     @cacher_hdf5()
@@ -711,10 +711,10 @@ class DataSet(object):
         return matches
 
     def nifty_to_vigra(self,seg_id):
-        return uv_translator(self, seg_id)[:,0]
+        return self.uv_translator(seg_id)[:,0]
 
     def vigra_to_nifty(self,seg_id):
-        return uv_translator(self, seg_id)[:,1]
+        return self.uv_translator(seg_id)[:,1]
 
     # get the segments adjacent to the edges for each edge
     @cacher_hdf5()
@@ -887,10 +887,7 @@ class DataSet(object):
         return return_paths
 
 
-    # accumulates the given filter over all edges in the
-    # filter has to be given in the correct size!
-    # Also Median, 0.25-Quantile, 0.75-Quantile, Kurtosis, Skewness
-    # we can pass the rag, because loading it for large datasets takes some time...
+    # accumulates the given filter over all edges
     def _accumulate_filter_over_edge(self, seg_id, filt, filt_name, rag = None):
         assert len(filt.shape) in (3,4)
         assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
@@ -901,31 +898,73 @@ class DataSet(object):
 
         if rag == None:
             rag = self._rag(seg_id)
-        # split multichannel features
+
         feats_return = []
         names_return = []
         if len(filt.shape) == 3:
-            # let RAG do the work
             gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, filt)
-            edgeFeats     = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
-            feats_return.append(edgeFeats)
+            feats_return.append(rag.accumulateEdgeStatistics(gridGraphEdgeIndicator))
             names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
                 print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
                 gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(
                         rag.baseGraph, filt[:,:,:,c] )
-                #edgeFeat_mean = rag.accumulateEdgeFeatures(gridGraphEdgeIndicator)[:,np.newaxis]
-                edgeFeats     = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
-                feats_return.append(edgeFeats)
+                feats_return.append(rag.accumulateEdgeStatistics(gridGraphEdgeIndicator))
                 names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
-        return feats_return, names_return
+        return np.concatenate(feats_return, axis = 1), names_return
+
+
+    # accumulates the given filter over all edges
+    def _accumulate_filter_over_edge_with_nifty(
+            self,
+            seg_id,
+            filt,
+            filt_name,
+            z_direction,
+            rag = None):
+        assert filt.ndim in (3,4)
+        assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
+
+        # TODO don't need to change this any longer once we use nifty as default and transpose all inps
+        # nifty shapes are reversed
+
+        # suffixes for the feature names in the correct order
+        suffixes = ["mean", "variance", "skewness", "kurtosis","min",
+                "0.1quantile", "0.25quantile", "0.5quantile", "0.75quantile", "0.90quantile","max"]
+        if filt.ndim == 3:
+            filt = filt.transpose((2,1,0))
+        elif filt.ndim == 4:
+            filt = filt.transpose((2,1,0,3))
+        n_threads = ExperimentSettings().n_threads
+
+        if rag == None:
+            rag = self.nifty_rag(seg_id)
+        # split multichannel features
+        feats_return = []
+        names_return = []
+        if len(filt.shape) == 3:
+            min_val = filt.min()
+            max_val = filt.max()
+            feats_return.append(
+                    accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
+            names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
+        elif len(filt.shape) == 4:
+            for c in range(filt.shape[3]):
+                print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
+                filt_c = filt[...,c]
+                min_val = filt_c.min()
+                max_val = filt_c.max()
+                feats_return.append(
+                        accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
+                names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
+        return np.concatenate(feats_return, axis = 1), names_return
 
 
     # filters from affinity maps for xy and z edges
     # TODO change acccumulation to only accumulate the relevant pixels for z edges
     @cacher_hdf5("feature_folder", cache_edgefeats=True)
-    def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor):
+    def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor, z_direction):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
 
@@ -933,7 +972,10 @@ class DataSet(object):
         assert inp_ids[0] < self.n_inp
         assert inp_ids[1] < self.n_inp
 
-        rag = self._rag(seg_id)
+        rag = self.nifty_rag(seg_id)
+        vigra_order = self.nifty_to_vigra(seg_id)
+        assert len(vigra_order) == rag.numberOfEdges
+
         paths_xy = self.make_filters(inp_ids[0], anisotropy_factor)
         paths_z  = self.make_filters(inp_ids[1], anisotropy_factor)
 
@@ -948,14 +990,16 @@ class DataSet(object):
             # accumulate over the xy channel
             with h5py.File(path_xy) as f:
                 filtXY = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag)
-            featsXY    = np.concatenate(featsXY, axis = 1)
+            featsXY, _ = self._accumulate_filter_over_edge_with_nifty(seg_id, filtXY, "", rag, z_direction)
+            # project back to vigra graph order
+            featsXY = featsXY[vigra_order]
 
             # accumulate over the z channel
             with h5py.File(path_z) as f:
                 filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag)
-            featsZ     = np.concatenate(featsZ,  axis = 1)
+            featsZ, _  = self._accumulate_filter_over_edge_with_nifty(seg_id, filtZ, "", rag)
+            # project back to nifty graph order
+            featsZ = featsZ[vigra_order]
 
             # merge the feats
             featsXY[edge_indications==0] = featsZ[edge_indications==0]
@@ -963,11 +1007,7 @@ class DataSet(object):
 
         edge_features = np.concatenate( edge_features, axis = 1)
         assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
-
-        # remove NaNs
-        edge_features = np.nan_to_num(edge_features)
-
-        return edge_features
+        return np.nan_to_num(edge_features)
 
 
     # Features from different filters, accumulated over the edges
@@ -1013,10 +1053,7 @@ class DataSet(object):
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         vigra.writeHDF5(edge_features_names, save_file, "edge_features_names")
 
-        # remove NaNs
-        edge_features = np.nan_to_num(edge_features)
-
-        return edge_features
+        return np.nan_to_num(edge_features)
 
 
     # get the name of the edge features
