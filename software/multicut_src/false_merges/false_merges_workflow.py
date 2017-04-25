@@ -90,13 +90,18 @@ def extract_paths_from_segmentation(
             # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
-            # FIXME try except block instead
-            if len(all_paths_save) < 2:
-                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-            else:
+            try:
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
+            except TypeError:
+                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # if len(all_paths_save) < 2:
+            #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # else:
+            #     with h5py.File(paths_save_file) as f:
+            #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+            #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
 
     return all_paths, paths_to_objs
@@ -191,13 +196,18 @@ def extract_paths_and_labels_from_segmentation(
             # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
-            # FIXME try except block instead
-            if len(all_paths_save) < 2:
-                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-            else:
+            try:
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
+            except TypeError:
+                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # if len(all_paths_save) < 2:
+            #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # else:
+            #     with h5py.File(paths_save_file) as f:
+            #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+            #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
