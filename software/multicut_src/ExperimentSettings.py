@@ -29,6 +29,11 @@ class ExperimentSettings(object):
         self.anisotropy_factor = 1.
         # Flag for calculating extra 2d feature
         self.use_2d = False
+        # direction of z affinities for affinity features
+        # 0 -> accumulate values from z and z + 1
+        # 1 -> accumulate values only from z
+        # 2 -> accumulate values only from z + 1
+        self.affinity_z_direction = 0
 
         # paramter for groundtruth projection and learning
         # flag to activate learning only from the xy-edges (for ISBI12)

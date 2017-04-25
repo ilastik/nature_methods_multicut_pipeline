@@ -147,7 +147,7 @@ def local_feature_aggregator(ds,
                 ds.edge_features(seg_id, 1, anisotropy_factor ))
     if "affinities" in feature_list:
         features.append(
-                ds.edge_features_from_affinity_maps(seg_id, (1,2), anisotropy_factor ))
+                ds.edge_features_from_affinity_maps(seg_id, (1,2), anisotropy_factor, ExperimentSettings().affinity_z_direction ))
     if "extra_input" in feature_list:
         features.append(
                 ds.edge_features(seg_id, 2, anisotropy_factor ))
