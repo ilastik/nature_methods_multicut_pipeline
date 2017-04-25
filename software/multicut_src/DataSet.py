@@ -688,13 +688,13 @@ class DataSet(object):
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):
             # FIXME don't need transposing once all the inputs have the correct shape
-            seg_ = seg.transpose((2,1,0))
+            seg_ = np.ascontiguousarray(seg.transpose((2,1,0)))
             rag = nifty.graph.rag.gridRag(seg_, numberOfThreads = ExperimentSettings().n_threads)
             serialization = rag.serialize()
             vigra.writeHDF5(serialization, save_path, 'data')
         else:
             # FIXME don't need transposing once all the inputs have the correct shape
-            seg_ = seg.transpose((2,1,0))
+            seg_ = np.ascontiguousarray(seg.transpose((2,1,0)))
             serialization = vigra.readHDF5(save_path, 'data')
             rag = nifty.graph.rag.gridRag(seg_,
                     serialization = serialization,
@@ -702,20 +702,24 @@ class DataSet(object):
         return rag
 
     @cacher_hdf5()
-    def uv_translator(self, seg_id):
+    def nifty_to_vigra(self,seg_id):
         nifty_rag = self.nifty_rag(seg_id)
         uvs_nifty = nifty_rag.uvIds()
         uvs_vigra = self._adjacent_segments(seg_id)
         assert uvs_nifty.shape == uvs_vigra.shape
         matches = find_matching_row_indices(uvs_nifty, uvs_vigra)
         assert len(matches) == len(uvs_nifty)
-        return matches
+        return matches[:,0]
 
-    def nifty_to_vigra(self,seg_id):
-        return self.uv_translator(seg_id)[:,0]
-
+    @cacher_hdf5()
     def vigra_to_nifty(self,seg_id):
-        return self.uv_translator(seg_id)[:,1]
+        nifty_rag = self.nifty_rag(seg_id)
+        uvs_nifty = nifty_rag.uvIds()
+        uvs_vigra = self._adjacent_segments(seg_id)
+        assert uvs_nifty.shape == uvs_vigra.shape
+        matches = find_matching_row_indices(uvs_vigra, uvs_nifty)
+        assert len(matches) == len(uvs_nifty)
+        return matches[:,0]
 
     # get the segments adjacent to the edges for each edge
     @cacher_hdf5()
@@ -938,8 +942,10 @@ class DataSet(object):
             filt = filt.transpose((2,1,0))
         elif filt.ndim == 4:
             filt = filt.transpose((2,1,0,3))
-        #n_threads = ExperimentSettings().n_threads
-        n_threads = 1
+        filt = np.ascontiguousarray(filt)
+
+        n_threads = ExperimentSettings().n_threads
+        #n_threads = 1
 
         if rag == None:
             rag = self.nifty_rag(seg_id)
@@ -949,7 +955,6 @@ class DataSet(object):
         if len(filt.shape) == 3:
             min_val = filt.min()
             max_val = filt.max()
-            print "Before accumulation", min_val, max_val, "with shape", filt.shape
             feats_return.append(
                     nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
             names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
@@ -1002,14 +1007,12 @@ class DataSet(object):
             featsXY, _ = self._accumulate_filter_over_edge_with_nifty(seg_id, filtXY, "", z_direction, rag)
             # project back to vigra graph order
             featsXY = featsXY[vigra_order]
-            print "XY done"
 
             # accumulate over the z channel
             with h5py.File(path_z) as f:
                 filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
             print "computing Z from", path_z
             featsZ, _  = self._accumulate_filter_over_edge_with_nifty(seg_id, filtZ, "", z_direction, rag)
-            print "Z done"
             # project back to nifty graph order
             featsZ = featsZ[vigra_order]
 
