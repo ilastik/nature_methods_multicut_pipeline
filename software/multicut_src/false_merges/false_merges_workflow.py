@@ -86,7 +86,12 @@ def extract_paths_from_segmentation(
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
             all_paths_save = np.array([pp.flatten() for pp in all_paths])
-            if not all_paths_save.size:
+            # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
+            # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
+            # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
+            # see also the following issue (https://github.com/h5py/h5py/issues/875)
+            # FIXME try except block instead
+            if len(all_paths_save) < 2:
                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
             else:
                 with h5py.File(paths_save_file) as f:
@@ -182,6 +187,11 @@ def extract_paths_and_labels_from_segmentation(
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
             all_paths_save = np.array([pp.flatten() for pp in all_paths])
+            # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
+            # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
+            # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
+            # see also the following issue (https://github.com/h5py/h5py/issues/875)
+            # FIXME try except block instead
             if len(all_paths_save) < 2:
                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
             else:
