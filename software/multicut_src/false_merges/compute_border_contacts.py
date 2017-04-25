@@ -548,4 +548,4 @@ def compute_path_end_pairs(border_contacts):
             # ps = [ps[0]]
             pairs.extend(ps)
             labels.extend([lbl] * len(ps))
-    return np.path(pairs), np.path(labels)
+    return np.array(pairs), np.array(labels)
