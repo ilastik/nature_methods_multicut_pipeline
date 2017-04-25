@@ -564,6 +564,7 @@ def resolve_merges_with_lifted_edges(
         # reverse = new to old
         reverse_mapping = {val: key for key, val in mapping.iteritems()}
 
+        # FIXME Is this correct?
         # mask the local uv ids in this object
         local_uv_mask = np.in1d(uv_ids, seg_ids)
         local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
@@ -714,15 +715,23 @@ def resolve_merges_with_lifted_edges_global(
         local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
         uv_ids_in_obj = uv_ids[local_uv_mask]
 
+        # map the extracted seg_ids to consecutive labels
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros=False)
+        reverse_mapping = {val: key for key, val in mapping.iteritems()}
+
+        uv_ids_in_obj_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_obj])
+
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
-                paths_cache_folder,
-                ds,
-                mc_segmentation,
-                merge_id,
-                uv_ids_in_obj,
-                disttransf,
-                ecc_centers_seg)
+            paths_cache_folder,
+            ds,
+            mc_segmentation,
+            merge_id,
+            uv_ids_in_obj_local,
+            disttransf,
+            ecc_centers_seg,
+            reverse_mapping=reverse_mapping
+        )
 
         # add the paths that were initially classified
         paths_obj, uv_ids_paths_min_nh = combine_paths(
