@@ -10,7 +10,7 @@ def init_test_ds():
     ds = DataSet(meta_folder, 'test')
     ds.add_raw( os.path.join(data_folder,'raw_train.h5'), 'data')
     ds.add_input( os.path.join(data_folder,'probabilities_train.h5'), 'data')
-    ds.add_seg( os.path.join(data_folder,'probabilities_train.h5'), 'data')
+    ds.add_seg( os.path.join(data_folder,'overseg_train.h5'), 'data')
     ds.add_gt( os.path.join(data_folder,'gt_train.h5'), 'data')
 
 if __name__ == '__main__':

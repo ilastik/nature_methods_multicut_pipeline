@@ -695,6 +695,7 @@ class DataSet(object):
         else:
             # FIXME don't need transposing once all the inputs have the correct shape
             seg_ = seg.transpose((2,1,0))
+            serialization = vigra.readHDF5(save_path, 'data')
             rag = nifty.graph.rag.gridRag(seg_,
                     serialization = serialization,
                     numberOfThreads = ExperimentSettings().n_threads)
@@ -794,7 +795,6 @@ class DataSet(object):
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
-        import fastfilters
 
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         input_name = "inp_" + str(inp_id)
@@ -845,6 +845,7 @@ class DataSet(object):
                     filter_and_sigmas_to_compute.append((filt_name, sig))
 
         if filter_and_sigmas_to_compute:
+            import fastfilters # very weird, if we built nifty with debug, this causes a segfault oO
             inp = self.inp(inp_id)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
@@ -923,20 +924,22 @@ class DataSet(object):
             filt_name,
             z_direction,
             rag = None):
+
         assert filt.ndim in (3,4)
         assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
-
-        # TODO don't need to change this any longer once we use nifty as default and transpose all inps
-        # nifty shapes are reversed
 
         # suffixes for the feature names in the correct order
         suffixes = ["mean", "variance", "skewness", "kurtosis","min",
                 "0.1quantile", "0.25quantile", "0.5quantile", "0.75quantile", "0.90quantile","max"]
+
+        # TODO don't need to transpose once we use nifty as default and transpose all inps
+        # nifty shapes are reversed
         if filt.ndim == 3:
             filt = filt.transpose((2,1,0))
         elif filt.ndim == 4:
             filt = filt.transpose((2,1,0,3))
-        n_threads = ExperimentSettings().n_threads
+        #n_threads = ExperimentSettings().n_threads
+        n_threads = 1
 
         if rag == None:
             rag = self.nifty_rag(seg_id)
@@ -946,8 +949,9 @@ class DataSet(object):
         if len(filt.shape) == 3:
             min_val = filt.min()
             max_val = filt.max()
+            print "Before accumulation", min_val, max_val, "with shape", filt.shape
             feats_return.append(
-                    accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
+                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
             names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
@@ -956,15 +960,19 @@ class DataSet(object):
                 min_val = filt_c.min()
                 max_val = filt_c.max()
                 feats_return.append(
-                        accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
+                        nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
                 names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
         return np.concatenate(feats_return, axis = 1), names_return
 
 
     # filters from affinity maps for xy and z edges
-    # TODO change acccumulation to only accumulate the relevant pixels for z edges
+    # z-direction determines how the z features from z edges are accumulated:
+    # 0 -> features are accumulated both from z and z + 1
+    # 1 -> features are accumulated only from z
+    # 2 -> features are accumulated only from z + 1
     @cacher_hdf5("feature_folder", cache_edgefeats=True)
     def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor, z_direction):
+        assert z_direction in (0,1,2)
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
 
@@ -990,14 +998,18 @@ class DataSet(object):
             # accumulate over the xy channel
             with h5py.File(path_xy) as f:
                 filtXY = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            featsXY, _ = self._accumulate_filter_over_edge_with_nifty(seg_id, filtXY, "", rag, z_direction)
+            print "computing XY from", path_xy
+            featsXY, _ = self._accumulate_filter_over_edge_with_nifty(seg_id, filtXY, "", z_direction, rag)
             # project back to vigra graph order
             featsXY = featsXY[vigra_order]
+            print "XY done"
 
             # accumulate over the z channel
             with h5py.File(path_z) as f:
                 filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            featsZ, _  = self._accumulate_filter_over_edge_with_nifty(seg_id, filtZ, "", rag)
+            print "computing Z from", path_z
+            featsZ, _  = self._accumulate_filter_over_edge_with_nifty(seg_id, filtZ, "", z_direction, rag)
+            print "Z done"
             # project back to nifty graph order
             featsZ = featsZ[vigra_order]
 
@@ -1006,7 +1018,7 @@ class DataSet(object):
             edge_features.append(featsXY)
 
         edge_features = np.concatenate( edge_features, axis = 1)
-        assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
+        assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" % (edge_features.shape[0], rag.numberOfEdges)
         return np.nan_to_num(edge_features)
 
 
@@ -1265,10 +1277,10 @@ class DataSet(object):
             z = np.unique(edge_coords[:,2])
             if z.size > 1:
                 uv = uv_ids[edge_id]
-                if not 0 in uv:
-                    assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
-                else:
+                if ExperimentSettings().ignore_seg_value in uv: # the ignore segment can be in multiple slices for flat sp
                     continue
+                else:
+                    assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
             z = z[0]
             # check whether we have a z (-> 0) or a xy edge (-> 1)
             edge_indications[edge_id] = 1 if (z - int(z) == 0.) else 0
