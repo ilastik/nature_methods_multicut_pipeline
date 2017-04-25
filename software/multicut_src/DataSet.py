@@ -8,7 +8,7 @@ from concurrent import futures
 import itertools
 import cPickle as pickle
 
-from tools import cacher_hdf5, cache_name
+from tools import cacher_hdf5, cache_name, find_matching_row_indices
 from ExperimentSettings import ExperimentSettings
 
 # if build from source and not a conda pkg, we assume that we have cplex
@@ -50,11 +50,6 @@ def is_inp_name(file_name):
         return True
     else:
         return False
-
-# determine whether the superpixels of this segmentation are all flat (potentially modulo ignore label)
-# TODO
-def has_flat_superpixels(seg):
-    pass
 
 
 # TODO use nifty cgp features instead + add curvature
@@ -134,7 +129,6 @@ class DataSet(object):
         # additional flags
         self.has_raw = False
         self._has_defects = False
-        self.flat_superpixels = []
 
         # keys to external data
         self.external_raw_key  = None
@@ -511,7 +505,6 @@ class DataSet(object):
         self._check_input(seg_path, seg_key)
         self.external_seg_paths.append(seg_path)
         self.external_seg_keys.append(seg_key)
-        self.flat_superpixels.append(False) # we need to initialize this, will be properly set once the seg is loaded
         self.save()
 
     def add_seg_from_data(self, seg):
@@ -523,7 +516,6 @@ class DataSet(object):
         vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
         self.external_seg_paths.append(internal_seg_path)
         self.external_seg_keys.append('data')
-        self.flat_superpixels.append(False) # we need to initialize this, will be properly set once the seg is loaded
         self.save()
 
     def seg(self, seg_id):
@@ -534,7 +526,6 @@ class DataSet(object):
         else:
             seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
             seg = self._process_seg(seg)
-            #self.flat_superpixels[seg_id] = has_flat_superpixels(seg) # TODO !
             vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
             self.save()
             return seg
@@ -687,27 +678,42 @@ class DataSet(object):
         return _rag
 
 
-    # TODO TODO TODO
     # TODO use nifty rag for everything, for this, need to
     # -> change all inputs (2.5 data) from xyz to zyx, for not having to transpose (though need to transpose for vigra functions then)
-    # -> determine whether segmentation has flat or non-flat superpixels to determine type of rag
-    # -> make stacked rag compatible with ignore label, that is not flat
-    #def nifty_rag(self, seg_id):
-    #    save_path = os.path.join(self.cache_folder, "nifty_rag%i" % seg_id)
-    #    if not os.path.exists(save_path):
-    #        seg = self.seg(seg_id)
-    #        # FIXME don't need transposing once all the inputs have the correct shape
-    #        seg = seg.transpose((2,1,0))
-    #        if self.flat_superpixels[seg_id]:
-    #            rag = nifty.graph.rag. # TODO figure out correct rag types
-    #        else:
-    #            rag = nifty.graph.rag.
-    #    else:
-    #        # TODO proper rag loading from hdf5 for all rags
-    #        rag = a
-    #    return rag
+    # seg can be passed as an optional argument to avoid loading it
+    def nifty_rag(self, seg_id, seg = None):
+        save_path = os.path.join(self.cache_folder, "nifty_rag%i" % seg_id)
+        if seg is None:
+            seg = self.seg(seg_id)
+        if not os.path.exists(save_path):
+            # FIXME don't need transposing once all the inputs have the correct shape
+            seg = seg.transpose((2,1,0))
+            rag = nifty.graph.rag.gridRag(seg, numberOfThreads = ExperimentSettings().numberOfThreads)
+            serialization = rag.serialize()
+            vigra.writeHDF5(serialization, save_path, 'data')
+        else:
+            # TODO proper rag loading from hdf5 for all rags
+            serialization = vigra.readHDF5(save_path, 'data')
+            rag = nifty.graph.rag.gridRag(seg,
+                    serialization = serialization,
+                    numberOfThreads = ExperimentSettings().numberOfThreads)
+        return rag
 
-    # TODO nifty 2 vigra rag converter
+    @cacher_hdf5()
+    def uv_translator(self, seg_id):
+        nifty_rag = self.nifty_rag(seg_id)
+        uvs_nifty = nifty_rag.uvIds()
+        uvs_vigra = self._adjacent_segments(seg_id)
+        assert uvs_nifty.shape == uvs_vigra.shape
+        matches = find_matching_row_indices(uvs_nifty, uvs_vigra)
+        assert len(matches) == len(uvs_nifty)
+        return matches
+
+    def nifty_to_vigra(self,seg_id):
+        return uv_translator(self, seg_id)[:,0]
+
+    def vigra_to_nifty(self,seg_id):
+        return uv_translator(self, seg_id)[:,1]
 
     # get the segments adjacent to the edges for each edge
     @cacher_hdf5()
