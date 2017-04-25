@@ -36,7 +36,8 @@ def extract_paths_from_segmentation(
     if os.path.exists(paths_save_file):
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
-        all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
+        if all_paths.size:
+            all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
 
     # otherwise compute the paths
@@ -85,9 +86,12 @@ def extract_paths_from_segmentation(
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
             all_paths_save = np.array([pp.flatten() for pp in all_paths])
-            with h5py.File(paths_save_file) as f:
-                dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-                f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
+            if not all_paths_save.size:
+                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            else:
+                with h5py.File(paths_save_file) as f:
+                    dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+                    f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
 
     return all_paths, paths_to_objs
@@ -115,7 +119,8 @@ def extract_paths_and_labels_from_segmentation(
     if os.path.exists(paths_save_file):
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
-        all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
+        if all_paths.size:
+            all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
         path_classes = vigra.readHDF5(paths_save_file, 'path_classes')
         correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list').tolist()
@@ -177,9 +182,12 @@ def extract_paths_and_labels_from_segmentation(
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
             all_paths_save = np.array([pp.flatten() for pp in all_paths])
-            with h5py.File(paths_save_file) as f:
-                dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-                f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
+            if len(all_paths_save) < 2:
+                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            else:
+                with h5py.File(paths_save_file) as f:
+                    dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+                    f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
