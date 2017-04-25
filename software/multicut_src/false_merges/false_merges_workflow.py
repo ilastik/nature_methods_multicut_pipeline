@@ -391,7 +391,7 @@ def sample_and_save_paths_from_lifted_edges(
         uv_local,
         distance_transform,
         eccentricity_centers,
-        reverse_mapping = None):
+        reverse_mapping):
 
     if cache_folder is not None:
         if not os.path.exists(cache_folder):
@@ -429,9 +429,8 @@ def sample_and_save_paths_from_lifted_edges(
             masked_disttransf[seg != obj_id] = np.inf
 
             # If we have a reverse mapping, turn them to the original labels
-            if reverse_mapping is not None:
-                uv_ids_paths_min_nh = np.array(
-                        [np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_paths_min_nh])
+            uv_ids_paths_min_nh = np.array(
+                    [np.array([reverse_mapping[u] for u in uv]) for uv in uv_ids_paths_min_nh])
 
             # Extract the respective coordinates from ecc_centers_seg thus creating pairs of coordinates
             uv_ids_paths_min_nh_coords = [[eccentricity_centers[u] for u in uv] for uv in uv_ids_paths_min_nh]
@@ -440,8 +439,7 @@ def sample_and_save_paths_from_lifted_edges(
             paths_obj = shortest_paths(
                 masked_disttransf,
                 uv_ids_paths_min_nh_coords,
-                1)
-                #ExperimentSettings().n_threads)
+                ExperimentSettings().n_threads)
             keep_mask = np.array([isinstance(x, np.ndarray) for x in paths_obj], dtype = np.bool)
             paths_obj = np.array(paths_obj)[keep_mask]
             uv_ids_paths_min_nh = uv_ids_paths_min_nh[keep_mask]

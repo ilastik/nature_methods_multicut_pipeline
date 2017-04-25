@@ -413,7 +413,6 @@ def compute_and_save_lifted_nh(
     return np.sort( lifted_graph.liftedUvIds(), axis = 1)
 
 
-# TODO adapt to defects
 # we assume that uv is consecutive
 #@cacher_hdf5()
 # sample size 0 means we do not sample!

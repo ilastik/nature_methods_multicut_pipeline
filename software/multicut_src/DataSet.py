@@ -1058,7 +1058,7 @@ class DataSet(object):
                     filt,
                     os.path.split(path)[1],
                     rag)
-            edge_features.extend(feats_acc)
+            edge_features.append(feats_acc)
             edge_features_names.extend(names_acc)
 
         edge_features = np.concatenate( edge_features, axis = 1)
