@@ -32,7 +32,7 @@ def load_dataset(meta_folder, ds_name = None):
         cache_folder = meta_folder
     else:
         cache_folder = os.path.join(meta_folder, ds_name)
-        assert os.path.exists(cache_folder)
+        assert os.path.exists(cache_folder), cache_folder
     ds_obj_path = os.path.join(cache_folder, 'ds_obj.pkl')
     assert os.path.exists(ds_obj_path), ds_obj_path
     with open(ds_obj_path) as f:
@@ -1528,6 +1528,46 @@ class DataSet(object):
     def get_cutout(self, cutout_id):
         assert cutout_id < self.n_cutouts, str(cutout_id) + " , " + str(self.n_cutouts)
         return load_dataset(self.cache_folder, self.cutouts[cutout_id])
+
+    # TODO include volumina_viewer in conda package
+    def view_all_data(self, extra_data = None):
+        assert self.has_raw
+        if extra_data is not None:
+            assert isinstance(extra_data, list)
+
+        from volumina_viewer import volumina_n_layer
+        data = [self.inp(0).astype('float32')]
+        labels = ['raw']
+
+        # all extra inputs
+        for inp_id in range(1, self.n_inp):
+            data.append(self.inp(inp_id))
+            labels.append('input_%i' % inp_id)
+
+        for seg_id in range(0, self.n_seg):
+            data.append(self.seg(seg_id))
+            labels.append('seg_%i' % seg_id)
+
+        if self.has_gt:
+            data.append(self.gt())
+            labels.append('gt')
+
+        if self.has_seg_mask:
+            data.append(self.seg_mask())
+            labels.append('seg_mask')
+
+        if self.has_defects:
+            data.append(self.defect_mask())
+            labels.append('defect_mask')
+
+        if extra_data is not None:
+            shape = self.shape
+            for ii, extra in enumerate(extra_data):
+                assert extra.shape == self.shape
+                data.append(extra)
+                labels.append('external_data_%i' % ii)
+
+        volumina_n_layer(data, labels)
 
 
 #cutout from a given Dataset, used for cutouts and tesselations
