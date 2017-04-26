@@ -94,7 +94,7 @@ def extract_paths_from_segmentation(
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
-            except TypeError:
+            except (TypeError, IndexError):
                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
             # if len(all_paths_save) < 2:
             #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
@@ -200,7 +200,7 @@ def extract_paths_and_labels_from_segmentation(
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
-            except TypeError:
+            except (TypeError, IndexError):
                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
             # if len(all_paths_save) < 2:
             #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
