@@ -90,49 +90,49 @@ def get_completely_defected_slices(ds, seg_id):
 def get_delete_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edges")
 
 def get_delete_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edge_ids")
 
 def get_ignore_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edges")
 
 def get_ignore_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edge_ids")
 
 def get_skip_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_edges")
 
 def get_skip_ranges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_ranges")
 
 def get_skip_starts(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 

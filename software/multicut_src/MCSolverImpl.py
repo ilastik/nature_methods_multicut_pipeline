@@ -165,6 +165,50 @@ def multicut_exact(n_var,
         return ret, mc_energy, t_inf, obj
 
 
+# TODO properly handle objective, energies, node labels, multithreaded
+def multicut_message_passing(
+        n_var,
+        uv_ids,
+        edge_energies,
+        nThreads=0,
+        return_obj=False):
+
+    assert not return_obj, "Not supported yet"# TODO
+    # FIXME dirty hack
+    import sys
+    sys.path.append('/home/constantin/Work/software/bld/LP_MP/python')
+    import lp_mp
+
+    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
+    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
+
+    # nifty graph and objective for node labels and energy
+    g = nifty.graph.UndirectedGraph(int(n_var))
+    g.insertEdges(uv_ids)
+    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
+    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
+    obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
+
+    multicut_opts = lp_mp.solvers.MulticutOptions()
+    t_inf = time.time()
+    # FIXME make this compatible with numpy arrays for uv_ids too
+    mc_edges = lp_mp.solvers.multicut(
+            [(uv[0],uv[1]) for uv in uv_ids],
+            edge_energies,
+            multicut_opts
+            )
+    t_inf = time.time() - t_inf
+
+    # edge labels to node labels
+    merge_edges = uv_ids[mc_edges == False]
+    ufd = nifty.ufd.Ufd(n_var)
+    ufd.merge(merge_edges)
+    mc_nodes = ufd.elementLabeling()
+
+    mc_energy = obj.evalNodeLabels(mc_nodes)
+
+    return mc_nodes, mc_energy, t_inf
+
 
 def multicut_fusionmoves(n_var,
         uv_ids,

@@ -7,7 +7,7 @@ import sys
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
 
-from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves
+from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves, multicut_message_passing
 from EdgeRF import learn_and_predict_rf_from_gt
 from lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs_to_energies
 from defect_handling import modified_adjacency, modified_probs_to_energies
@@ -33,6 +33,9 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
         mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_energies)
     elif ExperimentSettings().solver == "multicut_fusionmoves":
         mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var, uv_ids, edge_energies, ExperimentSettings().n_threads)
+    elif ExperimentSettings().solver == "multicut_message_passing":
+        print "WARNING: message passing multicut is experimental and not supported in conda version yet"
+        mc_node, mc_energy, t_inf = multicut_message_passing(n_var, uv_ids, edge_energies, ExperimentSettings().n_threads)
     else:
         raise RuntimeError("Something went wrong, sovler " + ExperimentSettings().solver + ", not in valid solver.")
 
@@ -96,6 +99,7 @@ def multicut_workflow(
     return run_mc_solver(n_var, uv_ids, edge_energies)
 
 
+# TODO with_defects as flag instead of code duplication
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow_with_defect_correction(
         trainsets,
@@ -107,11 +111,6 @@ def multicut_workflow_with_defect_correction(
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(ds_test, DataSet)
-
-    # make sure that the test dataset has defects
-    # (need to call mod adjacency to make sure the flag is set correctly)
-    modified_adjacency(ds_test, seg_id_test)
-    assert ds_test.has_defects
 
     print "Running multicut with defect correction on", ds_test.ds_name
     if isinstance(trainsets, DataSet):
@@ -131,7 +130,7 @@ def multicut_workflow_with_defect_correction(
             use_2rfs = ExperimentSettings().use_2rfs)
 
     # get all parameters for the multicut
-    uv_ids = modified_adjacency(ds_test, seg_id_test)
+    uv_ids = modified_adjacency(ds_test, seg_id_test) if ds_test.has_defects else ds_test._adjacent_segments(seg_id_test)
     n_var = uv_ids.max() + 1
 
     # energies for the multicut
@@ -244,11 +243,6 @@ def lifted_multicut_workflow_with_defect_correction(
 
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
-
-    # make sure that the test dataset has defects
-    # (need to call mod adjacency to make sure the flag is set correctly)
-    modified_adjacency(ds_test, seg_id_test)
-    assert ds_test.has_defects
 
     print "Running lifted multicut with defect detection on", ds_test.ds_name
     if isinstance(trainsets, DataSet):
