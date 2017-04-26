@@ -176,7 +176,7 @@ def multicut_message_passing(
     assert not return_obj, "Not supported yet"# TODO
     # FIXME dirty hack
     import sys
-    sys.path.append('/home/constantin/Work/software/bld/LP_MP/python')
+    sys.path.append('/home/consti/Work/software/bld/LP_MP/python')
     import lp_mp
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
@@ -200,8 +200,8 @@ def multicut_message_passing(
     t_inf = time.time() - t_inf
 
     # edge labels to node labels
-    merge_edges = uv_ids[mc_edges == False]
-    ufd = nifty.ufd.Ufd(n_var)
+    merge_edges = uv_ids[np.array(mc_edges) == False]
+    ufd = nifty.ufd.ufd(n_var)
     ufd.merge(merge_edges)
     mc_nodes = ufd.elementLabeling()
 
