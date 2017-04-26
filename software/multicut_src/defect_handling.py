@@ -235,13 +235,16 @@ def modified_adjacency(ds, seg_id):
     #uv_ids = np.sort(rag.uvIds(), axis = 1)
     uv_ids = np.delete(uv_ids, delete_edge_ids, axis  = 0)
 
-    assert ignore_edges.shape[1] == uv_ids.shape[1]
-    matching = find_matching_row_indices(uv_ids, ignore_edges)
-    # make sure that all ignore edges were found
-    assert matching.shape[0] == ignore_edges.shape[0]
-    # get the correctly sorted the ids
-    ignore_edge_ids = matching[:,0]
-    ignore_edge_ids = ignore_edge_ids[matching[:,1]]
+    if ignore_edges.size:
+        assert ignore_edges.shape[1] == uv_ids.shape[1], "%i, %i" % (ignore_edges.shape[1], uv_ids.shape[1])
+        matching = find_matching_row_indices(uv_ids, ignore_edges)
+        # make sure that all ignore edges were found
+        assert matching.shape[0] == ignore_edges.shape[0]
+        # get the correctly sorted the ids
+        ignore_edge_ids = matching[:,0]
+        ignore_edge_ids = ignore_edge_ids[matching[:,1]]
+    else:
+        ignore_edge_ids = []
 
     for i,z in enumerate(defect_slices):
         print "Processing slice %i: %i / %i" % (z,i,len(defect_slices))

@@ -233,7 +233,8 @@ def mask_edges(ds,
     # mask the ignore edges
     if with_defects and ds.has_defects:
         ignore_edge_ids = get_ignore_edge_ids(ds, seg_id)
-        labeled[ignore_edge_ids] = False
+        if ignore_edge_ids.size:
+            labeled[ignore_edge_ids] = False
 
     return labeled
 
