@@ -71,7 +71,7 @@ class ExperimentSettings(object):
         self.num_it_stop = 20      # number of iterations without changes after which fusion moves stop
 
         # lifted mc fusion settings
-        self.sigma_lifted = 1. # sigma for the watershed proposals
+        self.sigma_lifted = 10. # sigma for the watershed proposals
         self.seed_fraction_lifted = 0.1 # seed fraction for the watershed proposals
         self.seed_strategy_lifted = 'SEED_FROM_LOCAL' # seed strategy
 

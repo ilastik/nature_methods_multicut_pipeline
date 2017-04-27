@@ -4,8 +4,6 @@ import time
 import numpy as np
 import vigra
 
-import vigra.graphs as vgraph
-
 from concurrent import futures
 
 from DataSet import DataSet

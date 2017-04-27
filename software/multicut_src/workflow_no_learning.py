@@ -164,6 +164,7 @@ def lifted_multicut_costs_from_shortest_paths(
         targets = lifted_uv_ids[where_u][:,1].tolist()
         paths = shortest_path.runSingleSourceMultiTarget(local_costs, u, targets)
         lifted_costs[where_u] = np.array( [agglomerator(pp) for pp in paths], dtype = local_costs.dtype )
+    # TODO probabilities to costs
     return lifted_costs
 
 
@@ -174,7 +175,8 @@ def multicut_workflow_no_learning(
         seg_id,
         inp_ids,
         feature,
-        with_defects = False):
+        with_defects = False,
+        z_direction  = 2):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_test, DataSet)
@@ -194,10 +196,17 @@ def multicut_workflow_no_learning(
             ExperimentSettings().beta_local,
             ExperimentSettings().weighting_scheme,
             ExperimentSettings().weight,
-            with_defects
+            with_defects,
+            z_direction
         )
 
-    return run_mc_solver(n_var, uv_ids, costs, mc_params)
+    # if we have a seg mask set edges to the ignore segment to be max repulsive
+    if ds.has_seg_mask:
+        max_repulsive = 2 * costs.min()
+        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
+        costs[ignore_ids] = max_repulsive
+
+    return run_mc_solver(n_var, uv_ids, costs)
 
 
 def mala_clustering_workflow(
@@ -211,19 +220,18 @@ def mala_clustering_workflow(
     assert len(inp_ids) == 2
     import nifty.graph.agglo as nagglo
 
-    #rag = ds.nifty_rag(seg_id)
-    #to_nifty_order = ds.vigra_to_nifty(seg_id)
-
-    edge_indications = ds.edge_indications(seg_id)[to_nifty_order]
-    edge_lens        = ds.topology_features(seg_id, False)[:,0][to_nifty_order]
-
     # need to invert due to affinities!
     indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', z_direction)
+    edge_lens  = ds.topology_features(seg_id, False)[:,0]
 
     # run mala clustering
     uv_ids = ds._adjacent_segments(seg_id)
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
     graph.insertEdges(uv_ids)
+
+    if ds.has_seg_mask:
+        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
+        indicators[ignore_ids] = 1.
 
     #policy = nagglo.edgeWeightedClusterPolicy(
     policy = nagglo.malaClusterPolicy(
