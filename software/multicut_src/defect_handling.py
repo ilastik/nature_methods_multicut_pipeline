@@ -746,6 +746,8 @@ def _get_replace_slices(defected_slices, shape):
 
 
 def postprocess_segmentation(ds, seg_id, seg_result):
+    if not ds.has_defects:
+        return seg_result
     defect_slices = get_completely_defected_slices(ds, seg_id)
     assert defect_slices.size, "Can only post-process data with defects"
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)

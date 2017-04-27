@@ -176,7 +176,7 @@ def multicut_message_passing(
     assert not return_obj, "Not supported yet"# TODO
     # FIXME dirty hack
     import sys
-    sys.path.append('/home/consti/Work/software/bld/LP_MP/python')
+    sys.path.append('/home/constantin/Work/software/bld/LP_MP/python')
     import lp_mp
 
     assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])

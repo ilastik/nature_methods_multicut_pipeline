@@ -921,6 +921,7 @@ class DataSet(object):
 
 
     # accumulates the given filter over all edges
+    # TODO flag for non-flat accumulation
     def _accumulate_filter_over_edge_with_nifty(
             self,
             seg_id,
@@ -933,8 +934,8 @@ class DataSet(object):
         assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
 
         # suffixes for the feature names in the correct order
-        suffixes = ["mean", "variance", "skewness", "kurtosis","min",
-                "0.1quantile", "0.25quantile", "0.5quantile", "0.75quantile", "0.90quantile","max"]
+        suffixes = ["mean","variance","min","0.1quantile","0.25quantile",
+                    "0.5quantile","0.75quantile","0.90quantile","max"]
 
         # TODO don't need to transpose once we use nifty as default and transpose all inps
         # nifty shapes are reversed
@@ -1122,8 +1123,9 @@ class DataSet(object):
         return statistics
 
 
+    # the argument 'with_defects' is needed for correctly caching the lmc features
     @cacher_hdf5(folder = "feature_folder", ignoreNumpyArrays=True)
-    def region_features(self, seg_id, inp_id, uv_ids, lifted_nh):
+    def region_features(self, seg_id, inp_id, uv_ids, lifted_nh, with_defects = False):
 
         import gc
 
@@ -1563,7 +1565,7 @@ class DataSet(object):
         if extra_data is not None:
             shape = self.shape
             for ii, extra in enumerate(extra_data):
-                assert extra.shape == self.shape
+                assert extra.shape == self.shape, "%s, %s" % (str(extra.shape), str(self.shape))
                 data.append(extra)
                 labels.append('external_data_%i' % ii)
 
