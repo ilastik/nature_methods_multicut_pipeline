@@ -80,7 +80,7 @@ def merge_small_segments(mc_seg, min_seg_size):
     assert len(node_sizes) == n_nodes
 
     # find nodes that shall be merged
-    merge_nodes = np.where(node_sizes < min_seg_size)
+    merge_nodes = np.where(node_sizes < min_seg_size)[0]
 
     # iterate over the merge nodes and merge with adjacent
     # node with biggest overlap

@@ -72,6 +72,6 @@ def init_ds(data_folder, meta_folder):
     ds.add_gt(    os.path.join(data_folder,'gt.h5'),   'data')
 
 if __name__ == '__main__':
-    download_data()
-    init_ds(data_folder_isotropic, meta_folder_isotropic)
+    #download_data()
+    #init_ds(data_folder_isotropic, meta_folder_isotropic)
     init_ds(data_folder_anisotropic, meta_folder_anisotropic)

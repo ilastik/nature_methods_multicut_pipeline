@@ -361,7 +361,8 @@ def modified_edge_gt(ds, seg_id):
         return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds.rag(seg_id)
-    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, ds.gt(), ExperimentSettings().n_threads)
+    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, ds.gt())
+        #ExperimentSettings().n_threads)
     skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
 
@@ -462,7 +463,6 @@ def _get_skip_edge_features_for_slices(
             if len(filt.shape) == 3:
                 target_features.append(
                     nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), 0, n_threads) )
-                )
             elif len(filt.shape) == 4:
                 for c in range(filt.shape[3]):
                     filt_c = filt[...,c]

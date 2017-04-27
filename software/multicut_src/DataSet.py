@@ -545,7 +545,7 @@ class DataSet(object):
         # also messes up defects in cremi...
         #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         #gt -= gt.min()
-        return gt
+        return gt.astype('uint32')
 
     # only single gt for now!
     # add grountruth
@@ -957,7 +957,7 @@ class DataSet(object):
             edge_features_names.extend(names_acc)
 
         edge_features = np.concatenate( edge_features, axis = 1)
-        assert edge_features.shape[0] == len( rag.edgeIds() ), str(edge_features.shape[0]) + " , " +str(len( rag.edgeIds() ))
+        assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" (edge_features.shape[0], rag.numberOfEdges)
 
         # save the feature names to file
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
@@ -1212,7 +1212,9 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        gt  = self.gt()
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+                #ExperimentSettings().n_threads ) FIXME pybindings not working
         uv_ids = rag.uvIds()
         u_gt = node_gt[ uv_ids[:,0] ]
         v_gt = node_gt[ uv_ids[:,1] ]
@@ -1246,7 +1248,8 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+                #ExperimentSettings().n_threads) )
         uv_ids = rag.uvIds()
 
         ignore_mask = np.zeros( rag.numberOfEdges, dtype = bool)
@@ -1274,7 +1277,8 @@ class DataSet(object):
         assert self.has_gt
 
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+                #int(ExperimentSettings().n_threads) )
 
         ignore_mask = np.zeros( uvs_lifted.shape[0], dtype = bool)
         for edge_id in xrange(numEdges):
@@ -1300,7 +1304,8 @@ class DataSet(object):
         seg = self.seg(seg_id)
         rag = self.rag(seg_id, seg)
         gt  = self.gt()
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+                #int(ExperimentSettings().n_threads) )
         seg_gt  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
         assert seg_gt.shape == self.shape
         return seg_gt
