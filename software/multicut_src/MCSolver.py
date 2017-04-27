@@ -86,7 +86,7 @@ def multicut_workflow(
     seg_id_max = ds_test.seg(seg_id_test).max()
     n_var = seg_id_max + 1
     # uv - ids = node ides connected by the edges
-    uv_ids = ds_test._adjacent_segments(seg_id_test)
+    uv_ids = ds_test.uv_ids(seg_id_test)
     assert n_var == uv_ids.max() + 1, "%i, %i" % (n_var, uv_ids.max() + 1)
     # energies for the multicut
     edge_energies = probs_to_energies(ds_test,
@@ -130,7 +130,7 @@ def multicut_workflow_with_defect_correction(
             use_2rfs = ExperimentSettings().use_2rfs)
 
     # get all parameters for the multicut
-    uv_ids = modified_adjacency(ds_test, seg_id_test) if ds_test.has_defects else ds_test._adjacent_segments(seg_id_test)
+    uv_ids = modified_adjacency(ds_test, seg_id_test) if ds_test.has_defects else ds_test.uv_ids(seg_id_test)
     n_var = uv_ids.max() + 1
 
     # energies for the multicut
@@ -213,7 +213,7 @@ def lifted_multicut_workflow(
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
     edge_energies_lifted /= edge_energies_lifted.shape[0]
-    uvs_local = ds_test._adjacent_segments(seg_id_test)
+    uvs_local = ds_test.uv_ids(seg_id_test)
 
     # warmstart with multicut result
     if warmstart:

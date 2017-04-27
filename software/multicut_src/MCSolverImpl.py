@@ -49,7 +49,7 @@ def probs_to_energies(
     edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - beta) / beta )
 
     if weighting_scheme in ("z", "xyz", "all"):
-        edge_areas       = ds._rag(seg_id).edgeLengths()
+        edge_areas       = ds.topology_features(seg_id, False)[:,0].astype('uint32')
         edge_indications = ds.edge_indications(seg_id)
 
     # weight edges
@@ -65,7 +65,7 @@ def probs_to_energies(
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        uv_ids = ds._adjacent_segments(seg_id)
+        uv_ids = ds.uv_ids(seg_id)
         ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)
         edge_energies[ ignore_mask ] = 2 * edge_energies.min()
 

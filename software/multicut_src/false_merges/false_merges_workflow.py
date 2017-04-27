@@ -18,6 +18,18 @@ from ..tools import find_matching_row_indices
 from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator
 from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts_old, compute_border_contacts
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 
 def extract_paths_from_segmentation(
         ds,
@@ -540,7 +552,7 @@ def resolve_merges_with_lifted_edges(
     ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
 
     # get local and lifted uv ids
-    uv_ids = ds._adjacent_segments(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
     uv_ids_lifted = compute_and_save_lifted_nh(
         ds,
         seg_id,
@@ -692,7 +704,7 @@ def resolve_merges_with_lifted_edges_global(
     ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
 
     # get local and lifted uv ids
-    uv_ids = ds._adjacent_segments(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
     uv_ids_lifted = compute_and_save_lifted_nh(
         ds,
         seg_id,
@@ -801,12 +813,22 @@ def project_resolved_objects_to_segmentation(ds,
         mc_segmentation,
         resolved_objs):
 
-    rag = ds._rag(seg_id)
-    mc_labeling, _ = rag.projectBaseGraphGt( mc_segmentation )
+    n_threads = ExperimentSettings().n_threads
+    rag = ds.rag(seg_id)
+    # recover the node labeling from the segmentation
+    mc_labeling = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, n_threads)
+
+    # offset for new labels
     new_label_offset = np.max(mc_labeling) + 1
+
+    # iterate over the resolved objs and insert their solution into
+    # the node labeling
     for obj in resolved_objs:
         resolved_nodes = resolved_objs[obj]
         for node_id in resolved_nodes:
             mc_labeling[node_id] = new_label_offset + resolved_nodes[node_id]
         new_label_offset += np.max(resolved_nodes.values()) + 1
-    return rag.projectLabelsToBaseGraph(mc_labeling)
+
+    # make consecutive and project back to segmentation
+    mc_labeling = vigra.analysis.relabelConsecutive(mc_labeling, start_label = 1, keep_zeros = False)
+    return nifty.graph.rag.projectScalarNodeDataToPixels(rag, mc_labeling, n_threads )

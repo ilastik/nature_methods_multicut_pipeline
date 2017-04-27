@@ -40,15 +40,12 @@ def accumulate_affinities_over_edges(
     index = feat_to_index[feature]
 
     if rag is None:
-        rag = ds.nifty_rag(seg_id)
-    to_nifty_order = ds.vigra_to_nifty(seg_id)
-    to_vigra_order = ds.nifty_to_vigra(seg_id)
+        rag = ds.rag(seg_id)
 
-    # TODO we only need the ascontiguous when still supporting vigra
-    aff_xy = np.ascontiguousarray(ds.inp(inp_ids[0]).transpose((2,1,0)))
-    aff_z  = np.ascontiguousarray(ds.inp(inp_ids[1]).transpose((2,1,0)))
+    aff_xy = ds.inp(inp_ids[0])
+    aff_z  = ds.inp(inp_ids[1])
 
-    edge_indications = ds.edge_indications(seg_id)[to_nifty_order]
+    edge_indications = ds.edge_indications(seg_id)
 
     print "Accumulating xy affinities with feature:", feature
     accumulated = nifty.graph.rag.accumulateEdgeFeaturesFlat(
@@ -66,14 +63,14 @@ def accumulate_affinities_over_edges(
             aff_z.min(),
             aff_z.max(),
             z_direction,
-            ExperimentSettings().n_threads)[:,index]
+            ExperimentSettings().n_threads)
     assert accumulated.shape[0] == accumulated_z.shape[0], "%i, %i" % (accumulated.shape[0], accumulated_z.shape[0])
     assert accumulated.shape[0] == edge_indications.shape[0], "%s, %s" % (str(accumulated.shape), str(edge_indications.shape) )
 
     # split xy and z edges accordingly (0 indicates z-edges !)
     accumulated[edge_indications == 0] = accumulated_z[edge_indications == 0]
 
-    return accumulated[to_vigra_order]
+    return accumulated
 
 
 # get weights from accumulated affinities between the local superpixel edges
@@ -115,7 +112,7 @@ def costs_from_affinities(
 
     return costs
 
-    #edge_sizes = rag.edgeLengths()
+    #edge_sizes = ds.topology_features(seg_id, False)[:,0]
 
     ## weight with the edge lens according to the weighting scheme
     #if weighting_scheme == "z":
@@ -139,10 +136,11 @@ def costs_from_affinities(
 def lifted_multicut_costs_from_shortest_paths(
         ds,
         seg_id,
-        local_costs,
+        local_probabilities,
         lifted_uv_ids,
         agglomeration_method = 'max'
         ):
+
     agglomerators = {
         'max' : np.max,
         'min' : np.min,
@@ -152,18 +150,18 @@ def lifted_multicut_costs_from_shortest_paths(
     agglomerator = agglomerators[agglomeration_method]
     assert agglomeration_method in agglomerators.keys() # TODO more ?!
 
-    uv_ids = ds._adjacent_segments(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
 
-    lifted_costs = np.zeros(lifted_uv_ids.shape[0], dtype = local_costs.dtype)
+    lifted_costs = np.zeros(lifted_uv_ids.shape[0], dtype = local_probabilities.dtype)
     # process the lifted uv-ids s.t. we can run singleSourceMultiTarget
     # TODO parallelize this on the c++ end
     shortest_path = nifty.graph.ShortestPathDijkstra(graph)
     for u in np.unique(lifted_uv_ids[:,0]):
         where_u = np.where(lifted_uv_ids[:,0] == u)
         targets = lifted_uv_ids[where_u][:,1].tolist()
-        paths = shortest_path.runSingleSourceMultiTarget(local_costs, u, targets)
-        lifted_costs[where_u] = np.array( [agglomerator(pp) for pp in paths], dtype = local_costs.dtype )
+        paths = shortest_path.runSingleSourceMultiTarget(local_probabilities, u, targets)
+        lifted_costs[where_u] = np.array( [agglomerator(pp) for pp in paths], dtype = local_probabilities.dtype )
     # TODO probabilities to costs
     return lifted_costs
 
@@ -184,7 +182,7 @@ def multicut_workflow_no_learning(
     print "Running Multicut with weights from affinities"
 
     # get all parameters for the multicut
-    uv_ids = ds_test._adjacent_segments(seg_id)
+    uv_ids = ds_test.uv_ids(seg_id)
     n_var  = uv_ids.max() + 1
 
     # weights for the multicut
@@ -225,7 +223,7 @@ def mala_clustering_workflow(
     edge_lens  = ds.topology_features(seg_id, False)[:,0]
 
     # run mala clustering
-    uv_ids = ds._adjacent_segments(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
     graph.insertEdges(uv_ids)
 

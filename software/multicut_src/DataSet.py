@@ -51,9 +51,11 @@ def is_inp_name(file_name):
     else:
         return False
 
-
-# TODO use nifty cgp features instead + add curvature
+# TODO
+# TODO use nifty cgp features + add curvature
+# TODO
 def _topology_features_impl(rag, seg, edge_indications, edge_lens):
+    assert False, "Not ported to nifty backend yet"
     extra_features = np.zeros( (rag.edgeNum, 6), dtype = 'float32' )
 
     # edge indications and mask for z edges
@@ -493,10 +495,14 @@ class DataSet(object):
             mask = self.seg_mask()
             assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
             seg[ np.logical_not(mask) ] = ExperimentSettings().ignore_seg_value
+            # FIXME FIXME FIXME
+            # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
             seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
                     start_label = 1,
                     keep_zeros = True)
         else:
+            # FIXME FIXME FIXME
+            # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
             seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
         return seg
 
@@ -657,103 +663,31 @@ class DataSet(object):
     # General functionality
     #
 
-    # calculate the region adjacency graph of seg_id
-    def _rag(self, seg_id):
-
-        filename    = "rag_seg" + str(seg_id) + ".h5"
-        ragpath = os.path.join(self.cache_folder, filename)
-        rag_key  = "rag"
-        if not os.path.isfile(ragpath):
-            print "Computing RAG for seg_id", str(seg_id)
-            grid = graphs.gridGraph(self.shape[0:3])
-            _rag  = graphs.regionAdjacencyGraph(grid, self.seg(seg_id))
-
-            print "WRITING IN ", ragpath, rag_key
-            _rag.writeHDF5(ragpath, rag_key)
-
-        else:
-            #print "Loading RAG for seg_id", str(seg_id), "from HDF5:"
-            #print ragpath
-            #print rag_key
-            _rag = vigra.graphs.loadGridRagHDF5(ragpath, rag_key)
-        return _rag
-
-
-    # TODO use nifty rag for everything, for this, need to
-    # -> change all inputs (2.5 data) from xyz to zyx, for not having to transpose (though need to transpose for vigra functions then)
+    # compute and cache the nifty rag
     # seg can be passed as an optional argument to avoid loading it
-    def nifty_rag(self, seg_id, seg = None):
-        save_path = os.path.join(self.cache_folder, "nifty_rag%i" % seg_id)
+    def rag(self, seg_id, seg = None):
+        save_path = os.path.join(self.cache_folder, "rag%i" % seg_id)
         if seg is None:
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):
-            # FIXME don't need transposing once all the inputs have the correct shape
-            seg_ = np.ascontiguousarray(seg.transpose((2,1,0)))
-            rag = nifty.graph.rag.gridRag(seg_, numberOfThreads = ExperimentSettings().n_threads)
+            rag = nifty.graph.rag.gridRag(seg,
+                    numberOfThreads = ExperimentSettings().n_threads)
             serialization = rag.serialize()
             vigra.writeHDF5(serialization, save_path, 'data')
         else:
-            # FIXME don't need transposing once all the inputs have the correct shape
-            seg_ = np.ascontiguousarray(seg.transpose((2,1,0)))
             serialization = vigra.readHDF5(save_path, 'data')
-            rag = nifty.graph.rag.gridRag(seg_,
+            rag = nifty.graph.rag.gridRag(seg,
                     serialization = serialization,
                     numberOfThreads = ExperimentSettings().n_threads)
         return rag
 
+    # save the uv ids seperately for convience, s.t. we don't have to deserialize the rag
+    # if we only need uv ids
     @cacher_hdf5()
-    def nifty_to_vigra(self,seg_id):
-        nifty_rag = self.nifty_rag(seg_id)
-        uvs_nifty = nifty_rag.uvIds()
-        uvs_vigra = self._adjacent_segments(seg_id)
-        assert uvs_nifty.shape == uvs_vigra.shape
-        matches = find_matching_row_indices(uvs_nifty, uvs_vigra)
-        assert len(matches) == len(uvs_nifty)
-        return matches[:,0]
+    def uv_ids(self, seg_id):
+        rag = self.rag(seg_id)
+        return rag.uvIds()
 
-    @cacher_hdf5()
-    def vigra_to_nifty(self,seg_id):
-        nifty_rag = self.nifty_rag(seg_id)
-        uvs_nifty = nifty_rag.uvIds()
-        uvs_vigra = self._adjacent_segments(seg_id)
-        assert uvs_nifty.shape == uvs_vigra.shape
-        matches = find_matching_row_indices(uvs_vigra, uvs_nifty)
-        assert len(matches) == len(uvs_nifty)
-        return matches[:,0]
-
-    # get the segments adjacent to the edges for each edge
-    @cacher_hdf5()
-    def _adjacent_segments(self, seg_id):
-        print "Getting segments adjacent to edges from RAG:"
-        rag = self._rag(seg_id)
-
-        adjacent_segs = rag.uvIds()
-        adjacent_segs = np.sort(adjacent_segs, axis = 1)
-        assert adjacent_segs.shape[0] == rag.edgeIds().shape[0]
-        return adjacent_segs
-
-
-    # get the adjacent edges for each edge
-    def _adjacent_edges(self, seg_id):
-        print "Getting adjacent edges from RAG:"
-        rag = self._rag(seg_id)
-        adjacent_edges = []
-        for edge in rag.edgeIter():
-            adj_to_edge = []
-            n_1  = rag.u(edge)
-            n_2  = rag.v(edge)
-            for n in (n_1,n_2):
-                for arc in rag.incEdgeIter(n):
-                    new_edge = rag.edgeFromArc(arc)
-                    if new_edge != edge:
-                        adj_to_edge.append(new_edge.id)
-            adjacent_edges.append(adj_to_edge)
-
-        assert len(adjacent_edges) == rag.edgeNum, str(len(adjacent_edges)) + " , " + str(rag.edgeNum)
-        return adjacent_edges
-
-
-    # TODO replace is_2d_stacked with flag from ds, once this is implemented
     # calculates the eccentricity centers for given seg_id
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
@@ -853,13 +787,17 @@ class DataSet(object):
             inp = self.inp(inp_id)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
+
                 filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
                 is_singlechannel = True if filt_name != "hessianOfGaussianEigenvalues" else False
+
                 f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
-                chunks  = ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1 ) if is_singlechannel else ( min(512,inp.shape[0]), min(512,inp.shape[2]), 1, 2)
+                chunks  = ( 1, min(512,inp.shape[1]), min(512,inp.shape[2]) ) if is_singlechannel else \
+                        ( 1, min(512,inp.shape[1]), min(512,inp.shape[2]), 2)
+
                 filter_res = np.zeros(f_shape, dtype = 'float32')
                 for z in xrange(inp.shape[2]):
-                    filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
+                    filter_res[z,:] = filter_fu(inp[z,:], sig)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = chunks)
 
@@ -891,44 +829,15 @@ class DataSet(object):
         return_paths.sort()
         return return_paths
 
-
     # accumulates the given filter over all edges
-    def _accumulate_filter_over_edge(self, seg_id, filt, filt_name, rag = None):
-        assert len(filt.shape) in (3,4)
-        assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
-
-        # suffixes for the feature names in the correct order
-        suffixes = ["mean", "sum", "min", "max", "variance", "skewness", "kurtosis",
-                "0.1quantile", "0.25quantile", "0.5quantile", "0.75quantile", "0.90quantile"]
-
-        if rag == None:
-            rag = self._rag(seg_id)
-
-        feats_return = []
-        names_return = []
-        if len(filt.shape) == 3:
-            gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, filt)
-            feats_return.append(rag.accumulateEdgeStatistics(gridGraphEdgeIndicator))
-            names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
-        elif len(filt.shape) == 4:
-            for c in range(filt.shape[3]):
-                print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
-                gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(
-                        rag.baseGraph, filt[:,:,:,c] )
-                feats_return.append(rag.accumulateEdgeStatistics(gridGraphEdgeIndicator))
-                names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
-        return np.concatenate(feats_return, axis = 1), names_return
-
-
-    # accumulates the given filter over all edges
-    # TODO flag for non-flat accumulation
-    def _accumulate_filter_over_edge_with_nifty(
+    def _accumulate_filter_over_edge(
             self,
             seg_id,
             filt,
             filt_name,
-            z_direction,
-            rag = None):
+            rag = None,
+            z_direction = 0
+        ):
 
         assert filt.ndim in (3,4)
         assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
@@ -937,19 +846,10 @@ class DataSet(object):
         suffixes = ["mean","variance","min","0.1quantile","0.25quantile",
                     "0.5quantile","0.75quantile","0.90quantile","max"]
 
-        # TODO don't need to transpose once we use nifty as default and transpose all inps
-        # nifty shapes are reversed
-        if filt.ndim == 3:
-            filt = filt.transpose((2,1,0))
-        elif filt.ndim == 4:
-            filt = filt.transpose((2,1,0,3))
-        filt = np.ascontiguousarray(filt)
-
         n_threads = ExperimentSettings().n_threads
-        #n_threads = 1
 
         if rag == None:
-            rag = self.nifty_rag(seg_id)
+            rag = self.rag(seg_id)
         # split multichannel features
         feats_return = []
         names_return = []
@@ -986,9 +886,7 @@ class DataSet(object):
         assert inp_ids[0] < self.n_inp
         assert inp_ids[1] < self.n_inp
 
-        rag = self.nifty_rag(seg_id)
-        vigra_order = self.nifty_to_vigra(seg_id)
-        assert len(vigra_order) == rag.numberOfEdges
+        rag = self.rag(seg_id)
 
         paths_xy = self.make_filters(inp_ids[0], anisotropy_factor)
         paths_z  = self.make_filters(inp_ids[1], anisotropy_factor)
@@ -1005,17 +903,13 @@ class DataSet(object):
             with h5py.File(path_xy) as f:
                 filtXY = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
             print "computing XY from", path_xy
-            featsXY, _ = self._accumulate_filter_over_edge_with_nifty(seg_id, filtXY, "", z_direction, rag)
-            # project back to vigra graph order
-            featsXY = featsXY[vigra_order]
+            featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag, z_direction)
 
             # accumulate over the z channel
             with h5py.File(path_z) as f:
                 filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
             print "computing Z from", path_z
-            featsZ, _  = self._accumulate_filter_over_edge_with_nifty(seg_id, filtZ, "", z_direction, rag)
-            # project back to nifty graph order
-            featsZ = featsZ[vigra_order]
+            featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag, z_direction)
 
             # merge the feats
             featsXY[edge_indications==0] = featsZ[edge_indications==0]
@@ -1036,7 +930,7 @@ class DataSet(object):
         filter_paths = self.make_filters(inp_id, anisotropy_factor)
         filter_key = "data"
 
-        rag = self._rag(seg_id)
+        rag = self.rag(seg_id)
 
         n = 0
         N = len(filter_paths)
@@ -1243,66 +1137,46 @@ class DataSet(object):
         return vigra.readHDF5(save_file,"region_features_names")
 
 
+    # FIXME this is undefined for non-flat superpixel, but does not crash for 3d superpixel
     @cacher_hdf5()
     def node_z_coord(self, seg_id):
-        rag = self._rag(seg_id)
-        labels = rag.labels
-        labels = labels.squeeze()
-        nz = np.zeros(rag.maxNodeId +1, dtype='uint32')
-        for z in range(labels.shape[2]):
-            lz = labels[:,:,z]
+        seg = self.seg(seg_id)
+        nz = np.zeros(seg.max() + 1, dtype='uint32')
+        for z in xrange(seg.shape[0]):
+            lz = seg[z,:,:]
             nz[lz] = z
         return nz
 
 
     # find the edge-type indications
     # 0 for z-edges, 1 for xy-edges
+    # FIXME this is undefined for non-flat superpixel, but does not crash for 3d superpixel
     @cacher_hdf5()
     def edge_indications(self, seg_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-
-        # TODO test this and use instead
-        # need to include some of the checks from below, too
-        #node_z = self.node_z_coord(seg_id)
-        #uv_ids = self._adjacent_segments(seg_id)
-        #z_u = node_z[uv_ids[:,0]]
-        #z_u = node_z[uv_ids[:,1]]
-        ## xy edges (same z coordinate are) set to 1
-        ## z  edges (different z coordinates) set to 0
-        #return (z_u != z_v).astype('uint8')
-
-        rag = self._rag(seg_id)
-        n_edges = rag.edgeNum
-        edge_indications = np.zeros(n_edges, dtype = 'uint8')
-        uv_ids = rag.uvIds()
-
-        # loop over the edges and check whether they are xy or z by checking the edge coords
-        for edge_id in xrange(n_edges):
-            edge_coords = rag.edgeCoordinates(edge_id)
-            z = np.unique(edge_coords[:,2])
-            if z.size > 1:
-                uv = uv_ids[edge_id]
-                if ExperimentSettings().ignore_seg_value in uv: # the ignore segment can be in multiple slices for flat sp
-                    continue
-                else:
-                    assert False, "Edge indications can only be calculated for flat superpixel" + str(z)
-            z = z[0]
-            # check whether we have a z (-> 0) or a xy edge (-> 1)
-            edge_indications[edge_id] = 1 if (z - int(z) == 0.) else 0
-
-        return edge_indications
+        node_z = self.node_z_coord(seg_id)
+        uv_ids = self.uv_ids(seg_id)
+        z_u = node_z[uv_ids[:,0]]
+        z_v = node_z[uv_ids[:,1]]
+        # xy edges (same z coordinate are) set to 1
+        # z  edges (different z coordinates) set to 0
+        return (z_u == z_v).astype('uint8')
 
 
     # Features from edge_topology
     @cacher_hdf5("feature_folder")
     def topology_features(self, seg_id, use_2d_edges):
+        assert False
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert isinstance( use_2d_edges, bool ), type(use_2d_edges)
 
-        rag = self._rag(seg_id)
+        rag = self.rag(seg_id)
 
         # length / area of the edge
-        topo_feats      = rag.edgeLengths()[:,None].astype('float32')
+        topo_feats      = nifty.graph.rag.accumulateMeanAndLength(
+                rag,
+                np.zeros(self.shape, dtype = 'float32') # fake data
+        )[:,1:]
         topo_feat_names = ["TopologyFeatures_EdgeLengths"]
 
         # extra feats for z-edges in 2,5 d
@@ -1337,18 +1211,11 @@ class DataSet(object):
     def edge_gt(self, seg_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
-
-        rag = self._rag(seg_id)
-        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        # this fails for non-consecutive gt, which however should not be a problem
-        #assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
-
-        uv_ids = self._adjacent_segments(seg_id)
+        rag = self.rag(seg_id)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        uv_ids = rag.uvIds()
         u_gt = node_gt[ uv_ids[:,0] ]
         v_gt = node_gt[ uv_ids[:,1] ]
-
-        assert u_gt.shape == v_gt.shape
-        assert u_gt.shape[0] == rag.edgeNum
         return (u_gt != v_gt).astype('uint8')
 
 
@@ -1359,7 +1226,7 @@ class DataSet(object):
     def edge_gt_fuzzy(self, seg_id, positive_threshold, negative_threshold):
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
-        uv_ids = self._adjacent_segments(seg_id)
+        uv_ids = self.uv_ids(seg_id)
         overlaps = nifty.groundtruth.Overlap(
                 uv_ids.max(),
                 self.seg(seg_id),
@@ -1378,14 +1245,14 @@ class DataSet(object):
     def ignore_mask(self, seg_id, uv_ids, with_defects = False): # with defects only  for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
-        #need the node gt to determine the gt val of superpixel
-        rag = self._rag(seg_id)
-        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
-        ignore_mask = np.zeros( rag.edgeNum, dtype = bool)
-        for edge_id in xrange(rag.edgeNum):
-            n0 = uv_ids[edge_id][0]
-            n1 = uv_ids[edge_id][1]
+        rag = self.rag(seg_id)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        uv_ids = rag.uvIds()
+
+        ignore_mask = np.zeros( rag.numberOfEdges, dtype = bool)
+        for edge_id in xrange(rag.numberOfEdges):
+            n0 = uv_ids[edge_id,0]
+            n1 = uv_ids[edge_id,1]
             # if both superpixel have ignore label in the gt
             # block them in our mask
             if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
@@ -1402,20 +1269,17 @@ class DataSet(object):
     # which are projected to an ignore label
     # -> we don t want to learn on these!
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def lifted_ignore_mask(self, seg_id, liftedNh, liftedUvs, with_defects = False): # with defects only for caching
+    def lifted_ignore_mask(self, seg_id, lifted_nh, uvs_lifted, with_defects = False): # with defects only for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
-        #need the node gt to determine the gt val of superpixel
-        rag = self._rag(seg_id)
-        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
 
-        numEdges = liftedUvs.shape[0]
+        rag = self.rag(seg_id)
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
 
-        ignore_mask = np.zeros( numEdges, dtype = bool)
+        ignore_mask = np.zeros( uvs_lifted.shape[0], dtype = bool)
         for edge_id in xrange(numEdges):
-            n0 = liftedUvs[edge_id][0]
-            n1 = liftedUvs[edge_id][1]
+            n0 = uvs_lifted[edge_id][0]
+            n1 = uvs_lifted[edge_id][1]
             # if both superpixel have ignore label in the gt
             # block them in our mask
             if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
@@ -1433,29 +1297,23 @@ class DataSet(object):
     def seg_gt(self, seg_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
-
-        rag = self._rag(seg_id)
         seg = self.seg(seg_id)
-        node_gt, _ = rag.projectBaseGraphGt( self.gt().astype(np.uint32) )
-        assert node_gt.shape[0] == rag.nodeNum, str(node_gt.shape[0]) + " , " +  str(rag.nodeNum)
-
-        seg_gt = rag.projectLabelsToBaseGraph(node_gt)
+        rag = self.rag(seg_id, seg)
+        gt  = self.gt()
+        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
+        seg_gt  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
         assert seg_gt.shape == self.shape
-
-        return seg_gt.astype(np.uint32)
+        return seg_gt
 
 
     # get the projection of a multicut result to the segmentation
     def project_mc_result(self, seg_id, mc_node):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        rag = self._rag(seg_id)
-        assert mc_node.shape[0] == rag.nodeNum, str(mc_node.shape[0]) + " , " + str(rag.nodeNum)
-
-        mc_seg = rag.projectLabelsToBaseGraph(mc_node.astype(np.uint32))
+        rag = self.rag(seg_id)
+        assert mc_node.shape[0] == rag.numberOfNodes, str(mc_node.shape[0]) + " , " + str(rag.numberOfNodes)
+        mc_seg  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
         assert mc_seg.shape == self.shape
-
-        return mc_seg.astype(np.uint32)
-
+        return mc_seg
 
     #
     # Convenience functions for Cutouts

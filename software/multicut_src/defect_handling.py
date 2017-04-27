@@ -217,7 +217,7 @@ def modified_adjacency(ds, seg_id):
     skip_starts  = [] # starting slices of the skip edges
 
     # get the delete and ignore edges by checking which uv-ids have at least one defect node
-    uv_ids = ds._adjacent_segments(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
     defect_uv_indices = find_matching_indices(uv_ids, defect_nodes)
     for defect_index in defect_uv_indices:
         if edge_indications[defect_index]: # we have a xy edge -> ignore edge
@@ -360,8 +360,8 @@ def modified_edge_gt(ds, seg_id):
     if not ds.has_defects:
         return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
-    rag = ds._rag(seg_id)
-    node_gt, _ = rag.projectBaseGraphGt( ds.gt().astype('uint32') )
+    rag = ds.rag(seg_id)
+    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, ds.gt(), ExperimentSettings().n_threads)
     skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
 
@@ -436,6 +436,7 @@ def _get_skip_edge_features_for_slices(
     unique_ranges = np.unique(skip_edge_ranges)
     targets = unique_ranges + z_dn
 
+    n_threads = ExperimentSettings().n_threads
     print "Computing skip edge features from slice ", z_dn
     for i, z_up in enumerate(targets):
         print "to", z_up
@@ -445,23 +446,28 @@ def _get_skip_edge_features_for_slices(
         assert skip_pairs_z.shape[1] == 2
         skip_indices_z = skip_edge_indices[which_skip_edges]
 
-        seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
-        rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
+        seg_local = np.concatenate(
+                [seg[z_dn,:][None,:], seg[z_up,:][None,:]],
+                axis = 0
+        )
+        rag_local = nifty.graph.rag.gridRag(seg_local, n_threads)
         target_features = []
         for path in filter_paths:
             with h5py.File(path) as f:
                 filt_ds = f['data']
-                filt = np.concatenate([filt_ds[:,:,z_dn][:,:,None],filt_ds[:,:,z_up][:,:,None]],axis=2)
+                filt = np.concatenate(
+                        [filt_ds[z_dn,:][None,:], filt_ds[z_up,:][None,:]],
+                        axis = 0
+                )
             if len(filt.shape) == 3:
-                gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag_local.baseGraph, filt)
-                edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
-                target_features.append(edgeFeats)
+                target_features.append(
+                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), 0, n_threads) )
+                )
             elif len(filt.shape) == 4:
                 for c in range(filt.shape[3]):
-                    gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(
-                            rag_local.baseGraph, filt[:,:,:,c] )
-                    edgeFeats     = rag_local.accumulateEdgeStatistics(gridGraphEdgeIndicator)
-                    target_features.append(edgeFeats)
+                    filt_c = filt[...,c]
+                    target_features.append(
+                        nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt_c, filt_c.min(), filt_c.max(), 0, n_threads) )
 
         target_features = np.concatenate(target_features, axis = 1)
         # keep only the features corresponding to skip edges
@@ -568,8 +574,11 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
 def _get_topo_feats(rag, seg, use_2d_edges):
     feats = []
     # length / area of the edge
-    edge_lens = rag.edgeLengths()
-    feats.append(edge_lens[:,None])
+    feats.append(
+            nifty.graph.rag.accumulateMeanAndLength(
+                rag, np.zeros_like(seg, dtype = 'float32')
+            )[:,1:]
+    )
     # extra feats for z-edges in 2,5 d
     if use_2d_edges:
         extra_feats, _ = _topology_features_impl(rag, seg, np.zeros(rag.edgeNum, dtype = 'uint8'), edge_lens)
@@ -598,8 +607,11 @@ def _get_skip_topo_features_for_slices(
         assert skip_pairs_z.shape[1] == 2
         skip_indices_z = skip_edge_indices[which_skip_edges]
 
-        seg_local = np.concatenate([seg[:,:,z_dn][:,:,None],seg[:,:,z_up][:,:,None]],axis=2)
-        rag_local = vigra.graphs.regionAdjacencyGraph(vigra.graphs.gridGraph(seg_local.shape),seg_local)
+        seg_local = np.concatenate(
+                [seg[z_dn,:][None,:], seg[z_up,:][None,:]],
+                axis = 0
+        )
+        rag_local = nifty.graph.rag.gridRag(seg, ExperimentSettings().n_threads)
         topo_feats = _get_topo_feats(rag_local, seg_local, use_2d_edges)
 
         # keep only the features corresponding to skip edges

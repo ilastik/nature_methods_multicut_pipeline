@@ -53,7 +53,7 @@ def clusteringFeatures(ds,
     else:
         print "For normal clustering"
 
-    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds._adjacent_segments(segId)
+    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds.uv_ids(segId)
     n_nodes = uvs_local.max() + 1
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
@@ -172,32 +172,22 @@ def compute_lifted_feature_mala_agglomeration(
         inp_ids,
         uv_ids_lifted,
         lifted_nh,
-        with_defects = False
+        with_defects = False,
+        z_direction  = 2
         ):
+    from workflow_no_learning import accumulate_affinities_over_edges
 
     assert len(inp_ids) == 2
     print "Computing mala agglomeration features for lifted neighborhood", lifted_nh
     assert not with_defects, "Not Implemented for defects yet!"
 
-    rag = ds._rag(seg_id)
-    edge_indications = ds.edge_indications(seg_id)
-    edge_lens        = ds.topology_features(seg_id, False)[:,0]
+    edge_lens = ds.topology_features(seg_id, False)[:,0]
 
-    # get the max affinities for xy edges from xy affinities
-    aff_xy = ds.inp(inp_ids[0])
-    edge_map_xy  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_xy)
-    indicators = rag.accumulateEdgeStatistics(edge_map_xy)[:,3] # 3 -> max
+    uv_ids = ds.uv_ids(seg_id)
+    graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
+    graph.insertEdges(uv_ids)
 
-    # get the max affinities for z edges from z affinities
-    # TODO change acccumulation to only accumulate the relevant pixels for z edges
-    aff_z  = ds.inp(inp_ids[1])
-    edge_map_z  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_z)
-    indicators_z = rag.accumulateEdgeStatistics(edge_map_z)[:,3] # 3 -> max
-
-    # merge the indicators for xy and z edges
-    indicators[edge_indications==1] = indicators_z[edge_indications==1]
-    graph = nifty.graph.UndirectedGraph(rag.numberOfNodes)
-    graph.insertEdges( np.sort( rag.uvIds(), axis = 1) )
+    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', z_direction)
 
     def agglomerate(threshold, use_edge_len):
         policy = nifty.graph.agglo.malaClusterPolicy(
@@ -240,7 +230,7 @@ def compute_lifted_feature_multicut(
 
     print "Computing multicut features for lifted neighborhood", lifted_nh
     # variables for the multicuts
-    uv_ids_local = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects else ds._adjacent_segments(seg_id)
+    uv_ids_local = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects else ds.uv_ids(seg_id)
     n_var = uv_ids_local.max() + 1
     assert pmap_local.shape[0] == uv_ids_local.shape[0]
 
@@ -396,7 +386,7 @@ def compute_and_save_lifted_nh(
         lifted_neighborhood,
         with_defects = False):
 
-    uvs_local = modified_adjacency(ds, seg_id) if (with_defects and ds.has_defects) else ds._adjacent_segments(seg_id)
+    uvs_local = modified_adjacency(ds, seg_id) if (with_defects and ds.has_defects) else ds.uv_ids(seg_id)
     n_nodes = uvs_local.max() + 1
 
     # remove the local uv_ids that are connected to a ignore-segment-value
@@ -469,12 +459,10 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
 # otherwise this can lead to inconsistencies
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
-    rag = ds._rag(seg_id)
-    gt = ds.gt()
-    node_gt,_ =  rag.projectBaseGraphGt(gt)
+    rag = self.rag(seg_id)
+    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, ExperimentSettings().n_threads)
     labels   = (node_gt[uv_ids[:,0]] != node_gt[uv_ids[:,1]])
     return labels
-
 
 def mask_lifted_edges(ds,
         seg_id,

@@ -154,7 +154,7 @@ def local_feature_aggregator(ds,
     if "reg" in feature_list:
         features.append(
                 ds.region_features(seg_id, 0,
-            ds._adjacent_segments(seg_id), False ) )
+            ds.uv_ids(seg_id), False ) )
     if "topo" in feature_list:
         features.append(
                 ds.topology_features(seg_id, use_2d ))
@@ -195,7 +195,7 @@ def local_feature_aggregator_with_defects(ds,
             2, anisotropy_factor))
     if "reg" in feature_list:
         features.append(modified_region_features(ds, seg_id,
-            0, ds._adjacent_segments(seg_id), False) )
+            0, ds.uv_is(seg_id), False) )
     if "topo" in feature_list:
         features.append(modified_topology_features(ds, seg_id, use_2d))
     #if "curve" in feature_list:
@@ -315,7 +315,7 @@ def _learn_seperate_rfs(trainsets,
 
     if with_defects:
         skip_transitions = [ (modified_adjacency(ds, seg_id).shape[0] - get_skip_edges(ds, seg_id).shape[0]) \
-                if ds.has_defects else ds._adjacent_segments(seg_id).shape[0] for i, ds in enumerate(trainsets)]
+                if ds.has_defects else ds.uv_ids(seg_id).shape[0] for i, ds in enumerate(trainsets)]
 
     all_indications = [modified_edge_indications(ds, seg_id)[:skip_transitions[i]][labeled[i]] \
             if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]] for i, ds in enumerate(trainsets)]
@@ -449,7 +449,7 @@ def learn_rf(
 
         features_sub = feature_aggregator( ds, seg_id )
         uv_ids = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects \
-                else ds._adjacent_segments(seg_id)
+                else ds.uv_ids(seg_id)
         assert features_sub.shape[0] == uv_ids.shape[0]
 
         if ExperimentSettings().learn_fuzzy:
