@@ -7,9 +7,9 @@ def test_affinity_features():
     ds = load_dataset(meta_folder, 'test')
     seg_id = 0
 
-    rag = ds._rag(seg_id)
+    rag = ds.rag(seg_id)
     aff0 = ds.edge_features_from_affinity_maps(seg_id, (0,1), 20., 0)
-    assert aff0.shape[0] == rag.edgeNum
+    assert aff0.shape[0] == rag.numberOfEdges
     aff1 = ds.edge_features_from_affinity_maps(seg_id, (0,1), 20., 1)
     assert aff1.shape == aff0.shape
     aff2 = ds.edge_features_from_affinity_maps(seg_id, (0,1), 20., 2)
@@ -28,3 +28,4 @@ def test_edge_features():
 
 if __name__ == '__main__':
     test_edge_features()
+    test_affinity_features()

@@ -418,7 +418,8 @@ def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_fa
                 skip_edge_pairs_to_slice[z],
                 skip_edge_ranges_to_slice[z],
                 skip_edge_indices_to_slice[z],
-                skip_edge_features)
+                skip_edge_features,
+                z_direction = 2)
 
     skip_edge_features = np.nan_to_num(skip_edge_features)
     assert skip_edge_features.shape[1] == modified_features.shape[1]
@@ -432,7 +433,8 @@ def _get_skip_edge_features_for_slices(
         skip_edge_pairs,
         skip_edge_ranges,
         skip_edge_indices,
-        skip_edge_features):
+        skip_edge_features,
+        z_direction = 0):
 
     unique_ranges = np.unique(skip_edge_ranges)
     targets = unique_ranges + z_dn
@@ -462,7 +464,7 @@ def _get_skip_edge_features_for_slices(
                 )
             if len(filt.shape) == 3:
                 target_features.append(
-                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), 0, n_threads) )
+                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), z_direction, n_threads) )
             elif len(filt.shape) == 4:
                 for c in range(filt.shape[3]):
                     filt_c = filt[...,c]
