@@ -263,3 +263,25 @@ def multicut_fusionmoves(n_var,
         return ret, mc_energy, t_inf
     else:
         return ret, mc_energy, t_inf, obj
+
+# needs opengm
+def export_opengm_model(
+        n_var,
+        uv_ids,
+        edge_energies,
+        out_file):
+
+    import opengm
+    states = np.ones(n_var) * n_var
+    gm_global = opengm.gm(states)
+    # potts model
+    potts_shape = [n_var, n_var]
+    potts = opengm.pottsFunctions(potts_shape,
+                                  np.zeros_like(edge_energies),
+                                  edge_energies)
+    # potts model to opengm function
+    fids_b = gm_global.addFunctions(potts)
+    gm_global.addFactors(fids_b, uv_ids.astype('uint32'))
+
+    # save the opengm model
+    opengm.saveGm(gm_global, out_file)
