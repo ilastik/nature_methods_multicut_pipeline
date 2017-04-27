@@ -1,20 +1,36 @@
 # script for multicut on isotropic data
-import sys
 
-# TODO FIXME maybe we need something similar for nifty
-#try to import opengm, it will fail if cplex is not installed
-#try:
-#    from opengm.inference import IntersectionBased
-#except ImportError:
-#    print "##########################################################################"
-#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-#    print "##########################################################################"
-#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-#    print "##########################################################################"
-#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-#    print "#########               see README.txt for details                 #######"
-#    print "##########################################################################"
-#    sys.exit(1)
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
+import sys
+has_cplex  = nifty.Configuration.WITH_CPLEX
+has_gurobi = nifty.Configuration.WITH_GUROBI
+#try to import nifty mc solver, it will fail if cplex is not installed
+if has_gurobi and not has_cplex:
+    print "##########################################################################"
+    print "################ You are using gurobi instead of cplex ###################"
+    print "###################### Inference may be slower ###########################"
+    print "##########################################################################"
+elif not has_cplex and not has_gurobi:
+    print "##########################################################################"
+    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+    print "##########################################################################"
+    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+    print "##########################################################################"
+    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+    print "#########               see README.txt for details                 #######"
+    print "##########################################################################"
+    sys.exit(1)
 
 import argparse
 import os
@@ -52,15 +68,6 @@ def process_command_line():
     args = parser.parse_args()
 
     return args
-
-
-# tif slices to volume
-def slices_to_vol(path):
-    files = os.listdir(path)
-    vol = vigra.readVolume( os.path.join(path, files[0]) )
-    vol = vol.squeeze()
-    vol = vol.view(np.ndarray)
-    return vol
 
 
 # tif volume to volume

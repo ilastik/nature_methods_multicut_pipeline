@@ -1,20 +1,36 @@
 # script for multicut on anisotropic data
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 import sys
-# TODO FIXME maybe we need something similar for nifty_with_cplex
-#try to import opengm, it will fail if cplex is not installed
-#try:
-#    from opengm.inference import IntersectionBased
-#except ImportError:
-#    print "##########################################################################"
-#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-#    print "##########################################################################"
-#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-#    print "##########################################################################"
-#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-#    print "#########               see README.txt for details                 #######"
-#    print "##########################################################################"
-#    sys.exit(1)
+has_cplex  = nifty.Configuration.WITH_CPLEX
+has_gurobi = nifty.Configuration.WITH_GUROBI
+#try to import nifty mc solver, it will fail if cplex is not installed
+if has_gurobi and not has_cplex:
+    print "##########################################################################"
+    print "################ You are using gurobi instead of cplex ###################"
+    print "###################### Inference may be slower ###########################"
+    print "##########################################################################"
+elif not has_cplex and not has_gurobi:
+    print "##########################################################################"
+    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+    print "##########################################################################"
+    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+    print "##########################################################################"
+    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+    print "#########               see README.txt for details                 #######"
+    print "##########################################################################"
+    sys.exit(1)
 
 import argparse
 import os
@@ -68,26 +84,17 @@ def wsdt(prob_map):
 
     segmentation = np.zeros_like(prob_map, dtype = np.uint32)
     offset = 0
-    for z in xrange(prob_map.shape[2]):
+    for z in xrange(prob_map.shape[0]):
 
-        wsdt, _ = wsDtSegmentation(prob_map[:,:,z], threshold,
+        wsdt, _ = wsDtSegmentation(prob_map[z], threshold,
             minMemSize, minSegSize,
             sigMinima, sigWeights, groupSeeds)
 
-        segmentation[:,:,z] = wsdt
-        segmentation[:,:,z] += offset
+        segmentation[z] = wsdt
+        segmentation[z] += offset
         offset = np.max(segmentation) + 1
 
     return segmentation
-
-
-# tif slices to volume
-def slices_to_vol(path):
-    files = os.listdir(path)
-    vol = vigra.readVolume( os.path.join(path, files[0]) )
-    vol = vol.squeeze()
-    vol = vol.view(np.ndarray)
-    return vol
 
 
 # tif volume to volume
@@ -95,8 +102,8 @@ def vol_to_vol(path):
     vol = vigra.readVolume( path + ".tif" )
     vol = vol.squeeze()
     vol = vol.view(np.ndarray)
-    #print vol.shape
-    #print type(vol)
+    # need to transpose to c-order due to nifty
+    vol = vol.transpose( (2,1,0) )
     return vol
 
 
@@ -113,11 +120,11 @@ def normalize_if(probs):
 def make_consecutive(seg):
     seg_new = np.zeros_like(seg, dtype = 'uint32')
     offset = 0
-    for z in xrange(seg.shape[2]):
-        seg_z, _, _ = vigra.analysis.relabelConsecutive(seg[:,:,z], start_label = 0, keep_zeros = False)
+    for z in xrange(seg.shape[0]):
+        seg_z, _, _ = vigra.analysis.relabelConsecutive(seg[z], start_label = 0, keep_zeros = False)
         seg_z += offset
         offset = np.max(seg_z) + 1
-        seg_new[:,:,z] = seg_z
+        seg_new[z] = seg_z
     return seg_new
 
 
