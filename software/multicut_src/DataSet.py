@@ -658,7 +658,6 @@ class DataSet(object):
             vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
             return mask
 
-
     #
     # General functionality
     #
@@ -666,7 +665,7 @@ class DataSet(object):
     # compute and cache the nifty rag
     # seg can be passed as an optional argument to avoid loading it
     def rag(self, seg_id, seg = None):
-        save_path = os.path.join(self.cache_folder, "rag%i" % seg_id)
+        save_path = os.path.join(self.cache_folder, "rag%i.h5" % seg_id)
         if seg is None:
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):

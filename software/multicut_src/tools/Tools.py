@@ -82,8 +82,9 @@ def edges_to_volume(rag, edges, ignore_z = False):
 
     assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
-    volume = np.zeros(rag.shape, dtype = np.uint32)
+    volume = np.zeros(rag.shape, dtype = 'uint32')
     edge_coordinates = nifty.graph.rag.edgeCoordinates(rag)
+    assert len(edge_coordinates) == rag.numberOfEdges, "%i, %i" % (len(edge_coordinates), rag.numberOfEdges)
 
     for edge_id in xrange(rag.numberOfEdges):
 
@@ -91,11 +92,13 @@ def edges_to_volume(rag, edges, ignore_z = False):
         if edges[edge_id] == 0:
             continue
 
-        edge_coords = edge_coordinates(edge_id)
+        edge_coords = edge_coordinates[edge_id]
         if ignore_z:
-            unique_z = np.unique(edge_coordinates[:,0])
+            unique_z = np.unique(edge_coords[:,0])
             if len(unique_z) > 1:
                 continue
+        # FIXME this is ugly, there must be a better way to make write to volume from a numpy array
+        edge_coords = (edge_coords[:,0],edge_coords[:,1],edge_coords[:,2])
         volume[edge_coords] = edges[edge_id]
 
     return volume
