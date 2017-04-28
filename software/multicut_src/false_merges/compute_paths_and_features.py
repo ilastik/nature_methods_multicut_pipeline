@@ -69,6 +69,34 @@ def path_feature_aggregator(ds, paths):
         axis = 1)
 
 
+# TODO this could be parallelized over the paths
+# compute the path lens for all paths
+def compute_path_lengths(paths, anisotropy):
+    """
+    Computes the length of a path
+
+    :param path:
+        list( np.array([[x11, x12, ..., x1n], [x21, x22, ..., x2n], ..., [xm1, xm2, ..., xmn]]) )
+        with n dimensions and m coordinates
+    :param anisotropy: [a1, a2, ..., an]
+    :return: path lengtht list(float)
+    """
+    def compute_path_length(path, aniso_temp):
+        #pathlen = 0.
+        #for i in xrange(1, len(path)):
+        #    add2pathlen = 0.
+        #    for j in xrange(0, len(path[0, :])):
+        #        add2pathlen += (anisotropy[j] * (path[i, j] - path[i - 1, j])) ** 2
+
+        #    pathlen += add2pathlen ** (1. / 2)
+        # TODO check that this actually agrees
+        path_euclidean_diff = aniso_temp * np.diff(path, axis=0)
+        path_euclidean_diff = np.sqrt(
+                np.sum( np.square(path_euclidean_diff), axis=1 ) )
+        return np.sum(path_euclidean_diff, axis=0)
+    aniso_temp = np.array(anisotropy)
+    return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:,None]
+
 
 # don't cache for now
 def path_features_from_feature_images(
