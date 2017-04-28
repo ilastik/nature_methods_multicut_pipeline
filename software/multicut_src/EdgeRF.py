@@ -189,7 +189,7 @@ def local_feature_aggregator_with_defects(ds,
             1, anisotropy_factor))
     if "affinities" in feature_list:
         features.append(modified_edge_features_from_affinity_maps(ds, seg_id,
-            (1,2), anisotropy_factor))
+            (1,2), anisotropy_factor, ExperimentSettings().affinity_z_direction))
     if "extra_input" in feature_list:
         features.append(modified_edge_features(ds, seg_id,
             2, anisotropy_factor))
