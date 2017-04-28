@@ -241,7 +241,11 @@ def features(paths, anisotropy):
 
     aniso_temp = np.array(anisotropy)
 
-    for number, data in enumerate(paths):
+    pathslist = []
+    for i in paths:
+        pathslist.append(i)
+
+    for number, data in enumerate(pathslist):
 
         data = np.array([(elem1*aniso_temp[0], elem2*aniso_temp[1], elem3*aniso_temp[2]) for elem1, elem2, elem3 in data])
         data = data.transpose()
@@ -251,11 +255,12 @@ def features(paths, anisotropy):
         new = interpolate.splev(np.linspace(0, 1, 100000), tck)
 
         data = np.array(new).transpose()
-        paths[number] = data
+        pathslist[number] = data
+
 
     features_computed=np.concatenate([
-        np.array([compute_path_length(path) for path in paths])[:,None],
-        np.array([maximum_ausgeben(path) for path in paths])[:,None]],
+        np.array([compute_path_length(path) for path in pathslist])[:,None],
+        np.array([maximum_ausgeben(path) for path in pathslist])[:,None]],
         axis=1)
 
     return features_computed
