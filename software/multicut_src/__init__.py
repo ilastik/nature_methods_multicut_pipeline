@@ -6,8 +6,6 @@ from ExperimentSettings import ExperimentSettings
 from Postprocessing import merge_small_segments, remove_small_segments
 from lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh
 
-from workflow_no_learning import multicut_workflow_no_learning, multicut_costs_from_affinities_no_learning
-
 from MCSolverImpl import probs_to_energies
 from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 
@@ -22,3 +20,5 @@ from defect_handling import postprocess_segmentation
 from defect_handling import get_delete_edges, get_skip_edges, get_skip_starts, get_skip_ranges, modified_edge_features
 
 from tools import edges_to_volume
+
+from workflow_no_learning import multicut_workflow_no_learning, costs_from_affinities, mala_clustering_workflow

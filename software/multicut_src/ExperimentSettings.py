@@ -54,7 +54,7 @@ class ExperimentSettings(object):
         self.verbose = False
 
         # parameter for multicuts
-        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves"
+        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves", "multicut_message_passing"
         self.solver = "multicut_exact"
         # weighting scheme for edge energies, possible values "none", "xyz", "z", "all"
         self.weighting_scheme = "none"

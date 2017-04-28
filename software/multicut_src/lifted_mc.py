@@ -357,7 +357,8 @@ def lifted_feature_aggregator(ds,
                 ds.region_features(segId,
                     0,
                     uvIds,
-                    ExperimentSettings().lifted_neighborhood) )
+                    ExperimentSettings().lifted_neighborhood,
+                    with_defects) )
     if "multiseg" in featureList: # Features is currently deprecated and can't be used
     # also not adjusted for defect pipeline yet
         features.append(
@@ -384,6 +385,9 @@ def lifted_feature_aggregator(ds,
                         nz_train[uvIds[:,1]]) )
         features.append(lifted_distance[:,None])
 
+    #print uvIds.shape
+    #for feat in features:
+    #    print feat.shape
     return np.concatenate( features, axis=1 )
 
 
@@ -463,8 +467,10 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
     return edge_gt_fuzzy
 
 
+# with defects only for the cache name
+# otherwise this can lead to inconsistencies
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_hard_gt(ds, seg_id, uv_ids):
+def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
     rag = ds._rag(seg_id)
     gt = ds.gt()
     node_gt,_ =  rag.projectBaseGraphGt(gt)
@@ -569,7 +575,7 @@ def learn_lifted_rf(
             seg_id,
             with_defects)
 
-        labels = lifted_hard_gt(train_cut, seg_id, uv_ids_train)
+        labels = lifted_hard_gt(train_cut, seg_id, uv_ids_train, with_defects)
 
         labeled = mask_lifted_edges(train_cut,
                 seg_id,

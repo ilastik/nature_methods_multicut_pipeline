@@ -90,49 +90,49 @@ def get_completely_defected_slices(ds, seg_id):
 def get_delete_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edges")
 
 def get_delete_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "delete_edge_ids")
 
 def get_ignore_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edges")
 
 def get_ignore_edge_ids(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "ignore_edge_ids")
 
 def get_skip_edges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_edges")
 
 def get_skip_ranges(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_ranges")
 
 def get_skip_starts(ds, seg_id):
     modified_adjacency(ds, seg_id)
     if not ds.has_defects:
-        return []
+        return np.array([])
     mod_save_path = cache_name("modified_adjacency", "dset_folder", False, False, ds, seg_id)
     return vigra.readHDF5(mod_save_path, "skip_starts")
 
@@ -235,13 +235,16 @@ def modified_adjacency(ds, seg_id):
     #uv_ids = np.sort(rag.uvIds(), axis = 1)
     uv_ids = np.delete(uv_ids, delete_edge_ids, axis  = 0)
 
-    assert ignore_edges.shape[1] == uv_ids.shape[1]
-    matching = find_matching_row_indices(uv_ids, ignore_edges)
-    # make sure that all ignore edges were found
-    assert matching.shape[0] == ignore_edges.shape[0]
-    # get the correctly sorted the ids
-    ignore_edge_ids = matching[:,0]
-    ignore_edge_ids = ignore_edge_ids[matching[:,1]]
+    if ignore_edges.size:
+        assert ignore_edges.shape[1] == uv_ids.shape[1], "%i, %i" % (ignore_edges.shape[1], uv_ids.shape[1])
+        matching = find_matching_row_indices(uv_ids, ignore_edges)
+        # make sure that all ignore edges were found
+        assert matching.shape[0] == ignore_edges.shape[0]
+        # get the correctly sorted the ids
+        ignore_edge_ids = matching[:,0]
+        ignore_edge_ids = ignore_edge_ids[matching[:,1]]
+    else:
+        ignore_edge_ids = []
 
     for i,z in enumerate(defect_slices):
         print "Processing slice %i: %i / %i" % (z,i,len(defect_slices))
@@ -743,6 +746,8 @@ def _get_replace_slices(defected_slices, shape):
 
 
 def postprocess_segmentation(ds, seg_id, seg_result):
+    if not ds.has_defects:
+        return seg_result
     defect_slices = get_completely_defected_slices(ds, seg_id)
     assert defect_slices.size, "Can only post-process data with defects"
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)

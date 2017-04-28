@@ -19,50 +19,82 @@ except ImportError:
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
+def accumulate_affinities_over_edges(
+        ds,
+        seg_id,
+        inp_ids,
+        feature,
+        z_direction = 2,
+        rag = None
+        ):
+
+    assert seg_id < ds.n_seg
+    assert len(inp_ids) == 2
+    assert inp_ids[0] < ds.n_inp
+    assert inp_ids[1] < ds.n_inp
+
+    # map the feature we use to the index returned by rag.accumulateEdgeStatistics
+    feat_to_index = {'mean' : 0, 'max' : 8, 'median' : 5, 'quantile75' : 6, 'quantile90' : 7}
+    assert feature in feat_to_index.keys()
+
+    index = feat_to_index[feature]
+
+    if rag is None:
+        rag = ds.nifty_rag(seg_id)
+    to_nifty_order = ds.vigra_to_nifty(seg_id)
+    to_vigra_order = ds.nifty_to_vigra(seg_id)
+
+    # TODO we only need the ascontiguous when still supporting vigra
+    aff_xy = np.ascontiguousarray(ds.inp(inp_ids[0]).transpose((2,1,0)))
+    aff_z  = np.ascontiguousarray(ds.inp(inp_ids[1]).transpose((2,1,0)))
+
+    edge_indications = ds.edge_indications(seg_id)[to_nifty_order]
+
+    print "Accumulating xy affinities with feature:", feature
+    accumulated = nifty.graph.rag.accumulateEdgeFeaturesFlat(
+            rag,
+            aff_xy,
+            aff_xy.min(),
+            aff_xy.max(),
+            z_direction,
+            ExperimentSettings().n_threads)[:,index]
+
+    print "Accumulating z affinities with feature:", feature
+    accumulated_z = nifty.graph.rag.accumulateEdgeFeaturesFlat(
+            rag,
+            aff_z,
+            aff_z.min(),
+            aff_z.max(),
+            z_direction,
+            ExperimentSettings().n_threads)[:,index]
+    assert accumulated.shape[0] == accumulated_z.shape[0], "%i, %i" % (accumulated.shape[0], accumulated_z.shape[0])
+    assert accumulated.shape[0] == edge_indications.shape[0], "%s, %s" % (str(accumulated.shape), str(edge_indications.shape) )
+
+    # split xy and z edges accordingly (0 indicates z-edges !)
+    accumulated[edge_indications == 0] = accumulated_z[edge_indications == 0]
+
+    return accumulated[to_vigra_order]
+
+
 # get weights from accumulated affinities between the local superpixel edges
 # feature determines how to accumulated (supported: max, mean, median, quantile75, quantile90)
 # TODO with defect correction
 #@cacher_hdf5()
-def multicut_costs_from_affinities_no_learning(ds,
+def costs_from_affinities(
+        ds,
         seg_id,
         inp_ids,
         feature = 'max',
         beta    = .5,
         weighting_scheme = 'z',
         weight = 16, # FIXME this is a magic parameter determining the strength of the weighting, I once determined 16 as a good value by grid search (on a different dataset....), this should be determined again!
-        with_defcts = False
+        with_defcts = False,
+        z_direction = 2
         ):
-    assert seg_id < ds.n_seg
-    assert len(inp_ids) == 2
-    assert inp_ids[0] < ds.n_inp
-    assert inp_ids[1] < ds.n_inp
+
     print "Computing mc costs from affinities"
-
-    # map the feature we use to the index returned by rag.accumulateEdgeStatistics
-    feat_to_index = {'mean' : 0, 'max' : 3, 'median' : 9, 'quantile75' : 10, 'quantile90' : 11}
-    assert feature in feat_to_index.keys()
-
-    index = feat_to_index[feature]
-
-    rag = ds._rag(seg_id)
-    aff_xy = ds.inp(inp_ids[0])
-    aff_z  = ds.inp(inp_ids[1])
-
-    edge_indications = ds.edge_indications(seg_id)
-
-    print "Accumulating xy affinities with feature:", feature
-    indicator_xy = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_xy)
-    costs      = rag.accumulateEdgeStatistics(indicator_xy)[:,index]
-
-    print "Accumulating z affinities with feature:", feature
-    # TODO change acccumulation to only accumulate the relevant pixels for z edges
-    indicator_z = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_z)
-    costs_z   = rag.accumulateEdgeStatistics(indicator_z)[:,index]
-    assert costs.shape[0] == costs_z.shape[0], "%i, %i" % (costs.shape[0], costs_z.shape[0])
-    assert costs.shape[0] == edge_indications.shape[0], "%s, %s" % (str(costs.shape), str(edge_indications.shape) )
-
-    # split xy and z edges accordingly (0 indicates z-edges !)
-    costs[edge_indications == 0] = costs_z[edge_indications == 0]
+    # NOTE we need to invert, because we have affinity maps, not boundary probabilities
+    costs = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, feature, z_direction)
 
     # make sure that we are in a valid range of values
     assert (costs >= 0.).all(), str(costs.min())
@@ -71,36 +103,35 @@ def multicut_costs_from_affinities_no_learning(ds,
     print "Cost range before scaling:", costs.min(), costs.max()
 
     # map affinities to weight space
-
     # first, scale to 0.001, 1. - 0.001 to avoid diverging costs
     c_min = 0.001
     c_max = 1. - c_min
     costs = (c_max - c_min) * costs + c_min
 
     # then map to ]-inf, inf[
-    # NOTE I think the probabilities are inverted here compared to the normal case, that's why we need to invert the first log
-    #costs = np.log( (1. - costs) / costs ) + np.log( (1. - beta) / beta )
-    costs = np.log( costs / (1. - costs) ) + np.log( (1. - beta) / beta )
+    costs = np.log( (1. - costs) / costs ) + np.log( (1. - beta) / beta )
     assert not np.isinf(costs).any()
     print "Cost range after scaling:", costs.min(), costs.max()
 
-    edge_sizes = rag.edgeLengths()
-
-    # weight with the edge lens according to the weighting scheme
-    if weighting_scheme == "z":
-        print "Weighting Z edges"
-        costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
-    elif weighting_scheme == "xyz":
-        print "Weighting xyz edges"
-        costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
-    elif weighting_scheme == "all":
-        print "Weighting all edges"
-        costs = weight_all_edges(costs, edge_sizes, weight)
-    else:
-        print "Edges are not weighted"
-
-    assert not np.isinf(costs).any()
     return costs
+
+    #edge_sizes = rag.edgeLengths()
+
+    ## weight with the edge lens according to the weighting scheme
+    #if weighting_scheme == "z":
+    #    print "Weighting Z edges"
+    #    costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
+    #elif weighting_scheme == "xyz":
+    #    print "Weighting xyz edges"
+    #    costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
+    #elif weighting_scheme == "all":
+    #    print "Weighting all edges"
+    #    costs = weight_all_edges(costs, edge_sizes, weight)
+    #else:
+    #    print "Edges are not weighted"
+
+    #assert not np.isinf(costs).any()
+    #return costs
 
 
 # calculate the costs for lifted edges from the costs of the local edges
@@ -155,7 +186,7 @@ def multicut_workflow_no_learning(
     n_var  = uv_ids.max() + 1
 
     # weights for the multicut
-    costs = multicut_costs_from_affinities_no_learning(
+    costs = costs_from_affinities(
             ds_test,
             seg_id,
             inp_ids,
@@ -174,42 +205,40 @@ def mala_clustering_workflow(
         seg_id,
         inp_ids,
         threshold,
-        use_edge_lens = False):
+        use_edge_lens = False,
+        z_direction = 2 # this is the mala convention (z-edges encode for affinity from z+1 to z)
+    ):
     assert len(inp_ids) == 2
+    import nifty.graph.agglo as nagglo
 
-    rag = ds._rag(seg_id)
-    edge_indications = ds.edge_indications(seg_id)
-    edge_lens        = ds.topology_features(seg_id, False)[:,0]
+    #rag = ds.nifty_rag(seg_id)
+    #to_nifty_order = ds.vigra_to_nifty(seg_id)
 
-    # get the max affinities for xy edges from xy affinities
-    aff_xy = ds.inp(inp_ids[0])
-    edge_map_xy  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_xy)
-    indicators = rag.accumulateEdgeStatistics(edge_map_xy)[:,3] # 3 -> max
+    edge_indications = ds.edge_indications(seg_id)[to_nifty_order]
+    edge_lens        = ds.topology_features(seg_id, False)[:,0][to_nifty_order]
 
-    # get the max affinities for z edges from z affinities
-    # TODO change acccumulation to only accumulate the relevant pixels for z edges
-    aff_z  = ds.inp(inp_ids[1])
-    edge_map_z  = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph, aff_z)
-    indicators_z = rag.accumulateEdgeStatistics(edge_map_z)[:,3] # 3 -> max
-
-    # merge the indicators for xy and z edges
-    indicators[edge_indications==1] = indicators_z[edge_indications==1]
+    # need to invert due to affinities!
+    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', z_direction)
 
     # run mala clustering
-    graph = nifty.graph.UndirectedGraph(rag.numberOfNodes)
-    graph.insertEdges(rag.uvIds())
+    uv_ids = ds._adjacent_segments(seg_id)
+    graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
+    graph.insertEdges(uv_ids)
 
-    policy = nifty.graph.agglo.malaClusterPolicy(
+    #policy = nagglo.edgeWeightedClusterPolicy(
+    policy = nagglo.malaClusterPolicy(
             graph = graph,
             edgeIndicators = indicators,
-            edgeSizes = edge_lens if use_edge_len else np.ones(graph.numberOfEdges),
-            nodeSizes = np.ones(graph.numberOfNodes), # TODO we could also set this
-            threshold = threshold)
+            edgeSizes = edge_lens.astype('float32') if use_edge_lens else np.ones(graph.numberOfEdges, dtype = 'float32'),
+            nodeSizes = np.ones(graph.numberOfNodes, dtype = 'float32'), # TODO we could also set this
+            threshold = threshold
+        )
 
+    print "start clustering"
     clustering = nifty.graph.agglo.agglomerativeClustering(policy)
-    clustering.run()
+    clustering.run(verbose = True)
 
     # get the node results and relabel it consecutively
     nodes = clustering.result()
-    nodes, _, _ = vigra.analyss.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
+    nodes, _, _ = vigra.analysis.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
     return nodes
