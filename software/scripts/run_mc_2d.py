@@ -254,12 +254,12 @@ def main():
     mc_seg = ds_test.project_mc_result(seg_id, mc_node)
 
     print "Saving Segmentation Result to", save_path_seg
-    vigra.impex.writeVolume(mc_seg, save_path_seg, '')
+    vigra.impex.writeVolume(mc_seg.transpose( (2,1,0) ), save_path_seg, '')
 
     # need to bring results back to the isbi challenge format...
     edge_vol = edges_to_volume(ds_test.rag(seg_id), mc_edges, True)
     print "Saving Edge Labeling Result to", save_path_edge
-    vigra.impex.writeVolume(edge_vol, save_path_edge, '', dtype = np.uint8 )
+    vigra.impex.writeVolume(edge_vol.transpose( (2,1,0) ), save_path_edge, '', dtype = np.uint8 )
 
 if __name__ == '__main__':
     main()

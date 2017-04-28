@@ -201,7 +201,7 @@ def main():
     mc_seg = ds_test.project_mc_result(seg_id, mc_node)
 
     print "Saving Result to", save_path
-    vigra.impex.writeVolume(mc_seg, save_path, '')
+    vigra.impex.writeVolume(mc_seg.transpose( (2,1,0) ), save_path, '')
 
 if __name__ == '__main__':
     main()
