@@ -445,7 +445,7 @@ def sample_and_save_paths_from_lifted_edges(
             uv_ids_paths_min_nh = uv_ids_paths_min_nh[keep_mask]
 
         else:
-            paths_obj = []
+            paths_obj = np.array([])
 
         # cache the paths if we have caching activated
         if cache_folder is not None:
@@ -495,7 +495,7 @@ def combine_paths(
 
     # concatenate exta paths and sampled paths (modulu duplicates)
     if uv_ids_paths_min_nh.any(): # only concatenate if we have sampled paths
-        matches = find_matching_row_indices(uv_ids_min_nh, extra_path_uvs)
+        matches = find_matching_row_indices(uv_ids_paths_min_nh, extra_path_uvs)
         if matches.size: # if we have matching uv ids, exclude them from the extra paths before concatenating
             duplicate_mask = np.ones(len(extra_path_uvs), dtype = np.bool)
             duplicate_mask[matches[:,1]] = False
@@ -592,6 +592,9 @@ def resolve_merges_with_lifted_edges(
                 disttransf,
                 ecc_centers_seg,
                 reverse_mapping)
+
+        # Map to local uvs
+        uv_ids_paths_min_nh = np.array([[mapping[u] for u in uv] for uv in uv_ids_paths_min_nh])
 
         # add the paths that were initially classified
         paths_obj, uv_ids_paths_min_nh = combine_paths(
