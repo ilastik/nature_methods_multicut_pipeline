@@ -8,6 +8,18 @@ from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
 from DataSet import _topology_features_impl
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 #
 # Modified Adjacency
 #
@@ -579,7 +591,7 @@ def _get_topo_feats(rag, seg, use_2d_edges):
     feats.append(
             nifty.graph.rag.accumulateMeanAndLength(
                 rag, np.zeros_like(seg, dtype = 'float32')
-            )[:,1:]
+            )[0][:,1:]
     )
     # extra feats for z-edges in 2,5 d
     if use_2d_edges:

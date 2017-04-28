@@ -37,7 +37,9 @@ def lifted_ignore_ids(ds,
     return find_matching_indices(uv_ids, defect_nodes)
 
 
+# TODO
 # TODO use nifty agglomertion
+# TODO
 @cacher_hdf5(ignoreNumpyArrays=True)
 def clusteringFeatures(ds,
         segId,
@@ -46,6 +48,9 @@ def clusteringFeatures(ds,
         liftedNeighborhood,
         is_perturb_and_map = False,
         with_defects = False):
+
+    # FIXME
+    import vigra.graphs as vgraph
 
     print "Computing clustering features for lifted neighborhood", liftedNeighborhood
     if is_perturb_and_map:

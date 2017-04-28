@@ -224,7 +224,7 @@ def main():
     ExperimentSettings().weighting_scheme = "z"
     ExperimentSettings().solver = "multicut_fusionmoves"
 
-    local_feats_list  = ("raw", "prob", "reg", "topo")
+    local_feats_list  = ("raw", "prob", "reg")
     lifted_feats_list = ("mc", "cluster", "reg")
 
     seg_id = 0
@@ -257,7 +257,7 @@ def main():
     vigra.impex.writeVolume(mc_seg, save_path_seg, '')
 
     # need to bring results back to the isbi challenge format...
-    edge_vol = edges_to_volume(ds_test._rag(seg_id), mc_edges)
+    edge_vol = edges_to_volume(ds_test.rag(seg_id), mc_edges, True)
     print "Saving Edge Labeling Result to", save_path_edge
     vigra.impex.writeVolume(edge_vol, save_path_edge, '', dtype = np.uint8 )
 

@@ -189,7 +189,7 @@ def multicut_message_passing(
     assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
     obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
 
-    multicut_opts = lp_mp.solvers.MulticutOptions()
+    multicut_opts = lp_mp.solvers.MulticutOptions(maxIter=2500)
     t_inf = time.time()
     # FIXME make this compatible with numpy arrays for uv_ids too
     mc_edges = lp_mp.solvers.multicut(

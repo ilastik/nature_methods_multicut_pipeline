@@ -686,7 +686,7 @@ class DataSet(object):
     @cacher_hdf5()
     def uv_ids(self, seg_id):
         rag = self.rag(seg_id)
-        return rag.uvIds()
+        return rag.uvIds().astype('uint32')
 
     # calculates the eccentricity centers for given seg_id
     @cacher_hdf5()
@@ -796,7 +796,7 @@ class DataSet(object):
                         ( 1, min(512,inp.shape[1]), min(512,inp.shape[2]), 2)
 
                 filter_res = np.zeros(f_shape, dtype = 'float32')
-                for z in xrange(inp.shape[2]):
+                for z in xrange(inp.shape[0]):
                     filter_res[z,:] = filter_fu(inp[z,:], sig)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = chunks)
@@ -1166,7 +1166,6 @@ class DataSet(object):
     # Features from edge_topology
     @cacher_hdf5("feature_folder")
     def topology_features(self, seg_id, use_2d_edges):
-        assert False
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert isinstance( use_2d_edges, bool ), type(use_2d_edges)
 
@@ -1176,7 +1175,7 @@ class DataSet(object):
         topo_feats      = nifty.graph.rag.accumulateMeanAndLength(
                 rag,
                 np.zeros(self.shape, dtype = 'float32') # fake data
-        )[:,1:]
+        )[0][:,1:]
         topo_feat_names = ["TopologyFeatures_EdgeLengths"]
 
         # extra feats for z-edges in 2,5 d

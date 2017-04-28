@@ -7,6 +7,18 @@ from itertools import combinations, product
 
 from multicut_src.ExperimentSettings import ExperimentSettings
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
     arg_id = 1
@@ -68,29 +80,23 @@ def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArra
 # for visualizing edges
 def edges_to_volume(rag, edges, ignore_z = False):
 
-    assert rag.edgeNum == edges.shape[0], str(rag.edgeNum) + " , " + str(edges.shape[0])
+    assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
-    print rag.baseGraph.shape
-    volume = np.zeros(rag.baseGraph.shape, dtype = np.uint32)
+    volume = np.zeros(rag.shape, dtype = np.uint32)
+    edge_coordinates = nifty.graph.rag.edgeCoordinates(rag)
 
-    for edge_id in rag.edgeIds():
-        # don't write the ignore label!
+    for edge_id in xrange(rag.numberOfEdges):
+
+        # don't write zeros
         if edges[edge_id] == 0:
             continue
-        edge_coords = rag.edgeCoordinates(edge_id)
+
+        edge_coords = edge_coordinates(edge_id)
         if ignore_z:
-            if edge_coords[0,2] - int(edge_coords[0,2]) != 0:
+            unique_z = np.unique(edge_coordinates[:,0])
+            if len(unique_z) > 1:
                 continue
-
-        edge_coords_up = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                np.ceil(edge_coords[:,1]).astype(np.uint32),
-                np.ceil(edge_coords[:,2]).astype(np.uint32) )
-        edge_coords_dn = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                np.ceil(edge_coords[:,1]).astype(np.uint32),
-                np.ceil(edge_coords[:,2]).astype(np.uint32) )
-
-        volume[edge_coords_dn] = edges[edge_id]
-        volume[edge_coords_up] = edges[edge_id]
+        volume[edge_coords] = edges[edge_id]
 
     return volume
 

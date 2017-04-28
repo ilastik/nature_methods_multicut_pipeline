@@ -200,7 +200,7 @@ def main():
     ExperimentSettings().lifted_neighborhood = 3
 
     # features used
-    local_feats_list  = ("raw", "prob", "reg", "topo")
+    local_feats_list  = ("raw", "prob", "reg")
     # we don't use the multicut feature here, because it can take too long
     lifted_feats_list = ("cluster", "reg")
 
