@@ -101,9 +101,9 @@ def merge_small_segments(mc_seg, min_seg_size):
         ufd.merge(merge_pair[0], merge_pair[1])
 
     # get new to old as merge result
-    merged_nodes = ufd.elmentLabeling()
+    merged_nodes = ufd.elementLabeling()
 
     # merge the new nodes
-    merged_seg = seg_rag.projectLabelsToBaseGraph(merged_nodes)
+    merged_seg = seg_rag.projectLabelsToBaseGraph(merged_nodes.astype('uint32'))
     merged_seg = vigra.analysis.labelVolume(merged_seg)
     return merged_seg

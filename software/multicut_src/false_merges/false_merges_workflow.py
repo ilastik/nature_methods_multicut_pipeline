@@ -197,6 +197,7 @@ def extract_paths_and_labels_from_segmentation(
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
             try:
+                print 'Saving paths in {}'.format(paths_save_file)
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
@@ -441,7 +442,14 @@ def sample_and_save_paths_from_lifted_edges(
                 uv_ids_paths_min_nh_coords,
                 ExperimentSettings().n_threads)
             keep_mask = np.array([isinstance(x, np.ndarray) for x in paths_obj], dtype = np.bool)
-            paths_obj = np.array(paths_obj)[keep_mask]
+            # FIXME This is a workaround to create the same type of np array even when len==1
+            # FIXME I fear a similar issue when all paths have the exact same length
+            if len(paths_obj) == 1:
+                tmp = np.empty((1,), dtype=np.object)
+                tmp[0] = paths_obj[0]
+                paths_obj = tmp[keep_mask]
+            else:
+                paths_obj = np.array(paths_obj)[keep_mask]
             uv_ids_paths_min_nh = uv_ids_paths_min_nh[keep_mask]
 
         else:
@@ -452,13 +460,13 @@ def sample_and_save_paths_from_lifted_edges(
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
 
-            if paths_obj.size:
+            try:
                 # need to write paths with vlen and flatten before writing to properly save this
                 paths_save = np.array([pp.flatten() for pp in paths_obj])
                 with h5py.File(save_path) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(paths_save[0].dtype))
                     f.create_dataset('paths', data = paths_save, dtype = dt)
-            else:
+            except (TypeError, IndexError):
                 vigra.writeHDF5([], save_path, 'paths')
 
             vigra.writeHDF5(uv_ids_paths_min_nh, save_path, 'uv_ids')
