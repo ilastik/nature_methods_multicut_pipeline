@@ -177,8 +177,7 @@ def compute_lifted_feature_mala_agglomeration(
         inp_ids,
         uv_ids_lifted,
         lifted_nh,
-        with_defects = False,
-        z_direction  = 2
+        with_defects = False
         ):
     from workflow_no_learning import accumulate_affinities_over_edges
 
@@ -192,7 +191,7 @@ def compute_lifted_feature_mala_agglomeration(
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
     graph.insertEdges(uv_ids)
 
-    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', z_direction)
+    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', ExperimentSettings().affinity_z_direction)
 
     def agglomerate(threshold, use_edge_len):
         policy = nifty.graph.agglo.malaClusterPolicy(

@@ -397,8 +397,8 @@ def modified_edge_gt_fuzzy(ds, seg_id, positive_threshold, negative_threshold):
 #
 
 @cacher_hdf5(folder="feature_folder", cache_edgefeats=True)
-def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor):
-    modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor)
+def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor, z_direction):
+    modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor, z_direction)
 
     skip_edges   = get_skip_edges(  ds, seg_id)
     skip_starts  = get_skip_starts( ds, seg_id)
@@ -431,7 +431,7 @@ def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_fa
                 skip_edge_ranges_to_slice[z],
                 skip_edge_indices_to_slice[z],
                 skip_edge_features,
-                z_direction = 2)
+                z_direction = z_direction)
 
     skip_edge_features = np.nan_to_num(skip_edge_features)
     assert skip_edge_features.shape[1] == modified_features.shape[1]

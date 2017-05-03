@@ -173,8 +173,7 @@ def multicut_workflow_no_learning(
         seg_id,
         inp_ids,
         feature,
-        with_defects = False,
-        z_direction  = 2):
+        with_defects = False):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_test, DataSet)
@@ -195,7 +194,7 @@ def multicut_workflow_no_learning(
             ExperimentSettings().weighting_scheme,
             ExperimentSettings().weight,
             with_defects,
-            z_direction
+            ExperimentSettings().affinity_z_direction
         )
 
     # if we have a seg mask set edges to the ignore segment to be max repulsive
@@ -212,14 +211,13 @@ def mala_clustering_workflow(
         seg_id,
         inp_ids,
         threshold,
-        use_edge_lens = False,
-        z_direction = 2 # this is the mala convention (z-edges encode for affinity from z+1 to z)
+        use_edge_lens = False
     ):
     assert len(inp_ids) == 2
     import nifty.graph.agglo as nagglo
 
     # need to invert due to affinities!
-    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', z_direction)
+    indicators = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', ExperimentSettings().affinity_z_direction)
     edge_lens  = ds.topology_features(seg_id, False)[:,0]
 
     # run mala clustering
