@@ -406,7 +406,15 @@ def sample_and_save_paths_from_lifted_edges(
         paths_obj = vigra.readHDF5(save_path, 'paths')
         # we need to reshape the paths again to revover the coordinates
         if paths_obj.size:
-            paths_obj = np.array( [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ] )
+            # FIXME This is a workaround to create the same type of np array even when len==1
+            # FIXME I fear a similar issue when all paths have the exact same length
+            if len(paths_obj) == 1:
+                paths_obj = [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ]
+                tmp = np.empty((1,), dtype=np.object)
+                tmp[0] = paths_obj[0]
+                paths_obj = tmp
+            else:
+                paths_obj = np.array( [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ] )
         uv_ids_paths_min_nh = vigra.readHDF5(save_path, 'uv_ids')
 
     else: # if False, compute the paths
@@ -460,14 +468,14 @@ def sample_and_save_paths_from_lifted_edges(
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
 
+            paths_save = np.array([pp.flatten() for pp in paths_obj])
             try:
                 # need to write paths with vlen and flatten before writing to properly save this
-                paths_save = np.array([pp.flatten() for pp in paths_obj])
                 with h5py.File(save_path) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(paths_save[0].dtype))
                     f.create_dataset('paths', data = paths_save, dtype = dt)
             except (TypeError, IndexError):
-                vigra.writeHDF5([], save_path, 'paths')
+                vigra.writeHDF5(paths_save, save_path, 'paths')
 
             vigra.writeHDF5(uv_ids_paths_min_nh, save_path, 'uv_ids')
 
