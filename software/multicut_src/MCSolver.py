@@ -205,8 +205,8 @@ def lifted_multicut_workflow(ds_train, ds_test,
             seg_id_test,
             edgeZdistance,
             mc_params.lifted_neighborhood,
-            gamma = gamma,
-            betaGlobal = mc_params.beta_global)
+            mc_params.beta_global,
+            gamma)
 
     # weighting edges with their length for proper lifted to local scaling
     edge_energies_local  /= edge_energies_local.shape[0]
