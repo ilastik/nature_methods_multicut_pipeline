@@ -53,4 +53,6 @@ def regression_test_snemi(cache_folder, data_folder):
 
 
 if __name__ == '__main__':
-    regression_test_snemi('./cache_snemi', './data/snemi')
+    regression_test_snemi(
+            '/home/constantin/Work/home_hdd/cache/regression_tests',
+            '/home/constantin/Work/neurodata_hdd/regression_test_data/snemi')
