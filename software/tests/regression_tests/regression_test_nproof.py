@@ -4,14 +4,13 @@ import argparse
 from regression_test_utils import init, run_mc, run_lmc, regression_test
 
 from multicut_src import ExperimentSettings
-from multicut_src import MetaSet
-#from multicut_src import load_dataset
+from multicut_src import load_dataset
 
 def regression_test_snemi(cache_folder, data_folder):
 
     # if the cache does not exist, create it
     if not os.path.exists(cache_folder):
-        meta = init(cache_folder, data_folder, 'snemi')
+        meta = init(cache_folder, data_folder, 'nproof')
     else:
         meta = MetaSet(cache_folder)
         meta.load()
@@ -29,10 +28,10 @@ def regression_test_snemi(cache_folder, data_folder):
     local_feats_list  = ("raw", "prob", "reg", "topo")
     lifted_feats_list = ("cluster", "reg")
 
-    ds_train = meta.get_dataset('snemi_train')
-    ds_test  = meta.get_dataset('snemi_test')
-    mc_seg  = run_mc( ds_train, ds_test, local_feats_list, params)
-    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, params, 2)
+    ds_train = meta.get_dataset(cache_folder, 'nproof_train')
+    ds_test  = meta.get_dataset(cache_folder, 'nproof_test')
+    mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
+    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2)
 
     print "Regression Test MC..."
     regression_test(
@@ -50,4 +49,4 @@ def regression_test_snemi(cache_folder, data_folder):
 
 
 if __name__ == '__main__':
-    regression_test_snemi('./cache_nproof', './data/nproof')
+    regression_test_snemi('./cache', './data/nproof')

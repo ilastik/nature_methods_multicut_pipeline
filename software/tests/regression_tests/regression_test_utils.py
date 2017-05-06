@@ -2,9 +2,6 @@ import os
 import numpy as np
 
 from multicut_src import DataSet
-from multicut_src import MetaSet
-#from multicut_src import load_dataset
-
 from multicut_src import multicut_workflow, lifted_multicut_workflow
 
 from cremi.evaluation import NeuronIds
@@ -12,8 +9,6 @@ from cremi import Volume
 
 
 def init(cache_folder, data_folder, ds_prefix):
-
-    meta = MetaSet(cache_folder)
 
     ds_train = DataSet(cache_folder, '%s_train' % ds_prefix)
     ds_train.add_raw(  os.path.join( data_folder, 'raw_train.h5' ), 'data')
@@ -27,36 +22,30 @@ def init(cache_folder, data_folder, ds_prefix):
     z2 = int( shape[2] * 0.8 )
     z3 = shape[2]
 
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z0, z1])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z1, z2])
-    ds_train.make_cutout([0, shape[0], 0, shape[1], z2, z3])
+    ds_train.make_cutout( [0, 0, z0], [shape[1], shape[0], z1] )
+    ds_train.make_cutout( [0, 0, z1], [shape[1], shape[0], z2] )
+    ds_train.make_cutout( [0, 0, z2], [shape[1], shape[0], z3] )
 
     ds_test = DataSet(cache_folder, '%s_test' % ds_prefix)
     ds_test.add_raw(  os.path.join(data_folder, 'raw_test.h5' ), 'data')
     ds_test.add_input(os.path.join(data_folder, 'pmap_test.h5'), 'data')
     ds_test.add_seg(  os.path.join(data_folder, 'seg_test.h5' ), 'data')
 
-    meta.add_dataset('%s_train' % ds_prefix, ds_train)
-    meta.add_dataset('%s_test'  % ds_prefix, ds_test)
-    meta.save()
 
-    return meta
-
-
-def run_mc(ds_train, ds_test, feature_list, mc_params):
+def run_mc(ds_train, ds_test, feature_list):
     mc_nodes, _, _, _ = multicut_workflow(
             ds_train, ds_test,
             0, 0,
-            feature_list, mc_params)
+            feature_list)
     return ds_test.project_mc_result(0, mc_nodes)
 
 
-def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, mc_params, gamma):
+def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, gamma):
     mc_nodes, _, _, _ = lifted_multicut_workflow(
             ds_train, ds_test,
             0, 0,
-            local_feature_list, lifted_feature_list,
-            mc_params)
+            local_feature_list,
+            lifted_feature_list)
     return ds_test.project_mc_result(0, mc_nodes)
 
 
@@ -78,9 +67,9 @@ def regression_test(
         expected_ri       = 0
         ):
     vi_split, vi_merge, ri = evaluate(ref_seg, seg)
-    #assert vi_split < vi_split_ref, "%i, %i" % (vi_split, vi_split_ref)
-    #assert vi_merge < vi_merge_ref, "%i, %i" % (vi_merge, vi_merge_ref)
-    #assert ri < ri_ref, "%i, %i" % (ri, ri_ref)
+    assert vi_split < vi_split_ref, "%i, %i" % (vi_split, vi_split_ref)
+    assert vi_merge < vi_merge_ref, "%i, %i" % (vi_merge, vi_merge_ref)
+    assert ri < ri_ref, "%i, %i" % (ri, ri_ref)
     print vi_split, vi_merge, ri
 
 

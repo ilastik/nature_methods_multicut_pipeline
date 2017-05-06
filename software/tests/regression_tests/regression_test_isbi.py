@@ -4,17 +4,13 @@ import argparse
 from regression_test_utils import init, run_mc, run_lmc, regression_test
 
 from multicut_src import ExperimentSettings
-from multicut_src import MetaSet
-#from multicut_src import load_dataset
+from multicut_src import load_dataset
 
 def regression_test_isbi(cache_folder, data_folder):
 
     # if the cache does not exist, create it
     if not os.path.exists(cache_folder):
-        meta = init(cache_folder, data_folder, 'isbi')
-    else:
-        meta = MetaSet(cache_folder)
-        meta.load()
+        init(cache_folder, data_folder, 'isbi')
 
     # isbi params
     params = ExperimentSettings()
@@ -30,13 +26,13 @@ def regression_test_isbi(cache_folder, data_folder):
     local_feats_list  = ("raw", "prob", "reg", "topo")
     lifted_feats_list = ("mc", "cluster", "reg")
 
-    ds_train = meta.get_dataset('isbi_train')
-    ds_test  = meta.get_dataset('isbi_test')
-    mc_seg  = run_mc( ds_train, ds_test, local_feats_list, params)
-    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, params, 2.)
+    ds_train = load_dataset(cache_folder,'isbi_train')
+    ds_test  = load_dataset(cache_folder,'isbi_test')
+    mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
+    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2.)
 
-    vigra.writeHDF5(mc_seg, './cache_isbi/isbi_test/mc_seg.h5', 'data', compression = 'gzip')
-    vigra.writeHDF5(lmc_seg, './cache_isbi/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
+    #vigra.writeHDF5(mc_seg, './cache_isbi/isbi_test/mc_seg.h5', 'data', compression = 'gzip')
+    #vigra.writeHDF5(lmc_seg, './cache_isbi/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
 
     print "Regression Test MC..."
     # Eval differences with same parameters and according regression threasholds
@@ -74,4 +70,4 @@ def regression_test_isbi(cache_folder, data_folder):
 
 
 if __name__ == '__main__':
-    regression_test_isbi('./cache_isbi', './data/isbi')
+    regression_test_isbi('./cache', './data/isbi')

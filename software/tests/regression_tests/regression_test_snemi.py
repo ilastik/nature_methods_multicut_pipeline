@@ -4,17 +4,13 @@ import argparse
 from regression_test_utils import init, run_mc, run_lmc, regression_test
 
 from multicut_src import ExperimentSettings
-from multicut_src import MetaSet
-#from multicut_src import load_dataset
+from multicut_src import load_dataset
 
 def regression_test_snemi(cache_folder, data_folder):
 
     # if the cache does not exist, create it
     if not os.path.exists(cache_folder):
-        meta = init(cache_folder, data_folder, 'snemi')
-    else:
-        meta = MetaSet(cache_folder)
-        meta.load()
+        init(cache_folder, data_folder, 'snemi')
 
     # isbi params
     params = ExperimentSettings()
@@ -31,11 +27,11 @@ def regression_test_snemi(cache_folder, data_folder):
     local_feats_list  = ("raw", "prob", "reg", "topo")
     lifted_feats_list = ("cluster", "reg")
 
-    ds_train = meta.get_dataset('snemi_train')
-    ds_test  = meta.get_dataset('snemi_test')
-    mc_seg  = run_mc( ds_train, ds_test, local_feats_list, params)
+    ds_train = load_dataset(cache_folder, 'snemi_train')
+    ds_test  = load_dataset(cache_folder, 'snemi_test')
+    mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
     gamma = 10000.
-    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, params, gamma)
+    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
 
     print "Regression Test MC..."
     regression_test(
@@ -53,4 +49,4 @@ def regression_test_snemi(cache_folder, data_folder):
 
 
 if __name__ == '__main__':
-    regression_test_snemi('./cache_snemi', './data/snemi')
+    regression_test_snemi('./snemi', './data/snemi')
