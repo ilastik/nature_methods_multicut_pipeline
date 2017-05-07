@@ -79,9 +79,9 @@ def regression_test(
         ):
     vi_split, vi_merge, ri = evaluate(ref_seg, seg)
     print vi_split, vi_merge, ri
-    assert vi_split < expected_vi_split, "%i, %i" % (vi_split, expected_vi_split)
-    assert vi_merge < expected_vi_merge, "%i, %i" % (vi_merge, expected_vi_split)
-    assert ri < expected_ri, "%i, %i" % (ri, expected_ri)
+    assert vi_split < expected_vi_split, "%f, %f" % (vi_split, expected_vi_split)
+    assert vi_merge < expected_vi_merge, "%f, %f" % (vi_merge, expected_vi_split)
+    assert ri < expected_ri, "%f, %f" % (ri, expected_ri)
     print "Passed with:"
     print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
     print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge

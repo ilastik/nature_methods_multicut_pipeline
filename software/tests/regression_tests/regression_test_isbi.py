@@ -75,5 +75,5 @@ def regression_test_isbi(cache_folder, data_folder):
 
 if __name__ == '__main__':
     regression_test_isbi(
-            '/home/constantin/Work/home_hdd/cache/regression_tests_2',
+            '/home/constantin/Work/home_hdd/cache/regression_tests_master',
             '/home/constantin/Work/neurodata_hdd/regression_test_data/isbi')
