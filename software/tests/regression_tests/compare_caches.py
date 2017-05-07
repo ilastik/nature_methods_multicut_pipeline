@@ -135,10 +135,10 @@ def compare_caches_train(cache_folder_1, cache_folder_2):
 
 
 if __name__ == '__main__':
-    compare_caches_train(
-            '/home/constantin/Work/home_hdd/cache/regression_tests_master/isbi_train',
-            '/home/constantin/Work/home_hdd/cache/regression_tests_lcc/isbi_train'
-            )
+    #compare_caches_train(
+    #        '/home/constantin/Work/home_hdd/cache/regression_tests_master/isbi_train',
+    #        '/home/constantin/Work/home_hdd/cache/regression_tests_lcc/isbi_train'
+    #        )
     compare_caches_test(
             '/home/constantin/Work/home_hdd/cache/regression_tests_master/isbi_test',
             '/home/constantin/Work/home_hdd/cache/regression_tests_lcc/isbi_test'
