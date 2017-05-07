@@ -52,21 +52,21 @@ def regression_test_isbi(cache_folder, data_folder):
     print "... passed"
 
     #print "Regression Test LMC..."
-    ## Eval differences with same parameters and according regression threasholds
-    ## vi-split: 0.161923549092 -> 0.2
-    #vi_split_ref = 0.2
-    ## vi-merge: 0.0792288680404 -> 0.1
-    #vi_split_ref = 0.1
-    ## adapted-ri: 0.0334914933439 -> 0.05
-    #adapted_ri_ref = 0.05
-    #regression_test(
-    #        vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
-    #        lmc_seg,
-    #        vi_split_ref,
-    #        vi_merge_ref,
-    #        adapted_ri_ref
-    #        )
-    #print "... passed"
+    # Eval differences with same parameters and according regression threasholds
+    # vi-split: 0.161923549092 -> 0.2
+    vi_split_ref = 0.2
+    # vi-merge: 0.0792288680404 -> 0.1
+    vi_split_ref = 0.1
+    # adapted-ri: 0.0334914933439 -> 0.05
+    adapted_ri_ref = 0.05
+    regression_test(
+            vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
+            lmc_seg,
+            vi_split_ref,
+            vi_merge_ref,
+            adapted_ri_ref
+            )
+    print "... passed"
 
 
 if __name__ == '__main__':

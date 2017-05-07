@@ -34,6 +34,13 @@ def regression_test_snemi(cache_folder, data_folder):
     lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
 
     print "Regression Test MC..."
+    # Eval differences with same parameters and according regression thresholds
+    # vi-split:   0.0718660622942 -> 0.1
+    vi_split_ref = 0.1
+    # vi-merge:   0.0811051987574 -> 0.1
+    vi_merge_ref = 0.1
+    # adapted-ri: 0.0218391269081 -> 0.05
+    adapted_ri_ref = 0.05
     regression_test(
             vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
             mc_seg
@@ -41,6 +48,13 @@ def regression_test_snemi(cache_folder, data_folder):
     print "... passed"
 
     print "Regression Test LMC..."
+    # Eval differences with same parameters and according regression thresholds
+    # vi-split: 0.161923549092 -> 0.2
+    vi_split_ref = 0.2
+    # vi-merge: 0.0792288680404 -> 0.1
+    vi_merge_ref = 0.1
+    # adapted-ri: 0.0334914933439 -> 0.05
+    adapted_ri_ref = 0.05
     regression_test(
             vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
             lmc_seg
