@@ -417,8 +417,8 @@ class DataSet(object):
     # FIXME: Doesn't work for internal paths as key (e.g., key = 'a/b/data')
     def _check_input(self, path, key):
         assert os.path.exists(path), path
-        with h5py.File(path) as f:
-            assert key in f.keys(), "%s, %s" % (key, f.keys())
+    #     with h5py.File(path) as f:
+    #         assert key in f.keys(), "%s, %s" % (key, f.keys())
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
@@ -887,7 +887,7 @@ class DataSet(object):
                     filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma) )
 
                     # if we calculate the filters anisotropically, we need to change the sigma accordingly
-                    sigma = [sigma, sigma, sigma / anisotropy_factor] if change_sigma else sigma
+                    sigma = (sigma, sigma, sigma / anisotropy_factor) if change_sigma else sigma
 
                     tasks.append( executor.submit(_calc_filter, filter_fu, sigma, filt_path) )
                 res = [t.result() for t in tasks]
