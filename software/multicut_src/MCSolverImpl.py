@@ -168,11 +168,14 @@ def multicut_message_passing(
         n_var,
         uv_ids,
         edge_energies,
-        nThreads=0,
-        return_obj=False):
+        n_threads = 0,
+        return_obj = False):
 
     assert nifty.Configuration.WITH_LP_MP, "Message passing multicut needs nifty build with LP_MP"
     obj = nifty_objective(n_var, uv_ids, edge_energies)
+
+    # TODO params params params
+    solver = obj.multicutMpFactory(n_threads = n_threads).create(obj)
 
     if not return_obj:
         return ret, mc_energy, t_inf
@@ -180,11 +183,12 @@ def multicut_message_passing(
         return ret, mc_energy, t_inf, obj
 
 
-def multicut_fusionmoves(n_var,
+def multicut_fusionmoves(
+        n_var,
         uv_ids,
         edge_energies,
-        nThreads=0,
-        return_obj=False):
+        n_threads = 0,
+        return_obj = False):
 
     obj = nifty_objective(n_var, uv_ids, edge_energies)
 
@@ -203,8 +207,8 @@ def multicut_fusionmoves(n_var,
         fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
         proposalGen=obj.watershedProposals(sigma=10,seedFraction=ExperimentSettings().seed_fraction),
         numberOfIterations=ExperimentSettings().num_it,
-        numberOfParallelProposals=2*nThreads,
-        numberOfThreads=nThreads,
+        numberOfParallelProposals=2*n_threads,
+        numberOfThreads=n_threads,
         stopIfNoImprovement=ExperimentSettings().num_it_stop,
         fuseN=2,
     )
