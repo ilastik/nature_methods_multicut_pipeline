@@ -24,7 +24,8 @@ def regression_test_snemi(cache_folder, data_folder):
     params.solver = "multicut_exact"
     params.lifted_neighborhood = 3
 
-    local_feats_list  = ("raw", "prob", "reg", "topo")
+    # TODO cgp-nifty topo feats
+    local_feats_list  = ("raw", "prob", "reg")#, "topo")
     lifted_feats_list = ("cluster", "reg")
 
     ds_train = load_dataset(cache_folder, 'snemi_train')

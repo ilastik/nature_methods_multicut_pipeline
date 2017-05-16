@@ -24,7 +24,8 @@ def regression_test_isbi(cache_folder, data_folder):
     params.weighting_scheme = "z"
     params.solver = "multicut_fusionmoves"
 
-    local_feats_list  = ("raw", "prob", "reg", "topo")
+    # TODO cgp-nifty topo feats
+    local_feats_list  = ("raw", "prob", "reg")#, "topo")
     lifted_feats_list = ("mc", "cluster", "reg")
 
     ds_train = load_dataset(cache_folder,'isbi_train')
