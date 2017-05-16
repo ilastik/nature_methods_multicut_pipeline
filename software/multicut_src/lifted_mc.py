@@ -674,7 +674,6 @@ def learn_and_predict_lifted_rf(
     return p_test, uv_ids_test, nz_test
 
 
-# TODO use lifted multicut from nifty
 def optimize_lifted(
         uvs_local,
         uvs_lifted,

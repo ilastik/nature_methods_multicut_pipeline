@@ -6,6 +6,7 @@ from regression_test_utils import init, run_mc, run_lmc, regression_test
 from multicut_src import ExperimentSettings
 from multicut_src import load_dataset
 
+# TODO check with VI from Neurometrics if this is as unstable as the VI values used here
 def regression_test_isbi(cache_folder, data_folder):
 
     # if the cache does not exist, create it
@@ -29,10 +30,10 @@ def regression_test_isbi(cache_folder, data_folder):
     ds_train = load_dataset(cache_folder,'isbi_train')
     ds_test  = load_dataset(cache_folder,'isbi_test')
     mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
-    #lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2.)
+    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2.)
 
-    #vigra.writeHDF5(mc_seg, './cache_isbi/isbi_test/mc_seg.h5', 'data', compression = 'gzip')
-    #vigra.writeHDF5(lmc_seg, './cache_isbi/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
+    vigra.writeHDF5(mc_seg, cache_folder + '/isbi_test/mc_seg.h5', 'data', compression = 'gzip')
+    vigra.writeHDF5(lmc_seg,cache_folder + '/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
 
     print "Regression Test MC..."
     # Eval differences with same parameters and according regression threasholds
@@ -49,9 +50,8 @@ def regression_test_isbi(cache_folder, data_folder):
             vi_merge_ref,
             adapted_ri_ref
             )
-    print "... passed"
 
-    #print "Regression Test LMC..."
+    print "Regression Test LMC..."
     # Eval differences with same parameters and according regression threasholds
     # vi-split: 0.161923549092 -> 0.2
     vi_split_ref = 0.2
@@ -66,7 +66,6 @@ def regression_test_isbi(cache_folder, data_folder):
             vi_merge_ref,
             adapted_ri_ref
             )
-    print "... passed"
 
 
 if __name__ == '__main__':
