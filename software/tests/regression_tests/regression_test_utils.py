@@ -18,13 +18,13 @@ def init(cache_folder, data_folder, ds_prefix):
 
     shape = ds_train.shape
     z0 = 0
-    z1 = int( shape[2] * 0.2 )
-    z2 = int( shape[2] * 0.8 )
-    z3 = shape[2]
+    z1 = int( shape[0] * 0.2 )
+    z2 = int( shape[0] * 0.8 )
+    z3 = shape[0]
 
-    ds_train.make_cutout( [0, 0, z0], [shape[1], shape[0], z1] )
-    ds_train.make_cutout( [0, 0, z1], [shape[1], shape[0], z2] )
-    ds_train.make_cutout( [0, 0, z2], [shape[1], shape[0], z3] )
+    ds_train.make_cutout( [z0, 0, 0], [z1, shape[1], shape[2]] )
+    ds_train.make_cutout( [z1, 0, 0], [z2, shape[1], shape[2]] )
+    ds_train.make_cutout( [z2, 0, 0], [z3, shape[1], shape[2]] )
 
     ds_test = DataSet(cache_folder, '%s_test' % ds_prefix)
     ds_test.add_raw(  os.path.join(data_folder, 'raw_test.h5' ), 'data')

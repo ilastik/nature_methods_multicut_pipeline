@@ -195,7 +195,7 @@ def multicut_fusionmoves(
     # initialize the fusion moves solver with the greedy and
     # kernighan lin solution
     #greedy = obj.greedyAdditiveFactory()
-    kl_factory = obj.multicutAndresKernighanLinFactory(greedy_ws = True)
+    kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart = True)
 
     ilpFac = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
         addThreeCyclesConstraints=True,
