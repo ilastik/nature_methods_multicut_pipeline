@@ -730,7 +730,8 @@ class DataSet(object):
             sigmas = [1.6, 4.2, 8.3]
             ):
 
-        import fastfilters # very weird, if we built nifty with debug, this causes a segfault oO
+        import fastfilters # very weird, if we built nifty with debug, this causes a segfault
+
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
 
@@ -808,6 +809,7 @@ class DataSet(object):
 
             if calculation_2d:
                 print "Calculating Filter in 2d"
+                change_sigma = False
                 _calc_filter = _calc_filter_2d
                 change_sigma = False
             else:
@@ -823,9 +825,7 @@ class DataSet(object):
                     filter_fu = eval(filt_name)
                     filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma) )
 
-                    # if we calculate the filters anisotropically, we need to change the sigma accordingly
-                    sigma = (sigma, sigma, sigma / anisotropy_factor) if change_sigma else sigma
-
+                    sigma = (sigma / anisotropy_factor, sigma, sigma) if change_sigma else sigma
                     tasks.append( executor.submit(_calc_filter, filter_fu, sigma, filt_path) )
                 res = [t.result() for t in tasks]
 
