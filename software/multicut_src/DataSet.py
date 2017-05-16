@@ -419,8 +419,8 @@ class DataSet(object):
     # FIXME: Doesn't work for internal paths as key (e.g., key = 'a/b/data')
     def _check_input(self, path, key):
         assert os.path.exists(path), path
-        with h5py.File(path) as f:
-            assert key in f.keys(), "%s, %s" % (key, f.keys())
+    #     with h5py.File(path) as f:
+    #         assert key in f.keys(), "%s, %s" % (key, f.keys())
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
@@ -730,6 +730,7 @@ class DataSet(object):
             sigmas = [1.6, 4.2, 8.3]
             ):
 
+        import fastfilters # very weird, if we built nifty with debug, this causes a segfault oO
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
 
@@ -782,7 +783,6 @@ class DataSet(object):
                     filter_and_sigmas_to_compute.append((filt_name, sig))
 
         if filter_and_sigmas_to_compute:
-            import fastfilters # very weird, if we built nifty with debug, this causes a segfault oO
             inp = self.inp(inp_id)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
@@ -809,11 +809,11 @@ class DataSet(object):
             if calculation_2d:
                 print "Calculating Filter in 2d"
                 _calc_filter = _calc_filter_2d
+                change_sigma = False
             else:
                 print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
-                if anisotropy_factor != 1.:
-                    sigmas = [(sig, sig, sig / anisotropy_factor) for sig in sigmas]
                 _calc_filter = _calc_filter_3d
+                change_sigma = anisotropy_factor > 1.
 
             #n_workers = 1
             n_workers = ExperimentSettings().n_threads
@@ -822,7 +822,11 @@ class DataSet(object):
                 for filt_name, sigma in filter_and_sigmas_to_compute:
                     filter_fu = eval(filt_name)
                     filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma) )
-                    tasks.append( executor.submit(_calc_filter, filter_fu, sig, filt_path) )
+
+                    # if we calculate the filters anisotropically, we need to change the sigma accordingly
+                    sigma = (sigma, sigma, sigma / anisotropy_factor) if change_sigma else sigma
+
+                    tasks.append( executor.submit(_calc_filter, filter_fu, sigma, filt_path) )
                 res = [t.result() for t in tasks]
 
         return_paths.sort()

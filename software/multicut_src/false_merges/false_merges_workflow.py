@@ -209,6 +209,7 @@ def extract_paths_and_labels_from_segmentation(
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
             try:
+                print 'Saving paths in {}'.format(paths_save_file)
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
@@ -417,7 +418,15 @@ def sample_and_save_paths_from_lifted_edges(
         paths_obj = vigra.readHDF5(save_path, 'paths')
         # we need to reshape the paths again to revover the coordinates
         if paths_obj.size:
-            paths_obj = np.array( [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ] )
+            # FIXME This is a workaround to create the same type of np array even when len==1
+            # FIXME I fear a similar issue when all paths have the exact same length
+            if len(paths_obj) == 1:
+                paths_obj = [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ]
+                tmp = np.empty((1,), dtype=np.object)
+                tmp[0] = paths_obj[0]
+                paths_obj = tmp
+            else:
+                paths_obj = np.array( [ path.reshape( (len(path)/3, 3) ) for path in paths_obj ] )
         uv_ids_paths_min_nh = vigra.readHDF5(save_path, 'uv_ids')
 
     else: # if False, compute the paths
@@ -453,25 +462,32 @@ def sample_and_save_paths_from_lifted_edges(
                 uv_ids_paths_min_nh_coords,
                 ExperimentSettings().n_threads)
             keep_mask = np.array([isinstance(x, np.ndarray) for x in paths_obj], dtype = np.bool)
-            paths_obj = np.array(paths_obj)[keep_mask]
+            # FIXME This is a workaround to create the same type of np array even when len==1
+            # FIXME I fear a similar issue when all paths have the exact same length
+            if len(paths_obj) == 1:
+                tmp = np.empty((1,), dtype=np.object)
+                tmp[0] = paths_obj[0]
+                paths_obj = tmp[keep_mask]
+            else:
+                paths_obj = np.array(paths_obj)[keep_mask]
             uv_ids_paths_min_nh = uv_ids_paths_min_nh[keep_mask]
 
         else:
-            paths_obj = []
+            paths_obj = np.array([])
 
         # cache the paths if we have caching activated
         if cache_folder is not None:
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
 
-            if paths_obj.size:
+            paths_save = np.array([pp.flatten() for pp in paths_obj])
+            try:
                 # need to write paths with vlen and flatten before writing to properly save this
-                paths_save = np.array([pp.flatten() for pp in paths_obj])
                 with h5py.File(save_path) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(paths_save[0].dtype))
                     f.create_dataset('paths', data = paths_save, dtype = dt)
-            else:
-                vigra.writeHDF5([], save_path, 'paths')
+            except (TypeError, IndexError):
+                vigra.writeHDF5(paths_save, save_path, 'paths')
 
             vigra.writeHDF5(uv_ids_paths_min_nh, save_path, 'uv_ids')
 
@@ -507,7 +523,7 @@ def combine_paths(
 
     # concatenate exta paths and sampled paths (modulu duplicates)
     if uv_ids_paths_min_nh.any(): # only concatenate if we have sampled paths
-        matches = find_matching_row_indices(uv_ids_min_nh, extra_path_uvs)
+        matches = find_matching_row_indices(uv_ids_paths_min_nh, extra_path_uvs)
         if matches.size: # if we have matching uv ids, exclude them from the extra paths before concatenating
             duplicate_mask = np.ones(len(extra_path_uvs), dtype = np.bool)
             duplicate_mask[matches[:,1]] = False
@@ -604,6 +620,9 @@ def resolve_merges_with_lifted_edges(
                 disttransf,
                 ecc_centers_seg,
                 reverse_mapping)
+
+        # Map to local uvs
+        uv_ids_paths_min_nh = np.array([[mapping[u] for u in uv] for uv in uv_ids_paths_min_nh])
 
         # add the paths that were initially classified
         paths_obj, uv_ids_paths_min_nh = combine_paths(

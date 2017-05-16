@@ -126,35 +126,34 @@ def weight_all_edges(edge_energies, edge_areas, weight):
     return energies_return
 
 
+def nifty_objective(n_var, uv_ids, edge_energies):
+    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
+    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
+    g = nifty.graph.UndirectedGraph(int(n_var))
+    g.insertEdges(uv_ids)
+    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
+    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
+    return nifty.graph.optimization.multicut.multicutObjective(g, edge_energies)
+
+
 def multicut_exact(n_var,
         uv_ids,
         edge_energies,
         return_obj = False):
 
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
-    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
-
-    g = nifty.graph.UndirectedGraph(int(n_var))
-    g.insertEdges(uv_ids)
-
-    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
-    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
-
-    obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
-
-    t_inf = time.time()
+    obj = nifty_objective(n_var, uv_ids, edge_energies)
 
     solver = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
 
+    t_inf = time.time()
     if ExperimentSettings().verbose:
         visitor = obj.multicutVerboseVisitor(1)
         ret = solver.optimize(visitor=visitor)
     else:
         ret = solver.optimize()
-
     t_inf = time.time() - t_inf
 
     mc_energy = obj.evalNodeLabels(ret)
@@ -165,7 +164,6 @@ def multicut_exact(n_var,
         return ret, mc_energy, t_inf, obj
 
 
-# TODO properly handle objective, energies, node labels, multithreaded
 def multicut_message_passing(
         n_var,
         uv_ids,
@@ -173,41 +171,13 @@ def multicut_message_passing(
         nThreads=0,
         return_obj=False):
 
-    assert not return_obj, "Not supported yet"# TODO
-    # FIXME dirty hack
-    import sys
-    sys.path.append('/home/constantin/Work/software/bld/LP_MP/python')
-    import lp_mp
+    assert nifty.Configuration.WITH_LP_MP, "Message passing multicut needs nifty build with LP_MP"
+    obj = nifty_objective(n_var, uv_ids, edge_energies)
 
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
-    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
-
-    # nifty graph and objective for node labels and energy
-    g = nifty.graph.UndirectedGraph(int(n_var))
-    g.insertEdges(uv_ids)
-    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
-    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
-    obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
-
-    multicut_opts = lp_mp.solvers.MulticutOptions(maxIter=2500)
-    t_inf = time.time()
-    # FIXME make this compatible with numpy arrays for uv_ids too
-    mc_edges = lp_mp.solvers.multicut(
-            [(uv[0],uv[1]) for uv in uv_ids],
-            edge_energies,
-            multicut_opts
-            )
-    t_inf = time.time() - t_inf
-
-    # edge labels to node labels
-    merge_edges = uv_ids[np.array(mc_edges) == False]
-    ufd = nifty.ufd.ufd(n_var)
-    ufd.merge(merge_edges)
-    mc_nodes = ufd.elementLabeling()
-
-    mc_energy = obj.evalNodeLabels(mc_nodes)
-
-    return mc_nodes, mc_energy, t_inf
+    if not return_obj:
+        return ret, mc_energy, t_inf
+    else:
+        return ret, mc_energy, t_inf, obj
 
 
 def multicut_fusionmoves(n_var,
@@ -216,28 +186,19 @@ def multicut_fusionmoves(n_var,
         nThreads=0,
         return_obj=False):
 
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
-    assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
+    obj = nifty_objective(n_var, uv_ids, edge_energies)
 
-    g = nifty.graph.UndirectedGraph(int(n_var))
-    g.insertEdges(uv_ids)
-
-    assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
-    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
-
-    obj = nifty.graph.multicut.multicutObjective(g, edge_energies)
-
-    greedy = obj.greedyAdditiveFactory().create(obj)
-    ret    = greedy.optimize()
-
-    t_inf = time.time()
+    # initialize the fusion moves solver with the greedy and
+    # kernighan lin solution
+    #greedy = obj.greedyAdditiveFactory()
+    kl_factory = obj.multicutAndresKernighanLinFactory(greedy_ws = True)
 
     ilpFac = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     )
 
-    factory = obj.fusionMoveBasedFactory(
+    fm_factory = obj.fusionMoveBasedFactory(
         verbose=1,
         fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
         proposalGen=obj.watershedProposals(sigma=10,seedFraction=ExperimentSettings().seed_fraction),
@@ -248,13 +209,15 @@ def multicut_fusionmoves(n_var,
         fuseN=2,
     )
 
+    factory = obj.chainedSolversFactory([kl_factory, fm_factory])
     solver = factory.create(obj)
 
+    t_inf = time.time()
     if ExperimentSettings().verbose:
         visitor = obj.multicutVerboseVisitor(1)
-        ret = solver.optimize(nodeLabels=ret,visitor=visitor)
+        ret = solver.optimize(visitor=visitor)
     else:
-        ret = solver.optimize(nodeLabels=ret)
+        ret = solver.optimize()
 
     t_inf = time.time() - t_inf
 
