@@ -691,7 +691,6 @@ def optimize_lifted(
     # build the graph with local and lifted edges
     graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
-    graph.insertEdges(uvs_lifted)
     # build the lifted objective, insert local and lifted costs
     lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
     lifted_obj.setCosts(uvs_local, costs_local)
