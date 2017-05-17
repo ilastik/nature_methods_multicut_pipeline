@@ -11,14 +11,14 @@ def init_trainset(train_name):
     ds = DataSet(meta_folder, train_name) # init the dataset
 
     # filepaths to the input data
-    raw_path = '/path/to/raw.h5' # path to raw data. For anisotropic data, must be in axis order x,y,z (with anisotropy in z)
+    raw_path = '/path/to/raw.h5' # path to raw data. For anisotropic data, must be in axis order z,y,x (with anisotropy in z)
     assert os.path.exists(raw_path)
-    pmap_path = '/path/to/pmap.h5' # path to raw data. For anisotropic data, must be in axis order x,y,z
+    pmap_path = '/path/to/pmap.h5' # path to raw data. For anisotropic data, must be in axis order z,y,x
     assert os.path.exists(pmap_path)
-    seg_path = '/path/to/seg.h5' # path to oversegmentation. For anisotropic data, must be in axis order x,y,z
+    seg_path = '/path/to/seg.h5' # path to oversegmentation. For anisotropic data, must be in axis order z,y,x
     assert os.path.exists(seg_path)
-    gt_path = '/path/to/gt.h5' # path to groundtruth. For anisotropic data, must be in axis order x,y,z
-    assert os.path.exists(seg_path)
+    gt_path = '/path/to/gt.h5' # path to groundtruth. For anisotropic data, must be in axis order z,y,x
+    assert os.path.exists(gt_path)
 
     # in addition you can add a mask for parts of the segmentation that should not be learned / infered on:
     #mask_path = '/path/to/mask.h5'
@@ -40,10 +40,14 @@ def init_trainset(train_name):
 
     # in addition, you can make cutouts here that can be used e.g. for validation
     # here, we add three cutouts that are used during the lifted multicut training
+    z0 = 0
+    z1 = 15
+    z2 = shape[0] - 15
+    z3 = shape[0]
     shape = ds.shape
-    ds.make_cutout([0,shape[0],0,shape[1],0,15])
-    ds.make_cutout([0,shape[0],0,shape[1],15,shape[2]-15])
-    ds.make_cutout([0,shape[0],0,shape[1],shape[2]-15,shape[2]])
+    ds.make_cutout( [z0,0,0], [z1,shape[1],shape[2]] )
+    ds.make_cutout( [z1,0,0], [z2,shape[1],shape[2]] )
+    ds.make_cutout( [z2,0,0], [z3,shape[1],shape[2]] )
 
 
 def init_testset(test_name):
@@ -51,11 +55,11 @@ def init_testset(test_name):
     ds = DataSet(meta_folder, test_name) # init the dataset
 
     # filepaths to the input data
-    raw_path = '/path/to/raw.h5' # path to raw data. For anisotropic data, must be in axis order x,y,z (with anisotropy in z)
+    raw_path = '/path/to/raw.h5' # path to raw data. For anisotropic data, must be in axis order z,y,x (with anisotropy in z)
     assert os.path.exists(raw_path)
-    pmap_path = '/path/to/pmap.h5' # path to raw data. For anisotropic data, must be in axis order x,y,z
+    pmap_path = '/path/to/pmap.h5' # path to raw data. For anisotropic data, must be in axis order z,y,x
     assert os.path.exists(pmap_path)
-    seg_path = '/path/to/seg.h5' # path to oversegmentation. For anisotropic data, must be in axis order x,y,z
+    seg_path = '/path/to/seg.h5' # path to oversegmentation. For anisotropic data, must be in axis order z,y,x
     assert os.path.exists(seg_path)
 
     # in addition you can add a mask for parts of the segmentation that should not be learned / infered on:

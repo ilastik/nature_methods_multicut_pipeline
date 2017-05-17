@@ -66,7 +66,7 @@ def regression_test_nproof(cache_folder, data_folder, with_lmc = True):
         # adapted-ri: 0.0942531472586 => 0.12
         adapted_ri_ref = 0.12
         regression_test(
-                vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
+                vigra.readHDF5(os.path.join(data_folder,'gt_test.h5'), 'data'),
                 lmc_seg,
                 vi_split_ref,
                 vi_merge_ref,
