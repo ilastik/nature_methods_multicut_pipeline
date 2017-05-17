@@ -25,3 +25,8 @@ you need to delete the old cache and call init_exp.py again.
 * run_multicut.py: Run multicut. Trains a random forest on the training dataset and runs the multicut on the test dataset
 with weights from random forest predictions.
 * run_lifted_multicut.py: Runs the lifted multicut.
+
+## Note:
+
+For anisotropic data, the axis-conventions have changed and the data must be in the axis order (z,y,x).
+(Where z is the axis with higher degree of anisotropy.)
