@@ -6,7 +6,7 @@ from regression_test_utils import init, run_mc, run_lmc, regression_test
 from multicut_src import ExperimentSettings
 from multicut_src import load_dataset
 
-def regression_test_snemi(cache_folder, data_folder):
+def regression_test_snemi(cache_folder, data_folder, with_lmc = False):
 
     if not os.path.exists(cache_folder):
         os.mkdir(cache_folder)
@@ -51,7 +51,10 @@ def regression_test_snemi(cache_folder, data_folder):
     adapted_ri_ref = 0.05
     regression_test(
             vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
-            mc_seg
+            mc_seg,
+            vi_split_ref,
+            vi_merge_ref,
+            adapted_ri_ref
             )
 
     if with_lmc:
@@ -65,7 +68,10 @@ def regression_test_snemi(cache_folder, data_folder):
         adapted_ri_ref = 0.05
         regression_test(
                 vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
-                lmc_seg
+                lmc_seg,
+                vi_split_ref,
+                vi_merge_ref,
+                adapted_ri_ref
                 )
 
 

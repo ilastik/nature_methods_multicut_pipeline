@@ -8,7 +8,7 @@ from cremi.evaluation import NeuronIds
 from cremi import Volume
 
 
-def init(cache_folder, data_folder, ds_prefix):
+def init_train(cache_folder, data_folder, ds_prefix):
 
     ds_train = DataSet(cache_folder, '%s_train' % ds_prefix)
     ds_train.add_raw(  os.path.join( data_folder, 'raw_train.h5' ), 'data')
@@ -26,10 +26,18 @@ def init(cache_folder, data_folder, ds_prefix):
     ds_train.make_cutout( [z1, 0, 0], [z2, shape[1], shape[2]] )
     ds_train.make_cutout( [z2, 0, 0], [z3, shape[1], shape[2]] )
 
+
+def init_test(cache_folder, data_folder, ds_prefix):
+
     ds_test = DataSet(cache_folder, '%s_test' % ds_prefix)
     ds_test.add_raw(  os.path.join(data_folder, 'raw_test.h5' ), 'data')
     ds_test.add_input(os.path.join(data_folder, 'pmap_test.h5'), 'data')
     ds_test.add_seg(  os.path.join(data_folder, 'seg_test.h5' ), 'data')
+
+
+def init(cache_folder, data_folder, ds_prefix):
+    init_train(cache_folder, data_folder, ds_prefix)
+    init_test(cache_folder, data_folder, ds_prefix)
 
 
 def run_mc(ds_train, ds_test, feature_list):
