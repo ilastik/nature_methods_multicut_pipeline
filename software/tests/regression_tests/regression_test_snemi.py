@@ -8,8 +8,11 @@ from multicut_src import load_dataset
 
 def regression_test_snemi(cache_folder, data_folder):
 
-    # if the cache does not exist, create it
     if not os.path.exists(cache_folder):
+        os.mkdir(cache_folder)
+
+    # if the cache does not exist, create it
+    if not os.path.exists( os.path.join(cache_folder,'snemi_train') ):
         init(cache_folder, data_folder, 'snemi')
 
     # isbi params
@@ -23,6 +26,7 @@ def regression_test_snemi(cache_folder, data_folder):
     params.weighting_scheme = "all"
     params.solver = "multicut_exact"
     params.lifted_neighborhood = 3
+    params.verbose = True
 
     # TODO cgp-nifty topo feats
     local_feats_list  = ("raw", "prob", "reg")#, "topo")
@@ -30,9 +34,12 @@ def regression_test_snemi(cache_folder, data_folder):
 
     ds_train = load_dataset(cache_folder, 'snemi_train')
     ds_test  = load_dataset(cache_folder, 'snemi_test')
+
     mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
-    gamma = 10000.
-    lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
+
+    if with_lmc:
+        gamma = 10000.
+        lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
 
     print "Regression Test MC..."
     # Eval differences with same parameters and according regression thresholds
@@ -46,24 +53,25 @@ def regression_test_snemi(cache_folder, data_folder):
             vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
             mc_seg
             )
-    print "... passed"
 
-    print "Regression Test LMC..."
-    # Eval differences with same parameters and according regression thresholds
-    # vi-split: 0.161923549092 -> 0.2
-    vi_split_ref = 0.2
-    # vi-merge: 0.0792288680404 -> 0.1
-    vi_merge_ref = 0.1
-    # adapted-ri: 0.0334914933439 -> 0.05
-    adapted_ri_ref = 0.05
-    regression_test(
-            vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
-            lmc_seg
-            )
-    print "... passed"
+    if with_lmc:
+        print "Regression Test LMC..."
+        # Eval differences with same parameters and according regression thresholds
+        # vi-split: 0.161923549092 -> 0.2
+        vi_split_ref = 0.2
+        # vi-merge: 0.0792288680404 -> 0.1
+        vi_merge_ref = 0.1
+        # adapted-ri: 0.0334914933439 -> 0.05
+        adapted_ri_ref = 0.05
+        regression_test(
+                vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
+                lmc_seg
+                )
 
 
 if __name__ == '__main__':
-    regression_test_isbi(
-            '/home/constantin/Work/home_hdd/cache/regression_tests_nfb',
-            '/home/constantin/Work/neurodata_hdd/regression_test_data/snemi_transposed')
+    regression_test_snemi(
+            '/home/constantin/Work/home_hdd/cache/regression_tests_nfb/snemi',
+            '/home/constantin/Work/neurodata_hdd/regression_test_data/snemi_transposed',
+            True
+            )

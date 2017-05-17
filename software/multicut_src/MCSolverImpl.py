@@ -72,7 +72,6 @@ def probs_to_energies(
     return edge_energies
 
 
-
 # weight z edges with their area
 def weight_z_edges(edge_energies, edge_areas, edge_indications, weight):
     assert edge_areas.shape[0] == edge_energies.shape[0], "%s, %s" % (str(edge_areas.shape), str(edge_energies.shape))
@@ -230,6 +229,7 @@ def multicut_fusionmoves(
         return ret, mc_energy, t_inf
     else:
         return ret, mc_energy, t_inf, obj
+
 
 # needs opengm
 def export_opengm_model(

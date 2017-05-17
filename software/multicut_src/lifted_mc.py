@@ -448,7 +448,7 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
-    overlaps = nifty.groundtruth.Overlap(
+    overlaps = nifty.ground_truth.Overlap(
             uv_ids.max(),
             ds.seg(seg_id),
             ds.gt() )

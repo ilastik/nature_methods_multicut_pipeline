@@ -1231,7 +1231,7 @@ class DataSet(object):
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
         uv_ids = self.uv_ids(seg_id)
-        overlaps = nifty.groundtruth.Overlap(
+        overlaps = nifty.ground_truth.Overlap(
                 uv_ids.max(),
                 self.seg(seg_id),
                 self.gt() )
