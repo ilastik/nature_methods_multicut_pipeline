@@ -785,6 +785,7 @@ class DataSet(object):
 
         if filter_and_sigmas_to_compute:
             inp = self.inp(inp_id)
+            assert np.isnan(inp).all(), "%i / %i" % (np.sum(np.isnan(inp)), inp.size)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
 
@@ -798,12 +799,15 @@ class DataSet(object):
                 filter_res = np.zeros(f_shape, dtype = 'float32')
                 for z in xrange(inp.shape[0]):
                     filter_res[z,:] = filter_fu(inp[z,:], sig)
+
+                assert np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = chunks)
 
 
             def _calc_filter_3d(filter_fu, sig, filt_path):
                 filter_res = filter_fu( inp, sig )
+                assert np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = True)
 
