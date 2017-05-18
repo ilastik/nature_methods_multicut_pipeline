@@ -21,7 +21,8 @@ def regression_test_isbi(cache_folder, data_folder, with_lmc = True):
     params.ignore_mask = False
     params.n_trees = 500
     params.weighting_scheme = "z"
-    params.solver = "multicut_fusionmoves"
+    params.solver = "multicut_exact"
+    params.verbose = True
 
     local_feats_list  = ("raw", "prob", "reg", "topo")
     lifted_feats_list = ("mc", "cluster", "reg")
@@ -30,11 +31,11 @@ def regression_test_isbi(cache_folder, data_folder, with_lmc = True):
     ds_test  = load_dataset(cache_folder,'isbi_test')
 
     mc_seg  = run_mc( ds_train, ds_test, local_feats_list)
-    vigra.writeHDF5(mc_seg, './cache_isbi/isbi_test/mc_seg.h5', 'data', compression = 'gzip')
+    vigra.writeHDF5(mc_seg, os.path.join(cache_folder, 'isbi_test/mc_seg.h5'), 'data', compression = 'gzip')
 
     if with_lmc:
         lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2.)
-        vigra.writeHDF5(lmc_seg, './cache_isbi/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
+        vigra.writeHDF5(lmc_seg, os.path.join(cache_folder, 'isbi_test/lmc_seg.h5'), 'data', compression = 'gzip')
 
     print "Regression Test Isbi:"
     print "Regression Test MC..."
