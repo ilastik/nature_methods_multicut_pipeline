@@ -678,9 +678,10 @@ def optimize_lifted(
     n_nodes = uvs_local.max() + 1
     assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
 
-    # build the graph with local and lifted edges
+    # build the graph with local edges
     graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
+
     # build the lifted objective, insert local and lifted costs
     lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
     lifted_obj.setCosts(uvs_local, costs_local)

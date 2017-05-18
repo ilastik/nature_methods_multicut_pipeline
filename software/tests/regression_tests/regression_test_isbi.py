@@ -42,6 +42,7 @@ def regression_test_isbi(cache_folder, data_folder, with_lmc = True):
         lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, 2.)
         vigra.writeHDF5(lmc_seg,cache_folder + '/isbi_test/lmc_seg.h5', 'data', compression = 'gzip')
 
+    print "Eval ISBI"
     print "Regression Test MC..."
     # Eval differences with same parameters and according regression threasholds
     # vi-split:   0.0718660622942 -> 0.1

@@ -51,59 +51,59 @@ def is_inp_name(file_name):
     else:
         return False
 
-# TODO
-# TODO use nifty cgp features + add curvature
-# TODO
+
+# calculate topological features for xy-edges
+# -> each edge corresponds to (potentially multiple)
+# line faces and we calculate features via the mean
+# over the line faces
+# features: curvature....
+def _topo_feats_xy(rag, seg):
+
+    # TODO nfeats
+    n_feats = 10
+    feats_xy = np.zeros( (rag.numberOfEdges, n_feats), dtype = 'float32')
+
+    # iterate over the slices and
+    for z in xrange(seg.shape[0]):
+        seg_z, _, new_to_old = vigra.analysi.relabelConsecutive(seg[z], start_label = 1)
+        old_to_new = {old : new for new, old in mapping.iteritems()}
+        topo_grid = nifty.cgp.TopologicalGrid2D(seg_z)
+
+        # get curvature feats
+        curvature_calculator = nifty.cgp.Cell1CurvatureFeatures2D(topo_grid)
+        # TODO how do we use this ?
+
+        # TODO more ?
+
+
+# calculate topological features for z-edges
+# -> each edge corresponds to an area that is bounded
+# by line faces. we calculate features via statistics
+# over the line faces
+# features: curvature....
+# TODO potential extra features: Union, IoU, segmentShape (= edge_area / edge_circumference)
+def _topo_feats_z():
+    pass
+
+
 def _topology_features_impl(rag, seg, edge_indications, edge_lens):
     assert False, "Not ported to nifty backend yet"
-    extra_features = np.zeros( (rag.edgeNum, 6), dtype = 'float32' )
 
-    # edge indications and mask for z edges
-    extra_features[:,0] = edge_indications
+    # calculate the topo features for xy and z edges
+    feats_xy = _topo_feats_xy(rag, seg)
+    feats_z  = _topo_feats_z(rag, seg, edge_lens)
 
-    extractor = vigra.analysis.extractRegionFeatures(
-            np.zeros_like(seg, dtype = 'float32'),
-            seg,
-            features = ['Count', 'RegionCenter'] )
+    # TODO
+    # bring features to the same shape
 
-    sizes = extractor["Count"]
-    uv_ids = np.sort(rag.uvIds(), axis = 1)
-    sizes_u = sizes[ uv_ids[:,0] ]
-    sizes_v = sizes[ uv_ids[:,1] ]
+    # TODO save number trailing 0-cols
 
-    # Features: Union + Intersection over Union
-    unions  = sizes_u + sizes_v - edge_lens
-    extra_features[:,1] = unions
-    extra_features[:,2] = edge_lens / unions
+    # merge features
+    extra_features = np.zeros_like(feats_xy, dtype = 'float32')
+    extra_features[edge_indications == 1] = feats_xy[edge_indications == 1]
+    extra_features[edge_indications == 0] = feats_z[ edge_indications == 0]
 
-    # Segment shape features
-    seg_coordinates = extractor["RegionCenter"]
-    len_bounds      = np.zeros(rag.nodeNum, dtype = 'float32')
-    # iterate over the nodes, to get the boundary length of each node
-    for n in rag.nodeIter():
-        node_z = seg_coordinates[n.id][2]
-        for arc in rag.incEdgeIter(n):
-            edge = rag.edgeFromArc(arc)
-            edge_c = rag.edgeCoordinates(edge)
-            # only edges in the same slice!
-            if edge_c[0,2] == node_z:
-                len_bounds[n.id] += edge_lens[edge.id]
-    # shape feature = Area / Circumference
-    shape_feats_u = sizes_u / len_bounds[uv_ids[:,0]]
-    shape_feats_v = sizes_v / len_bounds[uv_ids[:,1]]
-    # combine w/ min, max, absdiff
-    extra_features[:,3] = np.minimum(shape_feats_u, shape_feats_v)
-    extra_features[:,4] = np.maximum(shape_feats_u, shape_feats_v)
-    extra_features[:,5] = np.absolute(shape_feats_u - shape_feats_v)
-
-    # the feature names
-    extra_names = [ 'TopologyFeatures_' + name for name in \
-            ['indication', 'union', 'IoU', 'shapeSegment_min', 'shapeSegment_max', 'shapeSegment_absdiff'] ]
-
-    extra_features[np.isinf(extra_features)] = 0.
-    extra_features[np.isneginf(extra_features)] = 0.
-    extra_features = np.nan_to_num(extra_features)
-
+    extra_names = ['blub'] # TODO proper names
     return extra_features, extra_names
 
 

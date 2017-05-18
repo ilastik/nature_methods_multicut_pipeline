@@ -37,7 +37,16 @@ def view_isbi_train():
             ['raw', 'pmap', 'seg', 'gt']
             )
 
+
+def view_cremi(sample):
+    raw = vigra.readHDF5('/home/constantin/Work/neurodata_hdd/regression_test_data/cremi/cremi_transposed/%s/raw_train.h5'  % sample, 'data').astype('float32')
+    pm  = vigra.readHDF5('/home/constantin/Work/neurodata_hdd/regression_test_data/cremi/cremi_transposed/%s/pmap_train.h5' % sample, 'data')
+    seg = vigra.readHDF5('/home/constantin/Work/neurodata_hdd/regression_test_data/cremi/cremi_transposed/%s/seg_train.h5'  % sample, 'data')
+    gt  = vigra.readHDF5('/home/constantin/Work/neurodata_hdd/regression_test_data/cremi/cremi_transposed/%s/gt_train.h5'   % sample, 'data')
+
+    volumina_n_layer([raw, pm, seg, gt], ['raw', 'pmap', 'seg', 'gt'])
+
+
 if __name__ == '__main__':
-    view_isbi(
-            '/home/constantin/Work/home_hdd/cache/regression_tests_nfb',
-            '/home/constantin/Work/neurodata_hdd/regression_test_data')
+    view_cremi('sampleC_1') # sampleA_1 -> something in the gt looks off !
+    # sampleB and C: weird gt in formerly black slices
