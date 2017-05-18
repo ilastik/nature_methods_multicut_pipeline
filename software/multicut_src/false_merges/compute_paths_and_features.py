@@ -4,6 +4,8 @@ import numpy as np
 from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
+from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
+from ..tools import replace_from_dict
 
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):
@@ -58,6 +60,7 @@ def shortest_paths(
 
 # convenience function to combine path features
 # TODO code different features with some keys
+# TODO include seg_id
 def path_feature_aggregator(ds, paths):
     anisotropy_factor = ExperimentSettings().anisotropy_factor
     return np.concatenate([
@@ -199,3 +202,144 @@ def path_features_from_feature_images(
 
     return out
 
+
+# features based on multicuts along path
+# we calculate the multicut (TODO also include lifted) for each
+# path for different betas and count the number of splits
+def multicut_path_features(ds, seg_id, paths, edge_probabilities):
+
+    seg = ds.seg(seg_id)
+    rag = ds.rag(seg_id)
+    uv_ids = rag.uvIds()
+
+    # find the rag edge-ids along the path
+    # TODO speed up in nifty
+    def edges_along_path(path):
+        edge_ids = []
+        u = seg[path[0]] # TODO does this work ?
+        for p in path[1:]:
+            v = seg[p] # TODO does this work ?
+            if u != v:
+                edge_ids.append(rag.findEdge(u,v))
+            u = v
+        return np.array(edge_ids)
+
+
+    # needed for weight transformation
+    weighting_scheme = ExperimentSettings.weighting_scheme
+    weight           = ExperimentSettings.weight
+    edge_areas       = ds.topology_features(seg_id, False)[:,0].astype('uint32')
+    edge_indications = ds.edge_indications(seg_id)
+
+    # transform edge-probabilities to weights
+    def to_weights(edge_ids, beta):
+
+        probs = edge_probabilities[edge_ids]
+        areas = edge_areas[edge_ids]
+        indications = edge_indications[edge_ids]
+
+        # scale the probabilities
+        p_min = 0.001
+        p_max = 1. - p_min
+        probs = (p_max - p_min) * probs + p_min
+
+        # probabilities to energies, second term is boundary bias
+        weights = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+
+        # weight edges
+        if weighting_scheme == "z":
+            weights = weight_z_edges(weights, areas, indications, weight)
+        elif weighting_scheme == "xyz":
+            weights = weight_xyz_edges(weights, areas, indications, weight)
+        elif weighting_scheme == "all":
+            weights = weight_all_edges(weights, areas, weight)
+
+        return weights
+
+
+    # TODO more_feats ?!
+    betas = np.arange(0.3, 0.75, 0.05)
+    n_feats = len(betas)
+    features = np.zeros( (len(paths), n_feats), dtype = 'float32')
+
+    # TODO parallelize
+    for i, path in enumerate(paths):
+
+        # find the edges along the path TODO speed this up !!!
+        edge_ids = edges_along_path(path)
+
+        # relabel the uv-ids to have a [0,...,n_nodes] segmentation
+        uvs      = uv_ids[edge_ids]
+        nodes    = np.unique(uvs)
+        _, _, mapping = viga.analysis.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
+        uvs = replace_from_dict(uvs, mapping)
+        n_var = uvs.max() + 1
+        n_cuts = np.zeros(n_feats, dtype = 'float32')
+
+        for ii, beta in enumerate(betas):
+            weights = to_weights(edge_ids, beta)
+            node_labels, _, _ = multicut_exact(n_var, uvs, weights)
+            n_cuts[ii] = len(np.unique(node_labels))
+
+        features[i] = n_cuts
+
+    return features
+
+
+# features based on most likely cut along path (via graphcut)
+# return edge features of corresponding cut, depending on feature list
+def cut_features(ds, seg_id, paths, edge_weights, anisotropy_factor,
+        feat_list = ['raw', 'prob', 'distance_transform']):
+
+    assert feat_list
+
+    seg = ds.seg(seg_id)
+    rag = ds.rag(seg_id)
+    uv_ids = rag.uvIds()
+
+    # get the features
+    edge_features = []
+    if 'raw' in feat_list:
+        edge_features.append(ds.edge_features(seg_id,0,anisotropy_factor))
+    if 'prob' in feat_list:
+        edge_features.append(ds.edge_features(seg_id,1,anisotropy_factor))
+    if 'distance_transform' in feat_list:
+        edge_features.append(ds.edge_features(seg_id,2,anisotropy_factor)) # we assume that the dt was already added as additional input
+    edge_features = np.concatenate(edge_features, axis = 1)
+
+    # find the rag edge-ids along the path
+    # TODO speed up in nifty
+    def edges_along_path(path):
+        edge_ids = []
+        u = seg[path[0]] # TODO does this work ?
+        for p in path[1:]:
+            v = seg[p] # TODO does this work ?
+            if u != v:
+                edge_ids.append(rag.findEdge(u,v))
+            u = v
+        return np.array(edge_ids)
+
+    features = np.zeros( (len(paths), edge_features.shape[1]), dtype = 'float32')
+
+    # TODO parallelize
+    # iterate over paths, find cut via graphcut
+    # and append the features of the corresponding edge
+    for i, path in enumerate(paths):
+
+        # find the edges along the path TODO speed this up !!!
+        edge_ids = edges_along_path(path)
+
+        # relabel the uv-ids to have a [0,...,n_nodes] segmentation
+        uvs      = uv_ids[edge_ids]
+        nodes    = np.unique(uvs)
+        _, _, mapping = viga.analysis.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
+        uvs = replace_from_dict(uvs, mapping)
+        n_var = uvs.max() + 1
+
+        # TODO
+        # TODO Graph cut and corresponding edge
+        # TODO
+        cut_edge = 42
+        features[i] = edge_features[cut_edge]
+
+    return features
