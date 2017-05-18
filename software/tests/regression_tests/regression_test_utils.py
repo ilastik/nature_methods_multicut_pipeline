@@ -7,8 +7,7 @@ from multicut_src import multicut_workflow, lifted_multicut_workflow
 from cremi.evaluation import NeuronIds
 from cremi import Volume
 
-
-def init(cache_folder, data_folder, ds_prefix):
+def init_train(cache_folder, data_folder, ds_prefix):
 
     ds_train = DataSet(cache_folder, '%s_train' % ds_prefix)
     ds_train.add_raw(  os.path.join( data_folder, 'raw_train.h5' ), 'data')
@@ -22,14 +21,22 @@ def init(cache_folder, data_folder, ds_prefix):
     z2 = int( shape[2] * 0.8 )
     z3 = shape[2]
 
-    ds_train.make_cutout( [0, 0, z0], [shape[1], shape[0], z1] )
-    ds_train.make_cutout( [0, 0, z1], [shape[1], shape[0], z2] )
-    ds_train.make_cutout( [0, 0, z2], [shape[1], shape[0], z3] )
+    ds_train.make_cutout( [0, 0, z0], [shape[0], shape[1], z1] )
+    ds_train.make_cutout( [0, 0, z1], [shape[0], shape[1], z2] )
+    ds_train.make_cutout( [0, 0, z2], [shape[0], shape[1], z3] )
+
+
+def init_test(cache_folder, data_folder, ds_prefix):
 
     ds_test = DataSet(cache_folder, '%s_test' % ds_prefix)
     ds_test.add_raw(  os.path.join(data_folder, 'raw_test.h5' ), 'data')
     ds_test.add_input(os.path.join(data_folder, 'pmap_test.h5'), 'data')
     ds_test.add_seg(  os.path.join(data_folder, 'seg_test.h5' ), 'data')
+
+
+def init(cache_folder, data_folder, ds_prefix):
+    init_train(cache_folder, data_folder, ds_prefix)
+    init_test( cache_folder, data_folder, ds_prefix)
 
 
 def run_mc(ds_train, ds_test, feature_list):
@@ -67,13 +74,20 @@ def regression_test(
         expected_ri       = 0
         ):
     vi_split, vi_merge, ri = evaluate(ref_seg, seg)
-    assert vi_split < expected_vi_split, "%f, %f" % (vi_split, expected_vi_split)
-    assert vi_merge < expected_vi_merge, "%f, %f" % (vi_merge, expected_vi_split)
-    assert ri < expected_ri, "%f, %f" % (ri, expected_ri)
-    print "Passed with:"
-    print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
-    print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
-    print "RI:", ri, "(Ref:)", expected_ri
+    vi_s_pass = vi_split < expected_vi_split
+    vi_m_pass = vi_merge < expected_vi_merge
+    ri_pass = ri < expected_ri
+
+    if ri_pass and vi_s_pass and vi_m_pass:
+        print "Passed with:"
+        print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
+        print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
+        print "RI:", ri, "(Ref:)", expected_ri
+    else:
+        print "FAILED with:"
+        print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
+        print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
+        print "RI:", ri, "(Ref:)", expected_ri
 
 
 def clean_up():
