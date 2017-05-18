@@ -9,7 +9,7 @@ from multicut_src import load_dataset
 def regression_test_nproof(cache_folder, data_folder, with_lmc = True):
 
     # if the cache does not exist, create it
-    if not os.path.exists( os.path.koin(cache_folder, 'nproof_train') ):
+    if not os.path.exists( os.path.join(cache_folder, 'nproof_train') ):
         init(cache_folder, data_folder, 'nproof')
 
     # isbi params
@@ -43,7 +43,7 @@ def regression_test_nproof(cache_folder, data_folder, with_lmc = True):
     # adapted-ri: 0.122123986224 -> 0.15
     adapted_ri_ref = 0.15
     regression_test(
-            vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
+            vigra.readHDF5(os.path.join(data_folder,'gt_test.h5'), 'data'),
             mc_seg,
             vi_split_ref,
             vi_merge_ref,
@@ -60,7 +60,7 @@ def regression_test_nproof(cache_folder, data_folder, with_lmc = True):
         # adapted-ri: 0.0942531472586 => 0.12
         adapted_ri_ref = 0.12
         regression_test(
-                vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
+                vigra.readHDF5(os.path.join(data_folder,'gt_test.h5'), 'data'),
                 lmc_seg,
                 vi_split_ref,
                 vi_merge_ref,

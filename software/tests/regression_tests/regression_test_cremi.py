@@ -62,7 +62,7 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
             #print ds_test
             #print train_names
 
-            trainsets   = [load_dataset(ds) for ds in train_names]
+            trainsets   = [load_dataset(cache_folder, ds) for ds in train_names]
             mc_results[ds_test] = run_mc(
                     trainsets,
                     load_dataset(cache_folder,ds_test),
@@ -76,24 +76,34 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
                         lifted_feature_list)
 
     print "Eval Cremi"
-    print "Regression Test MC..."
-    regression_test(
-            vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
-            mc_seg,
-            vi_split_ref,
-            vi_merge_ref,
-            adapted_ri_ref
-            )
+    for sample in ('A','B','C'):
+        for postfix in (0,1):
+            ds_test = 'sample%s_%i_train' % (sample, postfix)
+            ds      = load_dataset(cache_folder, ds_test)
+            gt = ds.gt()
+            mc_seg = mc_results[ds_test]
 
-    if with_lmc:
-        print "Regression Test LMC..."
-        regression_test(
-                vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
-                lmc_seg,
-                vi_split_ref,
-                vi_merge_ref,
-                adapted_ri_ref
-                )
+            vi_split_ref, vi_merge_ref, adapted_ri_ref = reference_values[ds_test]
+
+            print "Regression Test MC for %s..." % ds_test
+            regression_test(
+                    gt,
+                    mc_seg,
+                    vi_split_ref,
+                    vi_merge_ref,
+                    adapted_ri_ref
+                    )
+
+            if with_lmc:
+                print "Regression Test LMC for %s..." % ds_test
+                lmc_seg = lmc_results[ds_test]
+                regression_test(
+                        gt,
+                        lmc_seg,
+                        vi_split_ref,
+                        vi_merge_ref,
+                        adapted_ri_ref
+                        )
 
 
 
