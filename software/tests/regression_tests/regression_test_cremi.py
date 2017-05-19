@@ -39,6 +39,7 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
 
     # set the parameters
     params = ExperimentSettings()
+    params.rf_cache_folder = os.path.join(cache_folder, "rf_cache")
     params.use_2d = True
     params.anisotropy_factor = 25.
     params.ignore_mask = False
@@ -50,9 +51,11 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
     params.use_2rfs = True
 
     feature_list = ('raw', 'prob', 'reg')
+    lifted_feature_list = ('cluster', 'reg')
 
     # run all multicuts
-    mc_results = {}
+    mc_results  = {}
+    lmc_results = {}
     for sample in ('A','B','C'):
         for postfix in (0,1):
             ds_test = 'sample%s_%i_train' % (sample, postfix)
@@ -62,7 +65,7 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
             #print ds_test
             #print train_names
 
-            trainsets   = [load_dataset(ds) for ds in train_names]
+            trainsets   = [load_dataset(cache_folder, ds) for ds in train_names]
             mc_results[ds_test] = run_mc(
                     trainsets,
                     load_dataset(cache_folder,ds_test),
@@ -73,27 +76,38 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
                 lmc_results[ds_test] = run_lmc(trainsets,
                         load_dataset(cache_folder,ds_test),
                         feature_list,
-                        lifted_feature_list)
+                        lifted_feature_list,
+                        gamma = 2.)
 
     print "Eval Cremi"
-    print "Regression Test MC..."
-    regression_test(
-            vigra.readHDF5(os.path.join(data_folder,'mc_seg.h5'), 'data'),
-            mc_seg,
-            vi_split_ref,
-            vi_merge_ref,
-            adapted_ri_ref
-            )
+    for sample in ('A','B','C'):
+        for postfix in (0,1):
+            ds_test = 'sample%s_%i_train' % (sample, postfix)
+            ds      = load_dataset(cache_folder, ds_test)
+            gt = ds.gt()
+            mc_seg = mc_results[ds_test]
 
-    if with_lmc:
-        print "Regression Test LMC..."
-        regression_test(
-                vigra.readHDF5(os.path.join(data_folder,'lmc_seg.h5'), 'data'),
-                lmc_seg,
-                vi_split_ref,
-                vi_merge_ref,
-                adapted_ri_ref
-                )
+            vi_split_ref, vi_merge_ref, adapted_ri_ref = reference_values[ds_test]
+
+            print "Regression Test MC for %s..." % ds_test
+            regression_test(
+                    gt,
+                    mc_seg,
+                    vi_split_ref,
+                    vi_merge_ref,
+                    adapted_ri_ref
+                    )
+
+            if with_lmc:
+                print "Regression Test LMC for %s..." % ds_test
+                lmc_seg = lmc_results[ds_test]
+                regression_test(
+                        gt,
+                        lmc_seg,
+                        vi_split_ref,
+                        vi_merge_ref,
+                        adapted_ri_ref
+                        )
 
 
 
@@ -101,4 +115,5 @@ if __name__ == '__main__':
     regression_test_cremi(
             '/home/constantin/Work/home_hdd/cache/regression_tests_nfb',
             '/home/constantin/Work/neurodata_hdd/regression_test_data/cremi/cremi_transposed',
-            False)
+            True
+            )
