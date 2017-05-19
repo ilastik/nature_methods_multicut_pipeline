@@ -414,8 +414,12 @@ def learn_rf(
     if cache_folder is not None: # we use caching for the rf => look if already exists
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)
+
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
         rf_name = "rf_" + "_".join( [trainstr, paramstr] )
+        if len(rf_name) > 255:
+            rf_name = str(hash(rf_name))
+
         if not os.path.exists(rf_folder):
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
