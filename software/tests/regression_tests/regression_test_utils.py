@@ -48,7 +48,7 @@ def run_mc(ds_train, ds_test, feature_list):
 
 
 def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, gamma):
-    mc_nodes, _, _, _ = lifted_multicut_workflow(
+    mc_nodes, _, energy, _ = lifted_multicut_workflow(
             ds_train, ds_test,
             0, 0,
             local_feature_list,
@@ -57,8 +57,8 @@ def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, gamma):
 
 
 def evaluate(gt, segmentation):
+    gt, _, _  = vigra.analysis.relabelConsecutive(gt, start_label = 1)
     evaluate = NeuronIds( Volume(gt) )
-
     segmentation = Volume(segmentation)
     vi_split, vi_merge = evaluate.voi(segmentation)
     ri = evaluate.adapted_rand(segmentation)

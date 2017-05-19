@@ -150,7 +150,7 @@ def multicut_exact(n_var,
     ).create(obj)
 
     if ExperimentSettings().verbose:
-        visitor = obj.multicutVerboseVisitor(1)
+        visitor = obj.verboseVisitor(1)
         ret = solver.optimize(visitor=visitor)
     else:
         ret = solver.optimize()
@@ -251,7 +251,7 @@ def multicut_fusionmoves(n_var,
     solver = factory.create(obj)
 
     if ExperimentSettings().verbose:
-        visitor = obj.multicutVerboseVisitor(1)
+        visitor = obj.verboseVisitor(1)
         ret = solver.optimize(nodeLabels=ret,visitor=visitor)
     else:
         ret = solver.optimize(nodeLabels=ret)

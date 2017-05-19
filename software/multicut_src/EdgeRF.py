@@ -111,7 +111,6 @@ class RandomForest(object):
 
     def write(self, file_path, key):
         if use_sklearn:
-            # remove '.h5' from the file path and add the key
             if not os.path.exists(file_path):
                 os.mkdir(file_path)
             save_path = os.path.join(file_path, "%s.pkl" % (key))
@@ -416,6 +415,9 @@ def learn_rf(
             os.mkdir(cache_folder)
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
         rf_name = "rf_" + "_".join( [trainstr, paramstr] )
+        if len(rf_name) > 256:
+            rf_name = str(hash(rf_name))
+
         if not os.path.exists(rf_folder):
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)

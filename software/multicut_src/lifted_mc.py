@@ -725,7 +725,7 @@ def optimize_lifted(
     print "optimize_lifted: run fusion move solver"
     # proposal generator -> watersheds
     pgen = lifted_obj.watershedProposalGenerator(
-            seedingStrategy = ExperimentSettings().seed_strategy_lifted,
+            seedingStrategie = ExperimentSettings().seed_strategy_lifted,
             sigma = ExperimentSettings().sigma_lifted,
             numberOfSeeds = ExperimentSettings().seed_fraction_lifted
             )

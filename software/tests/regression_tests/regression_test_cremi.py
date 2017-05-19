@@ -39,6 +39,7 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
 
     # set the parameters
     params = ExperimentSettings()
+    params.rf_cache_folder = os.path.join(cache_folder, "rf_cache")
     params.use_2d = True
     params.anisotropy_factor = 25.
     params.ignore_mask = False
@@ -50,9 +51,11 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
     params.use_2rfs = True
 
     feature_list = ('raw', 'prob', 'reg')
+    lifted_feature_list = ('cluster', 'reg')
 
     # run all multicuts
-    mc_results = {}
+    mc_results  = {}
+    lmc_results = {}
     for sample in ('A','B','C'):
         for postfix in (0,1):
             ds_test = 'sample%s_%i_train' % (sample, postfix)
@@ -73,7 +76,8 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
                 lmc_results[ds_test] = run_lmc(trainsets,
                         load_dataset(cache_folder,ds_test),
                         feature_list,
-                        lifted_feature_list)
+                        lifted_feature_list,
+                        gamma = 2.)
 
     print "Eval Cremi"
     for sample in ('A','B','C'):
