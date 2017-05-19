@@ -58,6 +58,7 @@ def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, gamma):
 
 
 def evaluate(gt, segmentation):
+    gt, _, _ = vigra.analysis.relabelConsecutive(gt, start_label = 1)
     evaluate = NeuronIds( Volume(gt) )
 
     segmentation = Volume(segmentation)

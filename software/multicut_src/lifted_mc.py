@@ -732,7 +732,8 @@ def optimize_lifted(
     print "Fusion moves took %f s" % t_fm
 
     assert len(result) == n_nodes
-    return result.astype('uint32'), energy_fm, t_fm + t_kl
+    result, _, _ = vigra.analysis.relabelConsecutive(result, start_label = 1)
+    return result, energy_fm, t_fm + t_kl
 
 
 # TODO weight connections in plane: kappa=20
