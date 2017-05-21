@@ -1,9 +1,6 @@
 import numpy as np
-import vigra
-import os
 import time
 
-from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
 from tools import cacher_hdf5
 
@@ -13,18 +10,18 @@ try:
     ilp_bkend = 'cplex'
 except ImportError:
     try:
-        import nifty_with_cplex as nifty # conda version build with cplex
+        import nifty_with_cplex as nifty  # conda version build with cplex
         ilp_bkend = 'cplex'
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty # conda version build with gurobi
+            import nifty_wit_gurobi as nifty  # conda version build with gurobi
             ilp_bkend = 'gurobi'
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
 ###
-### Functions for edgeprobabilities to edge energies
+# Functions for edgeprobabilities to edge energies
 ###
 
 # calculate the energies for the multicut from membrane probabilities
@@ -46,10 +43,10 @@ def probs_to_energies(
     edge_probs = (p_max - p_min) * edge_probs + p_min
 
     # probabilities to energies, second term is boundary bias
-    edge_energies = np.log( (1. - edge_probs) / edge_probs ) + np.log( (1. - beta) / beta )
+    edge_energies = np.log((1. - edge_probs) / edge_probs) + np.log((1. - beta) / beta)
 
     if weighting_scheme in ("z", "xyz", "all"):
-        edge_areas       = ds.topology_features(seg_id, False)[:,0].astype('uint32')
+        edge_areas       = ds.topology_features(seg_id, False)[:, 0].astype('uint32')
         edge_indications = ds.edge_indications(seg_id)
 
     # weight edges
@@ -66,8 +63,8 @@ def probs_to_energies(
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
         uv_ids = ds.uv_ids(seg_id)
-        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)
-        edge_energies[ ignore_mask ] = 2 * edge_energies.min()
+        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        edge_energies[ignore_mask] = 2 * edge_energies.min()
 
     return edge_energies
 
@@ -79,7 +76,7 @@ def weight_z_edges(edge_energies, edge_areas, edge_indications, weight):
 
     energies_return = np.zeros_like(edge_energies)
     # z - edges are indicated with 0 !
-    area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
+    area_z_max = float(np.max(edge_areas[edge_indications == 0]))
 
     # we only weight the z edges !
     w = weight * edge_areas[edge_indications == 0] / area_z_max
@@ -98,8 +95,8 @@ def weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight):
     energies_return = np.zeros_like(edge_energies)
 
     # z - edges are indicated with 0 !
-    area_z_max = float( np.max( edge_areas[edge_indications == 0] ) )
-    len_xy_max = float( np.max( edge_areas[edge_indications == 1] ) )
+    area_z_max = float(np.max(edge_areas[edge_indications == 0]))
+    len_xy_max = float(np.max(edge_areas[edge_indications == 1]))
 
     # weight the z edges !
     w_z = weight * edge_areas[edge_indications == 0] / area_z_max
@@ -118,7 +115,7 @@ def weight_all_edges(edge_energies, edge_areas, weight):
 
     energies_return = np.zeros_like(edge_energies)
 
-    area_max = float( np.max( edge_areas ) )
+    area_max = float(np.max(edge_areas))
     w = weight * edge_areas / area_max
     energies_return = np.multiply(w, edge_energies)
 
@@ -135,14 +132,18 @@ def nifty_objective(n_var, uv_ids, edge_energies):
     return nifty.graph.optimization.multicut.multicutObjective(g, edge_energies)
 
 
-def multicut_exact(n_var,
+def multicut_exact(
+        n_var,
         uv_ids,
         edge_energies,
-        return_obj = False):
+        return_obj=False
+):
 
     obj = nifty_objective(n_var, uv_ids, edge_energies)
 
-    solver = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
+    solver = obj.multicutIlpFactory(
+        ilpSolver=ilp_bkend,
+        verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
@@ -167,14 +168,21 @@ def multicut_message_passing(
         n_var,
         uv_ids,
         edge_energies,
-        n_threads = 0,
-        return_obj = False):
+        n_threads=0,
+        return_obj=False
+):
 
     assert nifty.Configuration.WITH_LP_MP, "Message passing multicut needs nifty build with LP_MP"
     obj = nifty_objective(n_var, uv_ids, edge_energies)
 
     # TODO params params params
-    solver = obj.multicutMpFactory(n_threads = n_threads).create(obj)
+    solver = obj.multicutMpFactory(n_threads=n_threads).create(obj)
+
+    t_inf = time.time()
+    ret = solver.optimize()
+    t_inf = time.time() - t_inf
+
+    mc_energy = obj.evalNodeLabels(ret)
 
     if not return_obj:
         return ret, mc_energy, t_inf
@@ -186,17 +194,20 @@ def multicut_fusionmoves(
         n_var,
         uv_ids,
         edge_energies,
-        n_threads = 0,
-        return_obj = False):
+        n_threads=0,
+        return_obj=False
+):
 
     obj = nifty_objective(n_var, uv_ids, edge_energies)
 
     # initialize the fusion moves solver with the greedy and
     # kernighan lin solution
-    #greedy = obj.greedyAdditiveFactory()
-    kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart = True)
+    # greedy = obj.greedyAdditiveFactory()
+    kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart=True)
 
-    ilpFac = obj.multicutIlpFactory(ilpSolver=ilp_bkend,verbose=0,
+    ilpFac = obj.multicutIlpFactory(
+        ilpSolver=ilp_bkend,
+        verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     )
@@ -204,9 +215,9 @@ def multicut_fusionmoves(
     fm_factory = obj.fusionMoveBasedFactory(
         verbose=1,
         fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
-        proposalGen=obj.watershedProposals(sigma=10,seedFraction=ExperimentSettings().seed_fraction),
+        proposalGen=obj.watershedProposals(sigma=10, seedFraction=ExperimentSettings().seed_fraction),
         numberOfIterations=ExperimentSettings().num_it,
-        numberOfParallelProposals=2*n_threads,
+        numberOfParallelProposals=2 * n_threads,
         numberOfThreads=n_threads,
         stopIfNoImprovement=ExperimentSettings().num_it_stop,
         fuseN=2,

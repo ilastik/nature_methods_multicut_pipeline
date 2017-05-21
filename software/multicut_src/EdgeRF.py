@@ -5,11 +5,13 @@ import os
 from functools import partial
 
 from DataSet import DataSet
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features, modified_edge_features_from_affinity_maps
+from defect_handling import modified_edge_features, modified_region_features, modified_topology_features
+from defect_handling import modified_edge_features_from_affinity_maps
 from defect_handling import modified_edge_indications, modified_edge_gt, modified_edge_gt_fuzzy
 from defect_handling import get_skip_edges, modified_adjacency, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
-from tools import edges_to_volume, edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volumes_for_skip_edges
+from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
+from tools import edges_to_volumes_for_skip_edges
 
 try:
     from sklearn.ensemble import RandomForestClassifier as RFType
@@ -21,16 +23,18 @@ except ImportError:
     use_sklearn = False
     print "Using vigra random forest 3"
 
+
 # wrapper for sklearn / random forest
 class RandomForest(object):
 
-    def __init__(self,
+    def __init__(
+            self,
             train_data,
             train_labels,
             n_trees,
             n_threads,
-            max_depth = None
-            ):
+            max_depth=None
+    ):
 
         if isinstance(train_data, str) and train_data == '__will_deserialize__':
             return
@@ -66,7 +70,7 @@ class RandomForest(object):
     @staticmethod
     def has_defect_rf(file_path):
         if use_sklearn:
-            return os.path.exists( os.path.join(file_path, "rf_defects.pkl") )
+            return os.path.exists(os.path.join(file_path, "rf_defects.pkl"))
         else:
             with h5py.File(file_path + '.h5') as f:
                 return 'rf_defects' in f.keys()
@@ -77,18 +81,22 @@ class RandomForest(object):
         return os.path.exists(save_path)
 
     def _learn_rf_sklearn(self, train_data, train_labels):
-        self.rf = RFType(n_estimators = self.n_trees,
-                n_jobs = self.n_threads,
-                verbose = 2 if ExperimentSettings().verbose else 0,
-                max_depth = self.max_depth)
+        self.rf = RFType(
+            n_estimators=self.n_trees,
+            n_jobs=self.n_threads,
+            verbose=2 if ExperimentSettings().verbose else 0,
+            max_depth=self.max_depth
+        )
         self.rf.fit(train_data, train_labels)
 
     def _learn_rf_vigra(self, train_data, train_labels):
-        self.rf = RFType(train_data,
-                train_labels,
-                treeCount = self.n_trees,
-                n_threads = self.n_threads,
-                max_depth = self.max_depth if self.max_depth is not None else 0)
+        self.rf = RFType(
+            train_data,
+            train_labels,
+            treeCount=self.n_trees,
+            n_threads=self.n_threads,
+            max_depth=self.max_depth if self.max_depth is not None else 0
+        )
 
     def predict_probabilities(self, test_data):
         if use_sklearn:
@@ -100,7 +108,7 @@ class RandomForest(object):
         return self.rf.predict_proba(test_data)
 
     def _predict_vigra(self, test_data):
-        prediction = self.rf.predict_probabilities(test_data, n_threads = n_threads)
+        prediction = self.rf.predict_probabilities(test_data, n_threads=self.n_threads)
         # normalize the prediction
         prediction /= self.n_trees
         # normalize by the number of trees and remove nans
@@ -128,11 +136,13 @@ class RandomForest(object):
 # "prob" -> edge features from probability maps
 # "reg"  -> features from region statistics
 # "topo" -> topological features
-def local_feature_aggregator(ds,
+def local_feature_aggregator(
+        ds,
         seg_id,
         feature_list,
-        anisotropy_factor = 1.,
-        use_2d = False):
+        anisotropy_factor=1.,
+        use_2d=False
+):
 
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
     assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -140,28 +150,25 @@ def local_feature_aggregator(ds,
         assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo"), feat
     features = []
     if "raw" in feature_list:
-        features.append(
-                ds.edge_features(seg_id, 0, anisotropy_factor ))
+        features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
     if "prob" in feature_list:
-        features.append(
-                ds.edge_features(seg_id, 1, anisotropy_factor ))
+        features.append(ds.edge_features(seg_id, 1, anisotropy_factor))
     if "affinities" in feature_list:
         features.append(
-                ds.edge_features_from_affinity_maps(seg_id, (1,2), anisotropy_factor, ExperimentSettings().affinity_z_direction ))
+            ds.edge_features_from_affinity_maps(
+                seg_id, (1, 2), anisotropy_factor, ExperimentSettings().affinity_z_direction)
+        )
     if "extra_input" in feature_list:
-        features.append(
-                ds.edge_features(seg_id, 2, anisotropy_factor ))
+        features.append(ds.edge_features(seg_id, 2, anisotropy_factor))
     if "reg" in feature_list:
         features.append(
-                ds.region_features(seg_id, 0,
-            ds.uv_ids(seg_id), False ) )
+            ds.region_features(seg_id, 0, ds.uv_ids(seg_id), False)
+        )
     if "topo" in feature_list:
-        features.append(
-                ds.topology_features(seg_id, use_2d ))
-    #if "curve" in feature_list:
-    #    features.append(ds.curvature_features(seg_id))
+        features.append(ds.topology_features(seg_id, use_2d))
 
-    return np.concatenate(features, axis = 1)
+    return np.concatenate(features, axis=1)
+
 
 # toplevel convenience function for features
 # aggregates all the features given in feature list:
@@ -169,11 +176,13 @@ def local_feature_aggregator(ds,
 # "prob" -> edge features from probability maps
 # "reg"  -> features from region statistics
 # "topo" -> topological features
-def local_feature_aggregator_with_defects(ds,
+def local_feature_aggregator_with_defects(
+        ds,
         seg_id,
         feature_list,
-        anisotropy_factor = 1.,
-        use_2d = False):
+        anisotropy_factor=1.,
+        use_2d=False
+):
 
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
     assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -185,45 +194,46 @@ def local_feature_aggregator_with_defects(ds,
             ds, seg_id,
             0, anisotropy_factor))
     if "prob" in feature_list:
-        features.append(modified_edge_features(ds, seg_id,
-            1, anisotropy_factor))
+        features.append(modified_edge_features(ds, seg_id, 1, anisotropy_factor))
     if "affinities" in feature_list:
-        features.append(modified_edge_features_from_affinity_maps(ds, seg_id,
-            (1,2), anisotropy_factor, ExperimentSettings().affinity_z_direction))
+        features.append(modified_edge_features_from_affinity_maps(
+            ds,
+            seg_id,
+            (1, 2),
+            anisotropy_factor,
+            ExperimentSettings().affinity_z_direction)
+        )
     if "extra_input" in feature_list:
-        features.append(modified_edge_features(ds, seg_id,
-            2, anisotropy_factor))
+        features.append(modified_edge_features(ds, seg_id, 2, anisotropy_factor))
     if "reg" in feature_list:
-        features.append(modified_region_features(ds, seg_id,
-            0, ds.uv_is(seg_id), False) )
+        features.append(modified_region_features(ds, seg_id, 0, ds.uv_is(seg_id), False))
     if "topo" in feature_list:
         features.append(modified_topology_features(ds, seg_id, use_2d))
-    #if "curve" in feature_list:
-    #    features.append(ds.curvature_features(seg_id))
 
-    return np.concatenate(features, axis = 1)
+    return np.concatenate(features, axis=1)
 
 
 # edge masking:
 # we set all labels that are going to be ignored to 0.5
-def mask_edges(ds,
+def mask_edges(
+        ds,
         seg_id,
         labels,
         uv_ids,
         with_defects):
 
-    labeled = np.ones_like(labels, dtype = bool)
+    labeled = np.ones_like(labels, dtype=bool)
     # set ignore mask to 0.5
-    if ExperimentSettings().use_ignore_mask: # ignore mask not yet supported for defect pipeline
+    if ExperimentSettings().use_ignore_mask:  # ignore mask not yet supported for defect pipeline
         ignore_mask = ds.ignore_mask(seg_id, uv_ids, with_defects)
         assert ignore_mask.shape[0] == labels.shape[0]
-        labeled[ ignore_mask ] = False
+        labeled[ignore_mask] = False
 
     # ignore all edges that are connected to the ignore segment label in the seg mask
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis = 1)
+        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
         assert ignore_mask.shape[0] == labels.shape[0]
-        labeled[ ignore_mask ] = False
+        labeled[ignore_mask] = False
 
     # set z edges to 0.5
     if ExperimentSettings().learn_2d:
@@ -240,12 +250,12 @@ def mask_edges(ds,
 
 
 # TODO make volumina viewer conda package and ship this too
-def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
+def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects=False):
     assert uv_ids.shape[0] == labels.shape[0]
     assert labels.shape[0] == labeled.shape[0]
     from volumina_viewer import volumina_n_layer
 
-    labels_debug = np.zeros(labels.shape, dtype = np.uint32)
+    labels_debug = np.zeros(labels.shape, dtype='uint32')
     labels_debug[labels == 1.]  = 1
     labels_debug[labels == 0.]  = 2
     labels_debug[np.logical_not(labeled)] = 5
@@ -256,13 +266,14 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
         # get  uv ids and labels for the skip edges
         uv_skip     = uv_ids[skip_transition:]
         labels_skip = labels_debug[skip_transition:]
-        #get uv ids and labels for the normal edges
+        # get uv ids and labels for the normal edges
         uv_ids      = uv_ids[:skip_transition]
         labels_debug = labels_debug[:skip_transition]
     else:
         edge_indications = ds.edge_indications(seg_id)
 
-    assert edge_indications.shape[0] == labels_debug.shape[0], "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
+    assert edge_indications.shape[0] == labels_debug.shape[0], \
+        "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
     # xy - and z - labels
     labels_xy = labels_debug[edge_indications == 1]
     labels_z  = labels_debug[edge_indications == 0]
@@ -281,76 +292,99 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects = False):
         skip_ranges = get_skip_ranges(ds, seg_id)
         skip_starts = get_skip_starts(ds, seg_id)
         edge_vol_skip = edges_to_volumes_for_skip_edges(
-                ds,
-                seg,
-                uv_skip,
-                labels_skip,
-                skip_starts,
-                skip_ranges)
+            ds,
+            seg,
+            uv_skip,
+            labels_skip,
+            skip_starts,
+            skip_ranges
+        )
         volumina_n_layer(
-                [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_skip, edge_vol_xy],
-                ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_skip', 'labels_xy'])
+            [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_skip, edge_vol_xy],
+            ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_skip', 'labels_xy']
+        )
     else:
         volumina_n_layer(
-                [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_xy],
-                ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_xy',])
+            [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_xy],
+            ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_xy']
+        )
 
 
 # FIXME: For now, we don't support different feature strings for the edge types
 # if features should differ for the edge types (e.g. affinities), these need to be
 # already merged in the feature computation
-def _learn_seperate_rfs(trainsets,
+def _learn_seperate_rfs(
+        trainsets,
         seg_id,
         features,
         labels,
         labeled,
         rf_path,
-        features_skip = None,
-        labels_skip = None,
-        with_defects = False):
+        features_skip=None,
+        labels_skip=None,
+        with_defects=False
+):
 
     assert len(trainsets) == len(features)
     assert len(labels) == len(features)
     assert len(labels) == len(labeled), "%i, %i" % (len(labels), len(labeled))
 
     if with_defects:
-        skip_transitions = [ (modified_adjacency(ds, seg_id).shape[0] - get_skip_edges(ds, seg_id).shape[0]) \
-                if ds.has_defects else ds.uv_ids(seg_id).shape[0] for i, ds in enumerate(trainsets)]
+        skip_transitions = [
+            modified_adjacency(ds, seg_id).shape[0] - get_skip_edges(ds, seg_id).shape[0]
+            if ds.has_defects else ds.uv_ids(seg_id).shape[0] for i, ds in enumerate(trainsets)
+        ]
 
-    all_indications = [modified_edge_indications(ds, seg_id)[:skip_transitions[i]][labeled[i]] \
-            if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]] for i, ds in enumerate(trainsets)]
+    all_indications = [
+        modified_edge_indications(ds, seg_id)[:skip_transitions[i]][labeled[i]]
+        if (with_defects and ds.has_defects) else ds.edge_indications(seg_id)[labeled[i]]
+        for i, ds in enumerate(trainsets)
+    ]
 
     features_xy = np.concatenate(
-            [features[i][indications == 1] for i, indications in enumerate(all_indications)])
+        [features[i][indications == 1] for i, indications in enumerate(all_indications)]
+    )
     labels_xy = np.concatenate(
-            [labels[i][indications == 1] for i, indications in enumerate(all_indications)])
+        [labels[i][indications == 1] for i, indications in enumerate(all_indications)]
+    )
 
     features_z = np.concatenate(
-            [features[i][indications == 0] for i, indications in enumerate(all_indications)])
+        [features[i][indications == 0] for i, indications in enumerate(all_indications)]
+    )
     labels_z = np.concatenate(
-            [labels[i][indications == 0] for i, indications in enumerate(all_indications)])
+        [labels[i][indications == 0] for i, indications in enumerate(all_indications)]
+    )
 
     assert features_xy.shape[0] == labels_xy.shape[0]
     assert features_z.shape[0] == labels_z.shape[0]
-    assert all( np.unique(labels_xy) == np.array([0, 1]) ), "unique labels: " + str(np.unique(labels_xy))
-    assert all( np.unique(labels_z) == np.array([0, 1]) ), "unique labels: " + str(np.unique(labels_z))
+    assert all(np.unique(labels_xy) == np.array([0, 1])), "unique labels: " + str(np.unique(labels_xy))
+    assert all(np.unique(labels_z) == np.array([0, 1])), "unique labels: " + str(np.unique(labels_z))
 
     print "Start learning random forest for xy edges"
-    rf_xy = RandomForest(features_xy.astype('float32'), labels_xy,
-        n_trees   = ExperimentSettings().n_trees,
-        n_threads = ExperimentSettings().n_threads)
+    rf_xy = RandomForest(
+        features_xy.astype('float32'),
+        labels_xy,
+        n_trees=ExperimentSettings().n_trees,
+        n_threads=ExperimentSettings().n_threads
+    )
 
     print "Start learning random forest for z edges"
-    rf_z = RandomForest(features_z.astype('float32'), labels_z,
-        n_trees = ExperimentSettings().n_trees,
-        n_threads = ExperimentSettings().n_threads)
+    rf_z = RandomForest(
+        features_z.astype('float32'),
+        labels_z,
+        n_trees=ExperimentSettings().n_trees,
+        n_threads=ExperimentSettings().n_threads
+    )
 
     if features_skip is not None:
         assert labels_skip is not None
         print "Start learning defect random forest"
-        rf_defects = RandomForest(features_skip.astype('float32'), labels_skip,
-        n_trees = ExperimentSettings().n_trees,
-        n_threads = ExperimentSettings().n_threads)
+        rf_defects = RandomForest(
+            features_skip.astype('float32'),
+            labels_skip,
+            n_trees=ExperimentSettings().n_trees,
+            n_threads=ExperimentSettings().n_threads
+        )
 
     if rf_path is not None:
         rf_xy.write(rf_path, 'rf_xy')
@@ -368,27 +402,34 @@ def _learn_single_rfs(
         features,
         labels,
         rf_path,
-        features_skip = None,
-        labels_skip = None,
-        with_defects = False):
+        features_skip=None,
+        labels_skip=None,
+        with_defects=False
+):
 
     features = np.concatenate(features)
     labels  = np.concatenate(labels)
 
     assert features.shape[0] == labels.shape[0]
-    assert all( np.unique(labels) == np.array([0, 1]) ), "unique labels: " + str(np.unique(labels))
+    assert all(np.unique(labels) == np.array([0, 1])), "unique labels: " + str(np.unique(labels))
 
     print "Start learning random forest"
-    rf = RandomForest(features.astype('float32'), labels,
-        n_trees = ExperimentSettings().n_trees,
-        n_threads = ExperimentSettings().n_threads)
+    rf = RandomForest(
+        features.astype('float32'),
+        labels,
+        n_trees=ExperimentSettings().n_trees,
+        n_threads=ExperimentSettings().n_threads
+    )
 
     if features_skip is not None:
         assert labels_skip is not None
         print "Start learning defect random forest"
-        rf_defects = RandomForest(features_skip.astype('float32'), labels_skip,
-            n_trees = ExperimentSettings().n_trees,
-            n_threads = ExperimentSettings().n_threads)
+        rf_defects = RandomForest(
+            features_skip.astype('float32'),
+            labels_skip,
+            n_trees=ExperimentSettings().n_trees,
+            n_threads=ExperimentSettings().n_threads
+        )
 
     if rf_path is not None:
         rf.write(rf_path, 'rf')
@@ -407,16 +448,17 @@ def learn_rf(
         feature_aggregator,
         trainstr,
         paramstr,
-        with_defects = False,
-        use_2rfs = False):
+        with_defects=False,
+        use_2rfs=False
+):
 
     cache_folder = ExperimentSettings().rf_cache_folder
-    if cache_folder is not None: # we use caching for the rf => look if already exists
+    if cache_folder is not None:  # we use caching for the rf => look if already exists
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)
 
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
-        rf_name = "rf_" + "_".join( [trainstr, paramstr] )
+        rf_name = "rf_" + "_".join([trainstr, paramstr])
         if len(rf_name) > 255:
             rf_name = str(hash(rf_name))
 
@@ -427,14 +469,16 @@ def learn_rf(
             print "Loading random forest from:"
             print rf_path
             if use_2rfs:
-                rfs = [RandomForest.load_from_file(rf_path, 'rf_xy', ExperimentSettings().n_threads),
-                        RandomForest.load_from_file(rf_path, 'rf_z', ExperimentSettings().n_threads) ]
+                rfs = [
+                    RandomForest.load_from_file(rf_path, 'rf_xy', ExperimentSettings().n_threads),
+                    RandomForest.load_from_file(rf_path, 'rf_z', ExperimentSettings().n_threads)
+                ]
             else:
-                rfs = [RandomForest.load_from_file(rf_path, 'rf', ExperimentSettings().n_threads) ]
+                rfs = [RandomForest.load_from_file(rf_path, 'rf', ExperimentSettings().n_threads)]
             # we need to check if the defect rf actually exists
             if RandomForest.has_defect_rf(rf_path):
                 assert with_defects
-                rfs.append( RandomForest.load_from_file(rf_path, 'rf_defects', ExperimentSettings().n_threads) )
+                rfs.append(RandomForest.load_from_file(rf_path, 'rf_defects', ExperimentSettings().n_threads))
             return rfs
 
     features_train = []
@@ -451,43 +495,48 @@ def learn_rf(
         assert isinstance(ds, DataSet)
         assert ds.has_gt
 
-        features_sub = feature_aggregator( ds, seg_id )
+        features_sub = feature_aggregator(ds, seg_id)
         uv_ids = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects \
-                else ds.uv_ids(seg_id)
+            else ds.uv_ids(seg_id)
         assert features_sub.shape[0] == uv_ids.shape[0]
 
         if ExperimentSettings().learn_fuzzy:
             labels_sub = modified_edge_gt_fuzzy(
-                    ds,
+                ds,
+                seg_id,
+                ExperimentSettings().positive_threshold,
+                ExperimentSettings().negative_threshold
+            ) if with_defects and ds.has_defects else \
+                ds.edge_gt_fuzzy(
                     seg_id,
                     ExperimentSettings().positive_threshold,
-                    ExperimentSettings().negative_threshold) \
-                            if with_defects and ds.has_defects else ds.edge_gt_fuzzy(
-                                seg_id,
-                                ExperimentSettings().positive_threshold,
-                                ExperimentSettings().negative_threshold)
+                    ExperimentSettings().negative_threshold)
         else:
             labels_sub = modified_edge_gt(
-                    ds,
-                    seg_id) if with_defects and ds.has_defects else ds.edge_gt(seg_id)
+                ds,
+                seg_id) if with_defects and ds.has_defects else ds.edge_gt(seg_id)
 
         assert labels_sub.shape[0] == features_sub.shape[0], "%i, %i" % (labels_sub.shape[0], features_sub.shape[0])
 
         # first, find the data points that are actually labeled
-        labeled = mask_edges(ds,
-                seg_id,
-                labels_sub,
-                uv_ids,
-                with_defects)
+        labeled = mask_edges(
+            ds,
+            seg_id,
+            labels_sub,
+            uv_ids,
+            with_defects
+        )
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
         if False:
-            view_edges(ds,
-                    seg_id,
-                    uv_ids,
-                    labels_sub,
-                    labeled,
-                    with_defects and ds.has_defects)
+            view_edges(
+                ds,
+                seg_id,
+                uv_ids,
+                labels_sub,
+                labeled,
+                with_defects and ds.has_defects
+            )
 
         # next, if we have defects, seperate the features for the defect random forest from the others
         if with_defects and ds.has_defects:
@@ -501,10 +550,8 @@ def learn_rf(
 
             # get the features and labels for skip edges
             # exclude the non-labeled points directly
-            features_skip.append(
-                    features_sub[skip_transition:][labeled_skip])
-            labels_skip.append(
-                    labels_sub[skip_transition:][labeled_skip])
+            features_skip.append(features_sub[skip_transition:][labeled_skip])
+            labels_skip.append(labels_sub[skip_transition:][labeled_skip])
 
             # get the features and labels for normal edges
             features_sub = features_sub[:skip_transition]
@@ -519,41 +566,43 @@ def learn_rf(
         labeled_train.append(labeled)
 
     if with_defects:
-        if features_skip: # check if any features / labels for skip edges were added
+        if features_skip:  # check if any features / labels for skip edges were added
             assert labels_skip
             features_skip = np.concatenate(features_skip)
             labels_skip = np.concatenate(labels_skip)
-        else: # if not set with_defects to false, beacause we can't learn a defect rf
+        else:  # if not set with_defects to false, beacause we can't learn a defect rf
             with_defects = False
 
     if use_2rfs:
         return _learn_seperate_rfs(
-                trainsets, seg_id,
-                features_train, labels_train,
-                labeled_train,
-                rf_path if cache_folder is not None else None,
-                features_skip if with_defects else None,
-                labels_skip if with_defects else None,
-                with_defects
-                )
+            trainsets, seg_id,
+            features_train, labels_train,
+            labeled_train,
+            rf_path if cache_folder is not None else None,
+            features_skip if with_defects else None,
+            labels_skip if with_defects else None,
+            with_defects
+        )
     else:
         return _learn_single_rfs(
-                features_train, labels_train,
-                rf_path if cache_folder is not None else None,
-                features_skip if with_defects else None,
-                labels_skip if with_defects else None,
-                with_defects
-                )
+            features_train, labels_train,
+            rf_path if cache_folder is not None else None,
+            features_skip if with_defects else None,
+            labels_skip if with_defects else None,
+            with_defects
+        )
 
 
 # set cache folder to None if you dont want to cache the resulting rf
 def learn_and_predict_rf_from_gt(
-        trainsets, ds_test,
-        seg_id_train, seg_id_test,
+        trainsets,
+        ds_test,
+        seg_id_train,
+        seg_id_test,
         feature_list,
-        with_defects = False,
-        use_2rfs     = False
-        ):
+        with_defects=False,
+        use_2rfs=False
+):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
@@ -564,28 +613,34 @@ def learn_and_predict_rf_from_gt(
         trainsets = [trainsets]
 
     if with_defects:
-        feature_aggregator = partial( local_feature_aggregator_with_defects,
-            feature_list = feature_list,
-            anisotropy_factor = ExperimentSettings().anisotropy_factor,
-            use_2d = ExperimentSettings().use_2d )
+        feature_aggregator = partial(
+            local_feature_aggregator_with_defects,
+            feature_list=feature_list,
+            anisotropy_factor=ExperimentSettings().anisotropy_factor,
+            use_2d=ExperimentSettings().use_2d
+        )
     else:
-        feature_aggregator = partial( local_feature_aggregator,
-            feature_list = feature_list, anisotropy_factor = ExperimentSettings().anisotropy_factor,
-            use_2d = ExperimentSettings().use_2d )
+        feature_aggregator = partial(
+            local_feature_aggregator,
+            feature_list=feature_list,
+            anisotropy_factor=ExperimentSettings().anisotropy_factor,
+            use_2d=ExperimentSettings().use_2d
+        )
 
     # strings for caching
     # str for all relevant params
-    paramstr = "_".join( ["_".join(feature_list), str(ExperimentSettings().anisotropy_factor),
+    paramstr = "_".join(["_".join(feature_list), str(ExperimentSettings().anisotropy_factor),
         str(ExperimentSettings().learn_2d), str(ExperimentSettings().learn_fuzzy),
         str(ExperimentSettings().n_trees), str(ExperimentSettings().negative_threshold),
         str(ExperimentSettings().positive_threshold), str(ExperimentSettings().use_2d),
-        str(ExperimentSettings().use_ignore_mask), str(with_defects), str(use_2rfs)] )
+        str(ExperimentSettings().use_ignore_mask), str(with_defects), str(use_2rfs)]
+    )
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
-    trainstr = "_".join([ds.ds_name for ds in trainsets ]) + "_" + str(seg_id_train)
+    trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id_train)
 
     # we cache this in the ds_test cache folder
     # if caching random forests is activated (== rf_cache_folder is not None)
-    if ExperimentSettings().rf_cache_folder is not None: # cache-folder exists => look if we already have a prediction
+    if ExperimentSettings().rf_cache_folder is not None:  # cache-folder exists => look if we already have a prediction
 
         pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
         if len(pred_name) >= 256:
@@ -625,31 +680,31 @@ def learn_and_predict_rf_from_gt(
             assert len(rfs) == 1
 
     # get the training features
-    features_test  = feature_aggregator( ds_test, seg_id_test )
+    features_test  = feature_aggregator(ds_test, seg_id_test)
 
     if with_defects and ds_test.has_defects:
         skip_transition = features_test.shape[0] - get_skip_edges(
-                ds_test,
-                seg_id_test).shape[0]
+            ds_test,
+            seg_id_test).shape[0]
         features_test_skip = features_test[skip_transition:]
         features_test = features_test[:skip_transition]
 
     # predict
     if use_2rfs:
         edge_indications = modified_edge_indications(ds_test, seg_id_test)[:skip_transition] \
-                if (with_defects and ds_test.has_defects) else ds_test.edge_indications(seg_id_test)
-        pmem_xy = rf_xy.predict_probabilities(features_test[edge_indications==1].astype('float32') )[:,1]
-        pmem_z  = rf_z.predict_probabilities(features_test[edge_indications==0].astype('float32') )[:,1]
-        pmem_test = np.zeros_like(edge_indications, dtype = 'float32')
-        pmem_test[edge_indications==1] = pmem_xy
-        pmem_test[edge_indications==0] = pmem_z
+            if (with_defects and ds_test.has_defects) else ds_test.edge_indications(seg_id_test)
+        pmem_xy = rf_xy.predict_probabilities(features_test[edge_indications == 1].astype('float32'))[:, 1]
+        pmem_z  = rf_z.predict_probabilities(features_test[edge_indications == 0].astype('float32'))[:, 1]
+        pmem_test = np.zeros_like(edge_indications, dtype='float32')
+        pmem_test[edge_indications == 1] = pmem_xy
+        pmem_test[edge_indications == 0] = pmem_z
     else:
         print "Start predicting random forest"
-        pmem_test = rf.predict_probabilities( features_test.astype('float32') )[:,1]
+        pmem_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
 
     if with_defects and ds_test.has_defects:
         print "Start predicting defect random forest"
-        pmem_skip = rf_defects.predict_probabilities( features_test_skip.astype('float32') )[:,1]
+        pmem_skip = rf_defects.predict_probabilities(features_test_skip.astype('float32'))[:, 1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
 
     if ExperimentSettings().rf_cache_folder is not None:

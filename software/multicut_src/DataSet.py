@@ -501,9 +501,10 @@ class DataSet(object):
             # FIXME FIXME FIXME
             # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
             seg, _, _ = vigra.analysis.relabelConsecutive(
-                    seg.astype('uint32'),
-                    start_label=1,
-                    keep_zeros=True)
+                seg.astype('uint32'),
+                start_label=1,
+                keep_zeros=True
+            )
         else:
             # FIXME FIXME FIXME
             # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
@@ -564,14 +565,14 @@ class DataSet(object):
         self.save()
 
 
-   # add grountruth
+    # add grountruth
     def add_gt_from_data(self, gt):
         assert isinstance(gt, np.ndarray)
         if self.has_gt:
             raise RuntimeError("Groundtruth has already been added")
         gt = self._process_gt(gt)
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
-        vigra.writeHDF5(gt, internal_gt_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(gt, internal_gt_path, 'data', compression=ExperimentSettings().compression)
         self.external_gt_path = internal_gt_path
         self.external_gt_key  = 'data'
         self.save()
@@ -587,7 +588,7 @@ class DataSet(object):
         else:
             gt = vigra.readHDF5(self.external_gt_path, self.external_gt_key)
             gt = self._process_gt(gt)
-            vigra.writeHDF5(gt, internal_gt_path, 'data', compression = ExperimentSettings().compression)
+            vigra.writeHDF5(gt, internal_gt_path, 'data', compression=ExperimentSettings().compression)
             return gt
 
 
@@ -608,7 +609,7 @@ class DataSet(object):
         if not isinstance(self, Cutout):  # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
-        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
         self.external_seg_mask_path = internal_mask_path
         self.external_seg_mask_key  = 'data'
         self.save()
@@ -641,7 +642,7 @@ class DataSet(object):
 
     def add_defect_mask_from_data(self, mask):
         assert self.external_defect_mask_path is None
-        if not isinstance(self, Cutout): # don't check for cutouts
+        if not isinstance(self, Cutout):  # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
         vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
@@ -804,7 +805,7 @@ class DataSet(object):
 
                 f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
                 chunks  = (1, min(512, inp.shape[1]), min(512, inp.shape[2])) if is_singlechannel else \
-                        (1, min(512, inp.shape[1]), min(512, inp.shape[2]), 2)
+                    (1, min(512, inp.shape[1]), min(512, inp.shape[2]), 2)
 
                 filter_res = np.zeros(f_shape, dtype='float32')
                 for z in xrange(inp.shape[0]):
@@ -1013,15 +1014,19 @@ class DataSet(object):
             features=statistics)
 
         node_features = np.concatenate(
-            [extractor[stat_name][:, None].astype('float32') if extractor[stat_name].ndim == 1 else extractor[stat_name].astype('float32') for stat_name in statistics],
+            [extractor[stat_name][:, None].astype('float32') if extractor[stat_name].ndim == 1
+                else extractor[stat_name].astype('float32') for stat_name in statistics],
             axis=1
         )
 
         reg_stat_names = list(itertools.chain.from_iterable(
-            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim>1 else [stat_name] for stat_name in statistics[:9]]))
+            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim > 1
+                else [stat_name] for stat_name in statistics[:9]])
+        )
 
         reg_center_names = list(itertools.chain.from_iterable(
-            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:]]))
+            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:]])
+        )
 
         # this is the number of node feats that are combined with min, max, sum, absdiff
         # in conrast to center feats, which are combined with euclidean distance
@@ -1082,7 +1087,8 @@ class DataSet(object):
 
         feat_names = []
         feat_names.extend(
-            ["RegionFeatures_" + name + combine for combine in ("_min", "_max", "_absdiff", "_sum") for name in regStatNames])
+            ["RegionFeatures_" + name + combine
+                for combine in ("_min", "_max", "_absdiff", "_sum") for name in regStatNames])
 
         # we actively delete stuff we don't need to free memory
         # because this may become memory consuming for lifted edges
@@ -1205,11 +1211,12 @@ class DataSet(object):
         # extra feats for z-edges in 2,5 d
         if use_2d_edges:
             extra_feats, extra_names = _topology_features_impl(
-                    rag,
-                    self.seg(seg_id),
-                    self.edge_indications(seg_id),
-                    topo_feats.squeeze() )
-            topo_feats = np.concatenate([topo_feats, extra_feats], axis = 1)
+                rag,
+                self.seg(seg_id),
+                self.edge_indications(seg_id),
+                topo_feats.squeeze()
+            )
+            topo_feats = np.concatenate([topo_feats, extra_feats], axis=1)
             topo_feat_names.extend(extra_names)
 
         save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
@@ -1223,7 +1230,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         self.topology_features(seg_id, use_2d_edges)
         save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
-        return vigra.readHDF5(save_file,"topology_features_names")
+        return vigra.readHDF5(save_file, "topology_features_names")
 
     #
     # Groundtruth projection
@@ -1236,11 +1243,10 @@ class DataSet(object):
         assert self.has_gt
         rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
-                #ExperimentSettings().n_threads ) FIXME pybindings not working
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads ) FIXME pybindings not working
         uv_ids = rag.uvIds()
-        u_gt = node_gt[ uv_ids[:,0] ]
-        v_gt = node_gt[ uv_ids[:,1] ]
+        u_gt = node_gt[uv_ids[:, 0]]
+        v_gt = node_gt[uv_ids[:, 1]]
         return (u_gt != v_gt).astype('uint8')
 
 
@@ -1253,11 +1259,12 @@ class DataSet(object):
         assert negative_threshold < 0.5, str(negative_threshold)
         uv_ids = self.uv_ids(seg_id)
         overlaps = nifty.ground_truth.Overlap(
-                uv_ids.max(),
-                self.seg(seg_id),
-                self.gt() )
+            uv_ids.max(),
+            self.seg(seg_id),
+            self.gt()
+        )
         edge_overlaps = overlaps.differentOverlaps(uv_ids)
-        edge_gt_fuzzy = 0.5 * np.ones( edge_overlaps.shape, dtype = 'float32')
+        edge_gt_fuzzy = 0.5 * np.ones(edge_overlaps.shape, dtype='float32')
         edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
         edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
         return edge_gt_fuzzy
@@ -1267,18 +1274,19 @@ class DataSet(object):
     # which are projected to an ignore label
     # -> we don t want to learn on these!
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def ignore_mask(self, seg_id, uv_ids, with_defects = False): # with defects only  for caching
+    def ignore_mask(self, seg_id, uv_ids, with_defects=False):  # with defects only  for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
+
+        gt = self.gt()
         rag = self.rag(seg_id)
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
-                #ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
         uv_ids = rag.uvIds()
 
-        ignore_mask = np.zeros( rag.numberOfEdges, dtype = bool)
+        ignore_mask = np.zeros(rag.numberOfEdges, dtype=bool)
         for edge_id in xrange(rag.numberOfEdges):
-            n0 = uv_ids[edge_id,0]
-            n1 = uv_ids[edge_id,1]
+            n0 = uv_ids[edge_id, 0]
+            n1 = uv_ids[edge_id, 1]
             # if both superpixel have ignore label in the gt
             # block them in our mask
             if node_gt[n0] in self.gt_false_splits or node_gt[n1] in self.gt_false_splits:
@@ -1295,16 +1303,16 @@ class DataSet(object):
     # which are projected to an ignore label
     # -> we don t want to learn on these!
     @cacher_hdf5(ignoreNumpyArrays=True)
-    def lifted_ignore_mask(self, seg_id, lifted_nh, uvs_lifted, with_defects = False): # with defects only for caching
+    def lifted_ignore_mask(self, seg_id, lifted_nh, uvs_lifted, with_defects=False):  # with defects only for caching
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
 
         rag = self.rag(seg_id)
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
-                #int(ExperimentSettings().n_threads) )
+        gt = self.gt()
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
 
-        ignore_mask = np.zeros( uvs_lifted.shape[0], dtype = bool)
-        for edge_id in xrange(numEdges):
+        ignore_mask = np.zeros(uvs_lifted.shape[0], dtype=bool)
+        for edge_id in xrange(rag.numberOfEdges):
             n0 = uvs_lifted[edge_id][0]
             n1 = uvs_lifted[edge_id][1]
             # if both superpixel have ignore label in the gt
@@ -1327,9 +1335,8 @@ class DataSet(object):
         seg = self.seg(seg_id)
         rag = self.rag(seg_id, seg)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
-                #int(ExperimentSettings().n_threads) )
-        seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # int(ExperimentSettings().n_threads) )
+        seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads)
         assert seg_gt.shape == self.shape
         return seg_gt
 
@@ -1339,7 +1346,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         rag = self.rag(seg_id)
         assert mc_node.shape[0] == rag.numberOfNodes, str(mc_node.shape[0]) + " , " + str(rag.numberOfNodes)
-        mc_seg  = nrag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
+        mc_seg  = nrag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads)
         assert mc_seg.shape == self.shape
         return mc_seg
 
@@ -1354,7 +1361,9 @@ class DataSet(object):
         assert len(start) == 3
         assert len(stop)  == 3
         assert start[0] < stop[0] and start[1] < stop[1] and start[2] < stop[2]
-        assert stop[0] <= self.shape[0] and stop[1] <= self.shape[1] and stop[2] <= self.shape[2], "%s, %s" % (str(self.shape), str(stop))
+        assert stop[0] <= self.shape[0] and \
+            stop[1] <= self.shape[1] and \
+            stop[2] <= self.shape[2], "%s, %s" % (str(self.shape), str(stop))
 
         cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
 
@@ -1370,7 +1379,7 @@ class DataSet(object):
         # copy all inputs, segs and the gt to cutuout
         for inp_id in range(self.n_inp):
             inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
-            if not os.path.exists(inp_path): # make sure that the cache was generated
+            if not os.path.exists(inp_path):  # make sure that the cache was generated
                 self.inp(inp_id)
             if inp_id == 0:
                 cutout.add_raw(inp_path, 'data')
@@ -1379,19 +1388,19 @@ class DataSet(object):
 
         # check if we have a seg mask and copy
         if self.has_seg_mask:
-            mask_path = os.path.join(self.cache_folder,"seg_mask.h5")
+            mask_path = os.path.join(self.cache_folder, "seg_mask.h5")
             if not os.path.exists(mask_path):
                 self.seg_mask()
             cutout.add_seg_mask(mask_path, 'data')
 
         for seg_id in range(self.n_seg):
-            seg_path = os.path.join(self.cache_folder,"seg" + str(seg_id) + ".h5")
+            seg_path = os.path.join(self.cache_folder, "seg" + str(seg_id) + ".h5")
             if not os.path.exists(seg_path):
                 self.seg(seg_id)
             cutout.add_seg(seg_path, "data")
 
         if self.has_gt:
-            gt_path = os.path.join(self.cache_folder,"gt.h5")
+            gt_path = os.path.join(self.cache_folder, "gt.h5")
             if not os.path.exists(gt_path):
                 self.gt()
             cutout.add_gt(gt_path, "data")
@@ -1402,8 +1411,8 @@ class DataSet(object):
         for false_split_gt in self.gt_false_splits:
             cutout.add_false_split_gt_id(false_split_gt)
 
-        if self.external_defect_mask_path != None:
-            mask_path = os.path.join(self.cache_folder,"defect_mask.h5")
+        if self.external_defect_mask_path is not None:
+            mask_path = os.path.join(self.cache_folder, "defect_mask.h5")
             if not os.path.exists(mask_path):
                 self.defect_mask()
             cutout.add_defect_mask(mask_path, "data")
@@ -1418,7 +1427,7 @@ class DataSet(object):
         return load_dataset(self.cache_folder, self.cutouts[cutout_id])
 
     # TODO include volumina_viewer in conda package
-    def view_all_data(self, extra_data = None):
+    def view_all_data(self, extra_data=None):
         assert self.has_raw
         if extra_data is not None:
             assert isinstance(extra_data, list)
@@ -1449,7 +1458,6 @@ class DataSet(object):
             labels.append('defect_mask')
 
         if extra_data is not None:
-            shape = self.shape
             for ii, extra in enumerate(extra_data):
                 assert extra.shape == self.shape, "%s, %s" % (str(extra.shape), str(self.shape))
                 data.append(extra)
@@ -1458,8 +1466,8 @@ class DataSet(object):
         volumina_n_layer(data, labels)
 
 
-#cutout from a given Dataset, used for cutouts and tesselations
-#calls the cache of the parent dataset for inp, seg, gt and filtercalls the cache of the parent dataset for inp, seg, gt and filter
+# cutout from a given Dataset, used for cutouts and tesselations
+# calls the cache of the parent dataset for inp, seg, gt and filter
 class Cutout(DataSet):
 
     def __init__(self, cache_folder, ds_name, start, stop, parent_ds_folder):
@@ -1473,21 +1481,21 @@ class Cutout(DataSet):
 
         # the actual bounding box for easy cutouts of data
         self.bb = np.s_[
-                self.start[0]:self.stop[0],
-                self.start[1]:self.stop[1],
-                self.start[2]:self.stop[2]
-                ]
+            self.start[0]:self.stop[0],
+            self.start[1]:self.stop[1],
+            self.start[2]:self.stop[2]
+        ]
 
         self.parent_ds_folder = parent_ds_folder
 
-
-    # fot the inputs, we dont need to cache everythin again, however for seg and gt we have to, because otherwise the segmentations are not consecutive any longer
+    # for the inputs, we dont need to cache everythin again, however for seg and gt we have to,
+    # because otherwise the segmentations are not consecutive any longer
     # seg and gt can't be reimplemented that way, because they need to be connected!
 
     # we need to overload this, to not cache the raw data again, but read the one from the parent dataset
     def inp(self, inp_id):
         if inp_id >= self.n_inp:
-            raise RuntimeError("Trying to read inp_id " + str(inp_id) + " but there are only " + str(self.n_inp) + " input maps")
+            raise RuntimeError("Trying to read inp_id %i but there are only %i input maps" % (inp_id, self.n_inp))
         inp_path = self.external_inp_paths[inp_id]
         inp_key  = self.external_inp_keys[inp_id]
         with h5py.File(inp_path) as f:
@@ -1495,14 +1503,15 @@ class Cutout(DataSet):
 
 
     # we get the paths to the filters of the top dataset
-    def make_filters(self,
+    def make_filters(
+            self,
             inp_id,
             anisotropy_factor,
-            filter_names = [ "gaussianSmoothing",
-                             "hessianOfGaussianEigenvalues",
-                             "laplacianOfGaussian"],
-            sigmas = [1.6, 4.2, 8.3]
-            ):
+            filter_names=["gaussianSmoothing",
+                          "hessianOfGaussianEigenvalues",
+                          "laplacianOfGaussian"],
+            sigmas=[1.6, 4.2, 8.3]
+    ):
 
         # call make filters of the parent dataset
         parent_ds = load_dataset(self.parent_ds_folder)
