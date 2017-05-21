@@ -1,6 +1,5 @@
 import numpy as np
 import vigra
-import vigra.graphs as graphs
 import os
 import shutil
 import h5py
@@ -8,7 +7,7 @@ from concurrent import futures
 import itertools
 import cPickle as pickle
 
-from tools import cacher_hdf5, cache_name, find_matching_row_indices
+from tools import cacher_hdf5, cache_name
 from ExperimentSettings import ExperimentSettings
 
 # if build from source and not a conda pkg, we assume that we have cplex
@@ -16,18 +15,20 @@ try:
     import nifty
 except ImportError:
     try:
-        import nifty_with_cplex as nifty # conda version build with cplex
+        import nifty_with_cplex as nifty  # conda version build with cplex
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty # conda version build with gurobi
+            import nifty_wit_gurobi as nifty  # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
+# import nifty.cgp as ncgp
 
 
 # this can be used in 2 different ways:
 # ds_name = None: -> called with cache folder and loads from there
 # ds_name = string -> called with meta_folder and descends into cache folder
-def load_dataset(meta_folder, ds_name = None):
+def load_dataset(meta_folder, ds_name=None):
     assert os.path.exists(meta_folder), meta_folder
     if ds_name is None:
         cache_folder = meta_folder
@@ -59,22 +60,23 @@ def is_inp_name(file_name):
 # over the line faces
 # features: curvature....
 def _topo_feats_xy(rag, seg):
+    pass
 
-    # TODO nfeats
-    n_feats = 10
-    feats_xy = np.zeros( (rag.numberOfEdges, n_feats), dtype = 'float32')
-
-    # iterate over the slices and
-    for z in xrange(seg.shape[0]):
-        seg_z, _, new_to_old = vigra.analysi.relabelConsecutive(seg[z], start_label = 1)
-        old_to_new = {old : new for new, old in mapping.iteritems()}
-        topo_grid = nifty.cgp.TopologicalGrid2D(seg_z)
-
-        # get curvature feats
-        curvature_calculator = nifty.cgp.Cell1CurvatureFeatures2D(topo_grid)
-        # TODO how do we use this ?
-
-        # TODO more ?
+#    # TODO nfeats
+#    n_feats = 10
+#    feats_xy = np.zeros( (rag.numberOfEdges, n_feats), dtype = 'float32')
+#
+#    # iterate over the slices and
+#    for z in xrange(seg.shape[0]):
+#        seg_z, _, new_to_old = vigra.analysi.relabelConsecutive(seg[z], start_label = 1)
+#        old_to_new = {old : new for new, old in mapping.iteritems()}
+#        topo_grid = ncgp.TopologicalGrid2D(seg_z)
+#
+#        # get curvature feats
+#        curvature_calculator = ncgp.Cell1CurvatureFeatures2D(topo_grid)
+#        # TODO how do we use this ?
+#
+#        # TODO more ?
 
 
 # calculate topological features for z-edges
@@ -100,11 +102,11 @@ def _topology_features_impl(rag, seg, edge_indications, edge_lens):
     # TODO save number trailing 0-cols
 
     # merge features
-    extra_features = np.zeros_like(feats_xy, dtype = 'float32')
+    extra_features = np.zeros_like(feats_xy, dtype='float32')
     extra_features[edge_indications == 1] = feats_xy[edge_indications == 1]
-    extra_features[edge_indications == 0] = feats_z[ edge_indications == 0]
+    extra_features[edge_indications == 0] = feats_z[edge_indications == 0]
 
-    extra_names = ['blub'] # TODO proper names
+    extra_names = ['blub']  # TODO proper names
     return extra_features, extra_names
 
 
@@ -162,11 +164,11 @@ class DataSet(object):
 
     @property
     def has_defects(self):
-        return self._has_defects if self.external_defect_mask_path != None else False
+        return self._has_defects if self.external_defect_mask_path is not None else False
 
     @property
     def has_gt(self):
-        return self.external_gt_path != None
+        return self.external_gt_path is not None
 
     @property
     def n_inp(self):
@@ -178,7 +180,7 @@ class DataSet(object):
 
     @property
     def has_seg_mask(self):
-        return self.external_seg_mask_path != None
+        return self.external_seg_mask_path is not None
 
     @property
     def n_cutouts(self):
@@ -247,7 +249,7 @@ class DataSet(object):
     # replace input data that was already added
     #
 
-    def replace_raw(self, new_path, new_key, clear_cache = True):
+    def replace_raw(self, new_path, new_key, clear_cache=True):
         assert self.has_raw
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
         if os.path.exists(internal_raw_path):
@@ -261,7 +263,7 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.inp(0)
 
-    def replace_raw_from_data(self, new_data, clear_cache = True):
+    def replace_raw_from_data(self, new_data, clear_cache=True):
         assert self.has_raw
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
         if os.path.exists(internal_raw_path):
@@ -288,7 +290,7 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.inp(inp_id)
 
-    def replace_inp_from_data(self, inp_id, new_data, clear_cache = True):
+    def replace_inp_from_data(self, inp_id, new_data, clear_cache=True):
         assert inp_id > 0, "Use replace raw instead"
         assert inp_id < self.n_inp
         internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
@@ -302,7 +304,7 @@ class DataSet(object):
             self.clear_filters(inp_id)
         self.save()
 
-    def replace_seg(self, seg_id, new_path, new_key, clear_cache = True):
+    def replace_seg(self, seg_id, new_path, new_key, clear_cache=True):
         assert seg_id < self.n_seg
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % seg_id)
         if os.path.exists(internal_seg_path):
@@ -315,19 +317,19 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.seg(seg_id)
 
-    def replace_seg_from_data(self, seg_id, new_data, clear_cache = True):
+    def replace_seg_from_data(self, seg_id, new_data, clear_cache=True):
         assert seg_id < self.n_seg
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % seg_id)
         if os.path.exists(internal_seg_path):
             os.remove(internal_seg_path)
-        vigra.writeHDF5(new_data, internal_seg_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(new_data, internal_seg_path, 'data', compression=ExperimentSettings().compression)
         self.external_seg_paths[seg_id] = internal_seg_path
         self.external_seg_keys[seg_id]  = 'data'
         if clear_cache:
             self.clear_regular_caches()
         self.save()
 
-    def replace_gt(self, new_path, new_key, clear_cache = True):
+    def replace_gt(self, new_path, new_key, clear_cache=True):
         assert self.has_gt
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
         if os.path.exists(internal_gt_path):
@@ -340,19 +342,19 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.gt()
 
-    def replace_gt_from_data(self, new_data, clear_cache = True):
+    def replace_gt_from_data(self, new_data, clear_cache=True):
         assert self.has_gt
         internal_gt_path = os.path.join(self.cache_folder, 'gt.h5')
         if os.path.exists(internal_gt_path):
             os.remove(internal_gt_path)
-        vigra.writeHDF5(new_data, internal_gt_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(new_data, internal_gt_path, 'data', compression=ExperimentSettings().compression)
         self.external_gt_path = internal_gt_path
         self.external_gt_key  = 'data'
         if clear_cache:
             self.clear_regular_caches()
         self.save()
 
-    def replace_seg_mask(self, new_path, new_key, clear_cache = True):
+    def replace_seg_mask(self, new_path, new_key, clear_cache=True):
         assert self.has_seg_mask
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         if os.path.exists(internal_mask_path):
@@ -365,12 +367,12 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.seg_mask()
 
-    def replace_seg_mask_from_data(self, new_data, clear_cache = True):
+    def replace_seg_mask_from_data(self, new_data, clear_cache=True):
         assert self.has_seg_mask
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         if os.path.exists(internal_mask_path):
             os.remove(internal_mask_path)
-        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression=ExperimentSettings().compression)
         self.external_mask_path = internal_mask_path
         self.external_mask_key  = 'data'
         if clear_cache:
@@ -378,7 +380,7 @@ class DataSet(object):
         self.save()
 
     def replace_defect_mask(self, new_path, new_key):
-        assert self.external_defect_mask_path != None
+        assert self.external_defect_mask_path is not None
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
         if os.path.exists(internal_mask_path):
             os.remove(internal_mask_path)
@@ -389,12 +391,12 @@ class DataSet(object):
         # we need to make the cache to be compatible with cutouts that load it
         self.defect_mask()
 
-    def replace_defect_mask_from_data(self, new_data, clear_cache = True):
+    def replace_defect_mask_from_data(self, new_data, clear_cache=True):
         assert self.has_seg_mask
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
         if os.path.exists(internal_mask_path):
             os.remove(internal_mask_path)
-        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(new_data, internal_mask_path, 'data', compression=ExperimentSettings().compression)
         self.external_mask_path = internal_mask_path
         self.external_mask_key  = 'data'
         if clear_cache:
@@ -425,7 +427,7 @@ class DataSet(object):
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
-            assert f[key].shape == self.shape, "%s: %s, %s" % (path, str(f[key].shape), str(self.shape) )
+            assert f[key].shape == self.shape, "%s: %s, %s" % (path, str(f[key].shape), str(self.shape))
 
     def add_raw(self, raw_path, raw_key):
         if self.has_raw:
@@ -446,7 +448,6 @@ class DataSet(object):
             raise RuntimeError("Rawdata has already been added")
         self.shape = raw.shape
         internal_raw_path = os.path.join(self.cache_folder, 'inp0.h5')
-        internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % self.n_inp)
         vigra.writeHDF5(raw, internal_raw_path, 'data')
         self.external_inp_paths.append(internal_raw_path)
         self.external_inp_keys.append('data')
@@ -457,7 +458,7 @@ class DataSet(object):
         if not self.has_raw:
             raise RuntimeError("Add Rawdata before additional pixmaps")
         self._check_input(inp_path, inp_key)
-        if not isinstance(self, Cutout): # don't check for cutouts
+        if not isinstance(self, Cutout):  # don't check for cutouts
             self._check_shape(inp_path, inp_key)
         self.external_inp_paths.append(inp_path)
         self.external_inp_keys.append(inp_key)
@@ -478,9 +479,9 @@ class DataSet(object):
     def inp(self, inp_id):
         assert inp_id < self.n_inp, "Trying to read inp_id %i but there are only %i input maps" % (inp_id, self.n_inp)
         internal_inp_path = os.path.join(self.cache_folder, 'inp%i.h5' % inp_id)
-        if os.path.exists(internal_inp_path): # this is already cached
+        if os.path.exists(internal_inp_path):  # this is already cached
             return vigra.readHDF5(internal_inp_path, "data").astype('float32')
-        else: # this is cached for the first time, load from external data
+        else:  # this is cached for the first time, load from external data
             external_path = self.external_inp_paths[inp_id]
             external_key = self.external_inp_keys[inp_id]
             inp_data = vigra.readHDF5(external_path, external_key)
@@ -494,17 +495,19 @@ class DataSet(object):
         if self.has_seg_mask:
             print "Cutting segmentation mask from seg"
             mask = self.seg_mask()
-            assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now" # TODO change once we allow more general values
-            seg[ np.logical_not(mask) ] = ExperimentSettings().ignore_seg_value
+            # TODO change once we allow more general values
+            assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
+            seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
             # FIXME FIXME FIXME
             # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
-            seg, _, _ = vigra.analysis.relabelConsecutive( seg.astype('uint32'),
-                    start_label = 1,
-                    keep_zeros = True)
+            seg, _, _ = vigra.analysis.relabelConsecutive(
+                    seg.astype('uint32'),
+                    start_label=1,
+                    keep_zeros=True)
         else:
             # FIXME FIXME FIXME
             # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
-            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label = 0, keep_zeros = False)
+            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label=0, keep_zeros=False)
         return seg
 
     def add_seg(self, seg_path, seg_key):
@@ -521,20 +524,20 @@ class DataSet(object):
             raise RuntimeError("Add Rawdata before adding a segmentation")
         internal_seg_path = os.path.join(self.cache_folder, 'seg%i.h5' % self.n_seg)
         seg = self._process_seg(seg)
-        vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(seg, internal_seg_path, 'data', compression=ExperimentSettings().compression)
         self.external_seg_paths.append(internal_seg_path)
         self.external_seg_keys.append('data')
         self.save()
 
     def seg(self, seg_id):
         assert seg_id < self.n_seg, "Trying to read seg_id %i but there are only %i segmentations" % (seg_id, self.n_seg)
-        internal_seg_path = os.path.join(self.cache_folder,"seg%i.h5" % seg_id)
+        internal_seg_path = os.path.join(self.cache_folder, "seg%i.h5" % seg_id)
         if os.path.exists(internal_seg_path):
             return vigra.readHDF5(internal_seg_path, "data")
         else:
             seg = vigra.readHDF5(self.external_seg_paths[seg_id], self.external_seg_keys[seg_id])
             seg = self._process_seg(seg)
-            vigra.writeHDF5(seg, internal_seg_path, 'data', compression = ExperimentSettings().compression)
+            vigra.writeHDF5(seg, internal_seg_path, 'data', compression=ExperimentSettings().compression)
             self.save()
             return seg
 
@@ -542,10 +545,12 @@ class DataSet(object):
         if isinstance(self, Cutout):
             gt = gt[self.bb]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
+
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
         # also messes up defects in cremi...
-        #gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
-        #gt -= gt.min()
+        # gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
+        # gt -= gt.min()
+
         return gt.astype('uint32')
 
     # only single gt for now!
@@ -590,7 +595,7 @@ class DataSet(object):
         assert self.has_raw
         assert not self.has_seg_mask
         self._check_input(mask_path, mask_key)
-        if not isinstance(self, Cutout): # don't check for cutouts
+        if not isinstance(self, Cutout):  # don't check for cutouts
             self._check_shape(mask_path, mask_key)
         self.external_seg_mask_path = mask_path
         self.external_seg_mask_key  = mask_key
@@ -600,7 +605,7 @@ class DataSet(object):
     def add_seg_mask_from_data(self, mask):
         assert self.has_raw
         assert not self.has_seg_mask
-        if not isinstance(self, Cutout): # don't check for cutouts
+        if not isinstance(self, Cutout):  # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
@@ -616,18 +621,18 @@ class DataSet(object):
             return vigra.readHDF5(internal_mask_path, 'data')
         else:
             mask = vigra.readHDF5(self.external_seg_mask_path, self.external_seg_mask_key)
-            assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
+            assert all(np.unique(mask) == np.array([0, 1])), str(np.unique(mask))
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
                 assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
             return mask
 
 
     def add_defect_mask(self, mask_path, mask_key):
-        assert self.external_defect_mask_path == None
+        assert self.external_defect_mask_path is None
         self._check_input(mask_path, mask_key)
-        if not isinstance(self, Cutout): # don't check for cutouts
+        if not isinstance(self, Cutout):  # don't check for cutouts
             self._check_shape(mask_path, mask_key)
         self.external_defect_mask_path = mask_path
         self.external_defect_mask_key  = mask_key
@@ -635,28 +640,28 @@ class DataSet(object):
 
 
     def add_defect_mask_from_data(self, mask):
-        assert self.external_defect_mask_path == None
+        assert self.external_defect_mask_path is None
         if not isinstance(self, Cutout): # don't check for cutouts
             assert mask.shape == self.shape
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
-        vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+        vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
         self.external_defect_mask_path = internal_mask_path
         self.external_defect_mask_key  = 'data'
         self.save()
 
 
     def defect_mask(self):
-        assert self.external_defect_mask_path != None
+        assert self.external_defect_mask_path is not None
         internal_mask_path = os.path.join(self.cache_folder, 'defect_mask.h5')
         if os.path.exists(internal_mask_path):
             return vigra.readHDF5(internal_mask_path, 'data')
         else:
             mask = vigra.readHDF5(self.external_defect_mask_path, self.external_defect_mask_key)
-            assert all( np.unique(mask) == np.array([0,1]) ), str(np.unique(mask))
+            assert all(np.unique(mask) == np.array([0, 1])), str(np.unique(mask))
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
                 assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-            vigra.writeHDF5(mask, internal_mask_path, 'data', compression = ExperimentSettings().compression)
+            vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
             return mask
 
     #
@@ -665,20 +670,22 @@ class DataSet(object):
 
     # compute and cache the nifty rag
     # seg can be passed as an optional argument to avoid loading it
-    def rag(self, seg_id, seg = None):
+    def rag(self, seg_id, seg=None):
         save_path = os.path.join(self.cache_folder, "rag%i.h5" % seg_id)
         if seg is None:
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):
-            rag = nifty.graph.rag.gridRag(seg,
-                    numberOfThreads = ExperimentSettings().n_threads)
+            rag = nrag.gridRag(
+                seg,
+                numberOfThreads=ExperimentSettings().n_threads)
             serialization = rag.serialize()
             vigra.writeHDF5(serialization, save_path, 'data')
         else:
             serialization = vigra.readHDF5(save_path, 'data')
-            rag = nifty.graph.rag.gridRag(seg,
-                    serialization = serialization,
-                    numberOfThreads = ExperimentSettings().n_threads)
+            rag = nrag.gridRag(
+                seg,
+                serialization=serialization,
+                numberOfThreads=ExperimentSettings().n_threads)
         return rag
 
     # save the uv ids seperately for convience, s.t. we don't have to deserialize the rag
@@ -692,17 +699,17 @@ class DataSet(object):
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
         seg = self.seg(seg_id)
-        if is_2d_stacked: # if we have a stacked segmentation, we can parallelize over the slices
+        if is_2d_stacked:  # if we have a stacked segmentation, we can parallelize over the slices
 
             # calculate the centers for a 2d slice
             def centers_2d(z):
-                seg_z = seg[:,:,z]
+                seg_z = seg[:, :, z]
                 min_label = seg_z.min()
                 # eccentricity centers expect a consecutive labeling -> we only return the relevant part
                 centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
-                return [cent + (z,) for cent in centers] # extend by z coordinate
+                return [cent + (z,) for cent in centers]  # extend by z coordinate
 
-            with futures.ThreadPoolExecutor(max_workers = ExperimentSettings().n_threads) as executor:
+            with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
                 tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[2])]
                 centers = [t.result() for t in tasks]
                 # return flattened list
@@ -722,14 +729,15 @@ class DataSet(object):
     # the sigmas are scaled with the anisotropy factor
     # max. anisotropy factor is 20.
     # if it is higher, the features are calculated purely in 2d
-    def make_filters(self,
-            inp_id,
-            anisotropy_factor,
-            filter_names = [ "gaussianSmoothing",
-                             "hessianOfGaussianEigenvalues",
-                             "laplacianOfGaussian"],
-            sigmas = [1.6, 4.2, 8.3]
-            ):
+    def make_filters(
+        self,
+        inp_id,
+        anisotropy_factor,
+        filter_names=["gaussianSmoothing",
+                      "hessianOfGaussianEigenvalues",
+                      "laplacianOfGaussian"],
+        sigmas=[1.6, 4.2, 8.3]
+    ):
 
         import fastfilters # very weird, if we built nifty with debug, this causes a segfault
 
@@ -753,7 +761,7 @@ class DataSet(object):
             filter_folder = os.path.join(top_folder, "filters_2d")
             calculation_2d = True
         else:
-            filter_folder = os.path.join(top_folder, "filters_" + str(anisotropy_factor) )
+            filter_folder = os.path.join(top_folder, "filters_" + str(anisotropy_factor))
 
         if not os.path.exists(filter_folder):
             os.makedirs(filter_folder)
@@ -761,12 +769,12 @@ class DataSet(object):
         if not calculation_2d and anisotropy_factor > 1.:
             print "Anisotropic feature calculation not supported in fastfilters yet."
             print "Using vigra filters instead."
-            filter_names = [".".join( ("vigra.filters", filtname) ) for filtname in filter_names]
+            filter_names = [".".join(("vigra.filters", filtname)) for filtname in filter_names]
         else:
-            filter_names = [".".join( ("fastfilters", filtname) ) for filtname in filter_names]
+            filter_names = [".".join(("fastfilters", filtname)) for filtname in filter_names]
 
         # update the filter folder to the input
-        filter_folder = os.path.join( filter_folder, input_name )
+        filter_folder = os.path.join(filter_folder, input_name)
         if not os.path.exists(filter_folder):
             os.mkdir(filter_folder)
         filter_key    = "data"
@@ -779,7 +787,7 @@ class DataSet(object):
         for filt_name in filter_names:
             for sig in sigmas:
                 # check whether this is already there
-                filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sig) )
+                filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sig))
                 return_paths.append(filt_path)
                 if not os.path.exists(filt_path):
                     filter_and_sigmas_to_compute.append((filt_name, sig))
@@ -790,27 +798,28 @@ class DataSet(object):
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
 
-                filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
+                # some string gymnastics to recover the name
+                filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0]
                 is_singlechannel = True if filt_name != "hessianOfGaussianEigenvalues" else False
 
                 f_shape = inp.shape if is_singlechannel else inp.shape + (2,)
-                chunks  = ( 1, min(512,inp.shape[1]), min(512,inp.shape[2]) ) if is_singlechannel else \
-                        ( 1, min(512,inp.shape[1]), min(512,inp.shape[2]), 2)
+                chunks  = (1, min(512, inp.shape[1]), min(512, inp.shape[2])) if is_singlechannel else \
+                        (1, min(512, inp.shape[1]), min(512, inp.shape[2]), 2)
 
-                filter_res = np.zeros(f_shape, dtype = 'float32')
+                filter_res = np.zeros(f_shape, dtype='float32')
                 for z in xrange(inp.shape[0]):
-                    filter_res[z,:] = filter_fu(inp[z,:], sig)
+                    filter_res[z] = filter_fu(inp[z], sig)
 
                 assert not np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
-                    f.create_dataset(filter_key, data = filter_res, chunks = chunks)
+                    f.create_dataset(filter_key, data=filter_res, chunks=chunks)
 
 
             def _calc_filter_3d(filter_fu, sig, filt_path):
-                filter_res = filter_fu( inp, sig )
+                filter_res = filter_fu(inp, sig)
                 assert not np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
-                    f.create_dataset(filter_key, data = filter_res, chunks = True)
+                    f.create_dataset(filter_key, data=filter_res, chunks=True)
 
             if calculation_2d:
                 print "Calculating Filter in 2d"
@@ -822,17 +831,17 @@ class DataSet(object):
                 _calc_filter = _calc_filter_3d
                 change_sigma = anisotropy_factor > 1.
 
-            #n_workers = 1
+            # n_workers = 1
             n_workers = ExperimentSettings().n_threads
-            with futures.ThreadPoolExecutor(max_workers = n_workers) as executor:
+            with futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
                 tasks = []
                 for filt_name, sigma in filter_and_sigmas_to_compute:
                     filter_fu = eval(filt_name)
-                    filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma) )
+                    filt_path = os.path.join(filter_folder, "%s_%f" % (filt_name, sigma))
 
                     sigma = (sigma / anisotropy_factor, sigma, sigma) if change_sigma else sigma
-                    tasks.append( executor.submit(_calc_filter, filter_fu, sigma, filt_path) )
-                res = [t.result() for t in tasks]
+                    tasks.append(executor.submit(_calc_filter, filter_fu, sigma, filt_path))
+                [t.result() for t in tasks]
 
         return_paths.sort()
         return return_paths
@@ -843,20 +852,20 @@ class DataSet(object):
             seg_id,
             filt,
             filt_name,
-            rag = None,
-            z_direction = 0
-        ):
+            rag=None,
+            z_direction=0
+    ):
 
-        assert filt.ndim in (3,4)
+        assert filt.ndim in (3, 4)
         assert filt.shape[0:3] == self.shape, "%s, %s" % (str(filt.shape), str(self.shape))
 
         # suffixes for the feature names in the correct order
-        suffixes = ["mean","variance","min","0.1quantile","0.25quantile",
-                    "0.5quantile","0.75quantile","0.90quantile","max"]
+        suffixes = ["mean", "variance", "min", "0.1quantile", "0.25quantile",
+                    "0.5quantile", "0.75quantile", "0.90quantile", "max"]
 
         n_threads = ExperimentSettings().n_threads
 
-        if rag == None:
+        if rag is None:
             rag = self.rag(seg_id)
         # split multichannel features
         feats_return = []
@@ -865,18 +874,19 @@ class DataSet(object):
             min_val = filt.min()
             max_val = filt.max()
             feats_return.append(
-                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
-            names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
+                nrag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads))
+            names_return.extend(["_".join(["EdgeFeature", filt_name, suffix]) for suffix in suffixes])
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
                 print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
-                filt_c = filt[...,c]
+                filt_c = filt[..., c]
                 min_val = filt_c.min()
                 max_val = filt_c.max()
                 feats_return.append(
-                        nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
-                names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
-        return np.concatenate(feats_return, axis = 1), names_return
+                    nrag.accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads)
+                )
+                names_return.extend(["_".join(["EdgeFeature", filt_name, "c%i" % c, suffix]) for suffix in suffixes])
+        return np.concatenate(feats_return, axis=1), names_return
 
 
     # filters from affinity maps for xy and z edges
@@ -886,7 +896,7 @@ class DataSet(object):
     # 2 -> features are accumulated only from z + 1
     @cacher_hdf5("feature_folder", cache_edgefeats=True)
     def edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor, z_direction):
-        assert z_direction in (0,1,2)
+        assert z_direction in (0, 1, 2)
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
 
@@ -920,10 +930,10 @@ class DataSet(object):
             featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag, z_direction)
 
             # merge the feats
-            featsXY[edge_indications==0] = featsZ[edge_indications==0]
+            featsXY[edge_indications == 0] = featsZ[edge_indications == 0]
             edge_features.append(featsXY)
 
-        edge_features = np.concatenate( edge_features, axis = 1)
+        edge_features = np.concatenate(edge_features, axis=1)
         assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" % (edge_features.shape[0], rag.numberOfEdges)
         return np.nan_to_num(edge_features)
 
@@ -957,14 +967,15 @@ class DataSet(object):
 
             # accumulate over the edge
             feats_acc, names_acc = self._accumulate_filter_over_edge(
-                    seg_id,
-                    filt,
-                    os.path.split(path)[1],
-                    rag)
+                seg_id,
+                filt,
+                os.path.split(path)[1],
+                rag
+            )
             edge_features.append(feats_acc)
             edge_features_names.extend(names_acc)
 
-        edge_features = np.concatenate( edge_features, axis = 1)
+        edge_features = np.concatenate(edge_features, axis=1)
         assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" (edge_features.shape[0], rag.numberOfEdges)
 
         # save the feature names to file
@@ -981,53 +992,54 @@ class DataSet(object):
         self.edge_features(seg_id, inp_id, anisotropy_factor)
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         assert os.path.exists(save_file)
-        return vigra.readHDF5(save_file,"edge_features_names")
+        return vigra.readHDF5(save_file, "edge_features_names")
 
 
     # get region statistics with the vigra region feature extractor
-    @cacher_hdf5(folder = "feature_folder")
+    @cacher_hdf5(folder="feature_folder")
     def _region_statistics(self, seg_id, inp_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
 
         # list of the region statistics, that we want to extract
-        statistics =  [ "Count", "Kurtosis", #"Histogram",
-                        "Maximum", "Minimum", "Quantiles",
-                        "RegionRadii", "Skewness", "Sum",
-                        "Variance", "Weighted<RegionCenter>", "RegionCenter"]
+        statistics = ["Count", "Kurtosis",  # "Histogram",
+                      "Maximum", "Minimum", "Quantiles",
+                      "RegionRadii", "Skewness", "Sum",
+                      "Variance", "Weighted<RegionCenter>", "RegionCenter"]
 
         extractor = vigra.analysis.extractRegionFeatures(
-                self.inp(inp_id).astype(np.float32),
-                self.seg(seg_id).astype(np.uint32),
-                features = statistics )
+            self.inp(inp_id).astype(np.float32),
+            self.seg(seg_id).astype(np.uint32),
+            features=statistics)
 
         node_features = np.concatenate(
-            [extractor[stat_name][:,None].astype('float32') if extractor[stat_name].ndim == 1 else extractor[stat_name].astype('float32') for stat_name in statistics],
-            axis = 1)
+            [extractor[stat_name][:, None].astype('float32') if extractor[stat_name].ndim == 1 else extractor[stat_name].astype('float32') for stat_name in statistics],
+            axis=1
+        )
 
         reg_stat_names = list(itertools.chain.from_iterable(
-            [ [stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim>1 else [stat_name] for stat_name in statistics[:9] ] ))
+            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim>1 else [stat_name] for stat_name in statistics[:9]]))
 
         reg_center_names = list(itertools.chain.from_iterable(
-            [ [stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:] ] ))
+            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:]]))
 
         # this is the number of node feats that are combined with min, max, sum, absdiff
         # in conrast to center feats, which are combined with euclidean distance
-        n_stat_feats = 17 # magic_nu...
+        n_stat_feats = 17  # magic_nu...
 
         save_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
 
-        vigra.writeHDF5(node_features[:,:n_stat_feats], save_path, "region_statistics")
+        vigra.writeHDF5(node_features[:, :n_stat_feats], save_path, "region_statistics")
         vigra.writeHDF5(reg_stat_names, save_path, "region_statistics_names")
-        vigra.writeHDF5(node_features[:,n_stat_feats:], save_path, "region_centers")
+        vigra.writeHDF5(node_features[:, n_stat_feats:], save_path, "region_centers")
         vigra.writeHDF5(reg_center_names, save_path, "region_center_names")
 
         return statistics
 
 
     # the argument 'with_defects' is needed for correctly caching the lmc features
-    @cacher_hdf5(folder = "feature_folder", ignoreNumpyArrays=True)
-    def region_features(self, seg_id, inp_id, uv_ids, lifted_nh, with_defects = False):
+    @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
+    def region_features(self, seg_id, inp_id, uv_ids, lifted_nh, with_defects=False):
 
         import gc
 
@@ -1047,7 +1059,7 @@ class DataSet(object):
         # include 0 (== everything outside of the mask)
         # otherwise the ram consumption for the lmc can blow up...
         if self.has_seg_mask:
-            where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis = 1)
+            where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
             # for lifted edges assert that no ignore segments are in lifted uvs
             if lifted_nh:
                 assert np.sum(where_uv) == where_uv.size
@@ -1058,24 +1070,24 @@ class DataSet(object):
         regStats = vigra.readHDF5(region_statistics_path, 'region_statistics')
         regStatNames = vigra.readHDF5(region_statistics_path, 'region_statistics_names')
 
-        fU = regStats[uv_ids[:,0],:]
-        fV = regStats[uv_ids[:,1],:]
+        fU = regStats[uv_ids[:, 0], :]
+        fV = regStats[uv_ids[:, 1], :]
 
         allFeat = [
-                np.minimum(fU, fV),
-                np.maximum(fU, fV),
-                np.abs(fU - fV),
-                fU + fV
-            ]
+            np.minimum(fU, fV),
+            np.maximum(fU, fV),
+            np.abs(fU - fV),
+            fU + fV
+        ]
 
         feat_names = []
         feat_names.extend(
-                ["RegionFeatures_" + name + combine for combine in  ("_min", "_max", "_absdiff", "_sum") for name in regStatNames  ])
+            ["RegionFeatures_" + name + combine for combine in ("_min", "_max", "_absdiff", "_sum") for name in regStatNames])
 
         # we actively delete stuff we don't need to free memory
         # because this may become memory consuming for lifted edges
-        fV = fV.resize((1,1))
-        fU = fU.resize((1,1))
+        fV = fV.resize((1, 1))
+        fU = fU.resize((1, 1))
         regStats = regStats.resize((1,))
         del fU
         del fV
@@ -1086,22 +1098,21 @@ class DataSet(object):
         regCenters = vigra.readHDF5(region_statistics_path, 'region_centers')
         regCenterNames = vigra.readHDF5(region_statistics_path, 'region_center_names')
 
-        sU = regCenters[uv_ids[:,0],:]
-        sV = regCenters[uv_ids[:,1],:]
-        allFeat.append( (sU - sV)**2 )
+        sU = regCenters[uv_ids[:, 0], :]
+        sV = regCenters[uv_ids[:, 1], :]
+        allFeat.append((sU - sV)**2)
 
         feat_names.extend(["RegionFeatures_" + name for name in regCenterNames])
 
-        sV = sV.resize((1,1))
-        sU = sU.resize((1,1))
-        regCenters = regCenters.resize((1,1))
+        sV = sV.resize((1, 1))
+        sU = sU.resize((1, 1))
+        regCenters = regCenters.resize((1, 1))
         del sU
         del sV
         del regCenters
         gc.collect()
 
-        allFeat = np.nan_to_num(
-                np.concatenate(allFeat, axis = 1) )
+        allFeat = np.nan_to_num(np.concatenate(allFeat, axis=1))
 
         assert allFeat.shape[0] == uv_ids.shape[0]
         assert len(feat_names) == allFeat.shape[1], str(len(feat_names)) + " , " + str(allFeat.shape[1])
@@ -1109,11 +1120,12 @@ class DataSet(object):
         # if we have excluded the ignore segments before, we need to reintroduce
         # them now to keep edge numbering consistent
         if self.has_seg_mask and not lifted_nh:
-            where_ignore = np.logical_not( where_uv )
+            where_ignore = np.logical_not(where_uv)
             n_ignore = np.sum(where_ignore)
             newFeat = np.zeros(
-                    (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
-                    dtype = 'float32' )
+                (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
+                dtype='float32'
+            )
             newFeat[where_uv] = allFeat
             allFeat = newFeat
             assert allFeat.shape[0] == uv_ids.shape[0] + n_ignore
@@ -1122,8 +1134,10 @@ class DataSet(object):
         save_folder = os.path.join(self.cache_folder, "features")
         if not os.path.exists(save_folder):
             os.mkdir(save_folder)
-        save_file = os.path.join(save_folder,
-            "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5" )
+        save_file = os.path.join(
+            save_folder,
+            "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5"
+        )
         vigra.writeHDF5(feat_names, save_file, "region_features_names")
         print "writing feat_names to", save_file
 
@@ -1138,11 +1152,13 @@ class DataSet(object):
         self.region_features(seg_id, inp_id)
 
         save_folder = os.path.join(self.cache_folder, "features")
-        save_file = os.path.join(save_folder,
-            "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5" )
+        save_file = os.path.join(
+            save_folder,
+            "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5"
+        )
         assert os.path.exists(save_file)
 
-        return vigra.readHDF5(save_file,"region_features_names")
+        return vigra.readHDF5(save_file, "region_features_names")
 
 
     # FIXME this is undefined for non-flat superpixel, but does not crash for 3d superpixel
@@ -1151,7 +1167,7 @@ class DataSet(object):
         seg = self.seg(seg_id)
         nz = np.zeros(seg.max() + 1, dtype='uint32')
         for z in xrange(seg.shape[0]):
-            lz = seg[z,:,:]
+            lz = seg[z, :, :]
             nz[lz] = z
         return nz
 
@@ -1164,8 +1180,8 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         node_z = self.node_z_coord(seg_id)
         uv_ids = self.uv_ids(seg_id)
-        z_u = node_z[uv_ids[:,0]]
-        z_v = node_z[uv_ids[:,1]]
+        z_u = node_z[uv_ids[:, 0]]
+        z_v = node_z[uv_ids[:, 1]]
         # xy edges (same z coordinate are) set to 1
         # z  edges (different z coordinates) set to 0
         return (z_u == z_v).astype('uint8')
@@ -1175,15 +1191,15 @@ class DataSet(object):
     @cacher_hdf5("feature_folder")
     def topology_features(self, seg_id, use_2d_edges):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
-        assert isinstance( use_2d_edges, bool ), type(use_2d_edges)
+        assert isinstance(use_2d_edges, bool), type(use_2d_edges)
 
         rag = self.rag(seg_id)
 
         # length / area of the edge
-        topo_feats      = nifty.graph.rag.accumulateMeanAndLength(
-                rag,
-                np.zeros(self.shape, dtype = 'float32') # fake data
-        )[0][:,1:]
+        topo_feats      = nrag.accumulateMeanAndLength(
+            rag,
+            np.zeros(self.shape, dtype='float32')  # fake data
+        )[0][:, 1:]
         topo_feat_names = ["TopologyFeatures_EdgeLengths"]
 
         # extra feats for z-edges in 2,5 d
@@ -1220,7 +1236,7 @@ class DataSet(object):
         assert self.has_gt
         rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #ExperimentSettings().n_threads ) FIXME pybindings not working
         uv_ids = rag.uvIds()
         u_gt = node_gt[ uv_ids[:,0] ]
@@ -1255,7 +1271,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #ExperimentSettings().n_threads) )
         uv_ids = rag.uvIds()
 
@@ -1284,7 +1300,7 @@ class DataSet(object):
         assert self.has_gt
 
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #int(ExperimentSettings().n_threads) )
 
         ignore_mask = np.zeros( uvs_lifted.shape[0], dtype = bool)
@@ -1311,9 +1327,9 @@ class DataSet(object):
         seg = self.seg(seg_id)
         rag = self.rag(seg_id, seg)
         gt  = self.gt()
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #int(ExperimentSettings().n_threads) )
-        seg_gt  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
+        seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
         assert seg_gt.shape == self.shape
         return seg_gt
 
@@ -1323,7 +1339,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         rag = self.rag(seg_id)
         assert mc_node.shape[0] == rag.numberOfNodes, str(mc_node.shape[0]) + " , " + str(rag.numberOfNodes)
-        mc_seg  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
+        mc_seg  = nrag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
         assert mc_seg.shape == self.shape
         return mc_seg
 

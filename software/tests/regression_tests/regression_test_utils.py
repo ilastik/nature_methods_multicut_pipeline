@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import vigra
 
 from multicut_src import DataSet
 from multicut_src import multicut_workflow, lifted_multicut_workflow

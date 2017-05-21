@@ -18,6 +18,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 def accumulate_affinities_over_edges(
         ds,
@@ -48,7 +49,7 @@ def accumulate_affinities_over_edges(
     edge_indications = ds.edge_indications(seg_id)
 
     print "Accumulating xy affinities with feature:", feature
-    accumulated = nifty.graph.rag.accumulateEdgeFeaturesFlat(
+    accumulated = nrag.accumulateEdgeFeaturesFlat(
             rag,
             aff_xy,
             aff_xy.min(),
@@ -57,7 +58,7 @@ def accumulate_affinities_over_edges(
             ExperimentSettings().n_threads)[:,index]
 
     print "Accumulating z affinities with feature:", feature
-    accumulated_z = nifty.graph.rag.accumulateEdgeFeaturesFlat(
+    accumulated_z = nrag.accumulateEdgeFeaturesFlat(
             rag,
             aff_z,
             aff_z.min(),

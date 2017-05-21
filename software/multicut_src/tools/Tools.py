@@ -18,6 +18,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
@@ -83,7 +84,7 @@ def edges_to_volume(rag, edges, ignore_z = False):
     assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
     volume = np.zeros(rag.shape, dtype = 'uint32')
-    edge_coordinates = nifty.graph.rag.edgeCoordinates(rag)
+    edge_coordinates = nrag.edgeCoordinates(rag)
     assert len(edge_coordinates) == rag.numberOfEdges, "%i, %i" % (len(edge_coordinates), rag.numberOfEdges)
 
     for edge_id in xrange(rag.numberOfEdges):
