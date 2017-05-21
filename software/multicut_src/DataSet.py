@@ -22,6 +22,8 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
+import nifty.cgp as ncgp
 
 
 # this can be used in 2 different ways:
@@ -68,10 +70,10 @@ def _topo_feats_xy(rag, seg):
     for z in xrange(seg.shape[0]):
         seg_z, _, new_to_old = vigra.analysi.relabelConsecutive(seg[z], start_label = 1)
         old_to_new = {old : new for new, old in mapping.iteritems()}
-        topo_grid = nifty.cgp.TopologicalGrid2D(seg_z)
+        topo_grid = ncgp.TopologicalGrid2D(seg_z)
 
         # get curvature feats
-        curvature_calculator = nifty.cgp.Cell1CurvatureFeatures2D(topo_grid)
+        curvature_calculator = ncgp.Cell1CurvatureFeatures2D(topo_grid)
         # TODO how do we use this ?
 
         # TODO more ?
@@ -670,13 +672,13 @@ class DataSet(object):
         if seg is None:
             seg = self.seg(seg_id)
         if not os.path.exists(save_path):
-            rag = nifty.graph.rag.gridRag(seg,
+            rag = nrag.gridRag(seg,
                     numberOfThreads = ExperimentSettings().n_threads)
             serialization = rag.serialize()
             vigra.writeHDF5(serialization, save_path, 'data')
         else:
             serialization = vigra.readHDF5(save_path, 'data')
-            rag = nifty.graph.rag.gridRag(seg,
+            rag = nrag.gridRag(seg,
                     serialization = serialization,
                     numberOfThreads = ExperimentSettings().n_threads)
         return rag
@@ -865,7 +867,7 @@ class DataSet(object):
             min_val = filt.min()
             max_val = filt.max()
             feats_return.append(
-                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
+                    nrag.accumulateEdgeFeaturesFlat(rag, filt, min_val, max_val, z_direction, n_threads) )
             names_return.extend( [ "_".join(["EdgeFeature", filt_name, suffix ]) for suffix in suffixes ] )
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
@@ -874,7 +876,7 @@ class DataSet(object):
                 min_val = filt_c.min()
                 max_val = filt_c.max()
                 feats_return.append(
-                        nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
+                        nrag.accumulateEdgeFeaturesFlat(rag, filt_c, min_val, max_val, z_direction, n_threads) )
                 names_return.extend( [ "_".join(["EdgeFeature", filt_name, "c%i" % c, suffix ]) for suffix in suffixes ] )
         return np.concatenate(feats_return, axis = 1), names_return
 
@@ -1180,7 +1182,7 @@ class DataSet(object):
         rag = self.rag(seg_id)
 
         # length / area of the edge
-        topo_feats      = nifty.graph.rag.accumulateMeanAndLength(
+        topo_feats      = nrag.accumulateMeanAndLength(
                 rag,
                 np.zeros(self.shape, dtype = 'float32') # fake data
         )[0][:,1:]
@@ -1220,7 +1222,7 @@ class DataSet(object):
         assert self.has_gt
         rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #ExperimentSettings().n_threads ) FIXME pybindings not working
         uv_ids = rag.uvIds()
         u_gt = node_gt[ uv_ids[:,0] ]
@@ -1255,7 +1257,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #ExperimentSettings().n_threads) )
         uv_ids = rag.uvIds()
 
@@ -1284,7 +1286,7 @@ class DataSet(object):
         assert self.has_gt
 
         rag = self.rag(seg_id)
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #int(ExperimentSettings().n_threads) )
 
         ignore_mask = np.zeros( uvs_lifted.shape[0], dtype = bool)
@@ -1311,9 +1313,9 @@ class DataSet(object):
         seg = self.seg(seg_id)
         rag = self.rag(seg_id, seg)
         gt  = self.gt()
-        node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, gt)
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
                 #int(ExperimentSettings().n_threads) )
-        seg_gt  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
+        seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads )
         assert seg_gt.shape == self.shape
         return seg_gt
 
@@ -1323,7 +1325,7 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         rag = self.rag(seg_id)
         assert mc_node.shape[0] == rag.numberOfNodes, str(mc_node.shape[0]) + " , " + str(rag.numberOfNodes)
-        mc_seg  = nifty.graph.rag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
+        mc_seg  = nrag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads )
         assert mc_seg.shape == self.shape
         return mc_seg
 

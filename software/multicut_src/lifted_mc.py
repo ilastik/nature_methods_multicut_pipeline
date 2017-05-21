@@ -26,6 +26,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 
 # returns indices of lifted edges that are ignored due to defects
@@ -464,7 +465,7 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
     rag = ds.rag(seg_id)
-    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, ds.gt())
+    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
         #ExperimentSettings().n_threads)
     labels   = (node_gt[uv_ids[:,0]] != node_gt[uv_ids[:,1]])
     return labels

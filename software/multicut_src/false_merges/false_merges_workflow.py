@@ -29,6 +29,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 
 def extract_paths_from_segmentation(
@@ -835,7 +836,7 @@ def project_resolved_objects_to_segmentation(ds,
     n_threads = ExperimentSettings().n_threads
     rag = ds.rag(seg_id)
     # recover the node labeling from the segmentation
-    mc_labeling = nifty.graph.rag.gridRagAccumulateLabels(rag, gt, n_threads)
+    mc_labeling = nrag.gridRagAccumulateLabels(rag, gt, n_threads)
 
     # offset for new labels
     new_label_offset = np.max(mc_labeling) + 1
@@ -850,4 +851,4 @@ def project_resolved_objects_to_segmentation(ds,
 
     # make consecutive and project back to segmentation
     mc_labeling = vigra.analysis.relabelConsecutive(mc_labeling, start_label = 1, keep_zeros = False)
-    return nifty.graph.rag.projectScalarNodeDataToPixels(rag, mc_labeling, n_threads )
+    return nrag.projectScalarNodeDataToPixels(rag, mc_labeling, n_threads )

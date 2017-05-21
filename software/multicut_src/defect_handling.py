@@ -19,6 +19,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 #
 # Modified Adjacency
@@ -373,7 +374,7 @@ def modified_edge_gt(ds, seg_id):
         return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds.rag(seg_id)
-    node_gt = nifty.graph.rag.gridRagAccumulateLabels(rag, ds.gt())
+    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
         #ExperimentSettings().n_threads)
     skip_gt = (node_gt[skip_edges[:,0]] != node_gt[skip_edges[:,1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
@@ -465,7 +466,7 @@ def _get_skip_edge_features_for_slices(
                 [seg[z_dn,:][None,:], seg[z_up,:][None,:]],
                 axis = 0
         )
-        rag_local = nifty.graph.rag.gridRag(seg_local, n_threads)
+        rag_local = nrag.gridRag(seg_local, n_threads)
         target_features = []
         for path in filter_paths:
             with h5py.File(path) as f:
@@ -476,12 +477,12 @@ def _get_skip_edge_features_for_slices(
                 )
             if len(filt.shape) == 3:
                 target_features.append(
-                    nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), z_direction, n_threads) )
+                    nrag.accumulateEdgeFeaturesFlat(rag, filt, filt.min(), filt.max(), z_direction, n_threads) )
             elif len(filt.shape) == 4:
                 for c in range(filt.shape[3]):
                     filt_c = filt[...,c]
                     target_features.append(
-                        nifty.graph.rag.accumulateEdgeFeaturesFlat(rag, filt_c, filt_c.min(), filt_c.max(), 0, n_threads) )
+                        nrag.accumulateEdgeFeaturesFlat(rag, filt_c, filt_c.min(), filt_c.max(), 0, n_threads) )
 
         target_features = np.concatenate(target_features, axis = 1)
         # keep only the features corresponding to skip edges
@@ -589,7 +590,7 @@ def _get_topo_feats(rag, seg, use_2d_edges):
     feats = []
     # length / area of the edge
     feats.append(
-            nifty.graph.rag.accumulateMeanAndLength(
+            nrag.accumulateMeanAndLength(
                 rag, np.zeros_like(seg, dtype = 'float32')
             )[0][:,1:]
     )
@@ -625,7 +626,7 @@ def _get_skip_topo_features_for_slices(
                 [seg[z_dn,:][None,:], seg[z_up,:][None,:]],
                 axis = 0
         )
-        rag_local = nifty.graph.rag.gridRag(seg, ExperimentSettings().n_threads)
+        rag_local = nrag.gridRag(seg, ExperimentSettings().n_threads)
         topo_feats = _get_topo_feats(rag_local, seg_local, use_2d_edges)
 
         # keep only the features corresponding to skip edges

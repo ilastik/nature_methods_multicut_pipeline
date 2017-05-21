@@ -14,6 +14,7 @@ except ImportError:
             import nifty_wit_gurobi as nifty # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+import nifty.graph.rag as nrag
 
 from tools import replace_from_dict
 
@@ -67,13 +68,13 @@ def merge_small_segments(mc_seg, min_seg_size):
         seg -= seg_min
 
     n_threads = ExperimentSettings().n_threads
-    rag = nifty.graph.rag.gridRag(mc_seg, n_threads)
+    rag = nrag.gridRag(mc_seg, n_threads)
     n_nodes = rag.numberOfNodes
     assert n_nodes == mc_seg.max() + 1, "%i, %i" % (n_nodes, mc_seg.max()+1)
 
     print "Merging segments in mc-result with size smaller than", min_seg_size
     _, node_sizes = np.unique(mc_seg, return_counts = True)
-    edge_sizes = nifty.graph.rag.accumulateEdgeMeanAndLength(
+    edge_sizes = ngraph.rag.accumulateEdgeMeanAndLength(
             rag,
             np.zeros_like(mc_seg, dtype = 'float32')
     )[:,1].astype('uint32')
@@ -105,4 +106,4 @@ def merge_small_segments(mc_seg, min_seg_size):
 
     # make consecutive, starting from the original min val and make segmentation
     merged_nodes,_,_ = vigra.analysis.relabelConsecutive(merged_nodes, start_label = seg_min, keep_zeros = False)
-    return nifty.graph.rag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
+    return nrag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
