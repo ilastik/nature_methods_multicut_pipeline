@@ -16,6 +16,38 @@ def distance_transform(segmentation, anisotropy):
     return dt
 
 
+def extract_local_graph_from_segmentation(
+        segmentation,
+        object_id,
+        uv_ids,
+        uv_ids_lifted = None
+        ):
+
+    mask = mc_segmentation == object_id
+    seg_ids = np.unique(seg[mask])
+
+    # map the extracted seg_ids to consecutive labels
+    seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
+            seg_ids,
+            start_label=0,
+            keep_zeros=False)
+    # mapping = old to new,
+    # reverse = new to old
+    reverse_mapping = {val: key for key, val in mapping.iteritems()}
+
+    # mask the local uv ids in this object
+    local_uv_mask = np.in1d(uv_ids, seg_ids)
+    local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
+
+    if uv_ids_lifted is not None:
+        # mask the lifted uv ids in this object
+        lifted_uv_mask = np.in1d(uv_ids_lifted, seg_ids)
+        lifted_uv_mask = lifted_uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
+        return local_uv_mask, lifted_uv_mask, mapping, reverse_mapping
+
+    return local_uv_mask, mapping, reverse_mapping
+
+
 # TODO take nifty shortest paths and parallelize
 def shortest_paths(
         indicator,
@@ -203,24 +235,30 @@ def path_features_from_feature_images(
     return out
 
 
-# features based on multicuts along path
+# features based on multicut in the object
 # we calculate the multicut (TODO also include lifted) for each
-# path for different betas and count the number of splits
-def multicut_path_features(ds, seg_id, paths, edge_probabilities):
+# object and for different betas, project to the path edges and count the number of splits
+def multicut_path_features(
+        ds,
+        seg_id,
+        mc_segmentation,
+        objs_to_paths, # dict[merge_ids : dict[path_ids : paths]]
+        edge_probabilities
+        ):
 
     seg = ds.seg(seg_id)
-    rag = ds.rag(seg_id)
-    uv_ids = rag.uvIds()
+    uv_ids = ds.uv_ids(seg_id)
 
-    # find the rag edge-ids along the path
-    # TODO speed up in nifty
-    def edges_along_path(path):
+    # find the local edge ids along the path
+    def edges_along_path(path, mapping, uvs_local):
         edge_ids = []
-        u = seg[path[0]] # TODO does this work ?
+        u = mapping[seg[path[0]]] # TODO does this work ?
         for p in path[1:]:
-            v = seg[p] # TODO does this work ?
+            v = mapping[seg[p]] # TODO does this work ?
             if u != v:
-                edge_ids.append(rag.findEdge(u,v))
+                uv = np.array( [min(u,v), max(u,v)] )
+                edge_id = find_matching_row_indices(uvs_local, uv)[0,0]
+                edge_ids.append(edge_id)
             u = v
         return np.array(edge_ids)
 
@@ -232,11 +270,11 @@ def multicut_path_features(ds, seg_id, paths, edge_probabilities):
     edge_indications = ds.edge_indications(seg_id)
 
     # transform edge-probabilities to weights
-    def to_weights(edge_ids, beta):
+    def to_weights(edge_mask, beta):
 
-        probs = edge_probabilities[edge_ids]
-        areas = edge_areas[edge_ids]
-        indications = edge_indications[edge_ids]
+        probs = edge_probabilities[edge_mask]
+        areas = edge_areas[edge_mask]
+        indications = edge_indications[edge_mask]
 
         # scale the probabilities
         p_min = 0.001
@@ -260,42 +298,80 @@ def multicut_path_features(ds, seg_id, paths, edge_probabilities):
     # TODO more_feats ?!
     betas = np.arange(0.3, 0.75, 0.05)
     n_feats = len(betas)
-    features = np.zeros( (len(paths), n_feats), dtype = 'float32')
+    n_paths = np.sum([len(paths) for paths in objs_to_paths])
+    features = np.zeros( (n_paths, n_feats), dtype = 'float32')
 
     # TODO parallelize
-    for i, path in enumerate(paths):
+    for obj_id in objs_to_paths:
 
-        # find the edges along the path TODO speed this up !!!
-        edge_ids = edges_along_path(path)
+        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+            mc_segmentation,
+            obj_id,
+            uv_ids
+            )
+        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+        n_var = uv_local.max() + 1
 
-        # relabel the uv-ids to have a [0,...,n_nodes] segmentation
-        uvs      = uv_ids[edge_ids]
-        nodes    = np.unique(uvs)
-        _, _, mapping = viga.analysis.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
-        uvs = replace_from_dict(uvs, mapping)
-        n_var = uvs.max() + 1
-        n_cuts = np.zeros(n_feats, dtype = 'float32')
+        path_edge_ids = {}
+        for path_id, path in objs_to_paths[obj_id].iteritems():
+            path_edge_ids[path_id] = edges_along_path(path, mapping, uvs_local)
 
         for ii, beta in enumerate(betas):
-            weights = to_weights(edge_ids, beta)
-            node_labels, _, _ = multicut_exact(n_var, uvs, weights)
-            n_cuts[ii] = len(np.unique(node_labels))
+            weights = to_weights(local_uv_mask, beta)
+            node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
+            cut_edges = node_labels[[uv_local[:,0]]] != node_labels[[uv_local[:,1]]]
 
-        features[i] = n_cuts
+            for path_id, e_ids in path_edge_ids.iteritems():
+                features[path_id,ii] = np.sum(cut_edges[e_ids])
 
     return features
 
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-def cut_features(ds, seg_id, paths, edge_weights, anisotropy_factor,
-        feat_list = ['raw', 'prob', 'distance_transform']):
+def cut_features(
+        ds,
+        seg_id,
+        mc_segmentation,
+        objs_to_paths, # dict[merge_ids : dict[path_ids : paths]]
+        edge_weights,
+        anisotropy_factor,
+        feat_list = ['raw', 'prob', 'distance_transform']
+        ):
 
     assert feat_list
 
     seg = ds.seg(seg_id)
-    rag = ds.rag(seg_id)
-    uv_ids = rag.uvIds()
+    uv_ids = rag.uv_ids(seg_id)
+
+    # find the local edge ids along the path
+    def edges_along_path(path, mapping, uvs_local):
+
+        edge_ids = []
+        edge_ids_local = p[
+
+        u = seg[path[0]] # TODO does this work ?
+        u_local = mapping[seg[path[0]]] # TODO does this work ?
+
+        for p in path[1:]:
+
+            v = seg[p] # TODO does this work ?
+            v_local = mapping[seg[p]] # TODO does this work ?
+
+            if u != v:
+                uv = np.array( [min(u,v), max(u,v)] )
+                uv_local = np.array( [min(u_local,v_local), max(u_local,v_local)] )
+
+                edge_id = find_matching_row_indices(uv_ids, uv)[0,0]
+                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0,0]
+
+                edge_ids.append(edge_id)
+                edge_ids_local.append(edge_id_local)
+
+            u = v
+            u_local = v_local
+        return np.array(edge_ids), np.array(edge_ids_local)
+
 
     # get the features
     edge_features = []
@@ -307,39 +383,29 @@ def cut_features(ds, seg_id, paths, edge_weights, anisotropy_factor,
         edge_features.append(ds.edge_features(seg_id,2,anisotropy_factor)) # we assume that the dt was already added as additional input
     edge_features = np.concatenate(edge_features, axis = 1)
 
-    # find the rag edge-ids along the path
-    # TODO speed up in nifty
-    def edges_along_path(path):
-        edge_ids = []
-        u = seg[path[0]] # TODO does this work ?
-        for p in path[1:]:
-            v = seg[p] # TODO does this work ?
-            if u != v:
-                edge_ids.append(rag.findEdge(u,v))
-            u = v
-        return np.array(edge_ids)
-
-    features = np.zeros( (len(paths), edge_features.shape[1]), dtype = 'float32')
+    n_paths = np.sum([len(paths) for paths in objs_to_paths])
+    features = np.zeros( (n_paths, edge_features.shape[1]), dtype = 'float32')
 
     # TODO parallelize
-    # iterate over paths, find cut via graphcut
-    # and append the features of the corresponding edge
-    for i, path in enumerate(paths):
+    for obj_id in objs_to_paths:
 
-        # find the edges along the path TODO speed this up !!!
-        edge_ids = edges_along_path(path)
+        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+            mc_segmentation,
+            obj_id,
+            uv_ids
+            )
+        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
-        # relabel the uv-ids to have a [0,...,n_nodes] segmentation
-        uvs      = uv_ids[edge_ids]
-        nodes    = np.unique(uvs)
-        _, _, mapping = viga.analysis.relabelConsecutive(nodes, start_label = 0, keep_zeros = False)
-        uvs = replace_from_dict(uvs, mapping)
-        n_var = uvs.max() + 1
+        # TODO run graphcut or edge based ws for each path, using end points as seeds
+        # determine the cut edge and append to feats
+        for path_id, path in objs_to_paths[obj_id].iteritems()
+            edge_ids, edge_ids_local = edges_along_path(path, mapping, uvs_local)
 
-        # TODO
-        # TODO Graph cut and corresponding edge
-        # TODO
-        cut_edge = 42
-        features[i] = edge_features[cut_edge]
+            # run cut with seeds at path end points, find cut edge,
+            cut_edge = 42 # TODO
+
+            # cut-edge project back to global edge-indexing and get according features
+            global_edge = edge_ids[edge_ids_local == cut_edge]
+            features[path_id] = edge_features[global_edge]
 
     return features

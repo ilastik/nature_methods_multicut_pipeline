@@ -15,7 +15,7 @@ from ..ExperimentSettings import ExperimentSettings
 from ..tools import find_matching_row_indices
 
 # imports from this dir
-from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator
+from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, extract_local_graph_from_segmentation
 from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts_old, compute_border_contacts
 
 # if build from source and not a conda pkg, we assume that we have cplex
@@ -582,34 +582,20 @@ def resolve_merges_with_lifted_edges(
     resolved_objs = {}
     for merge_id in false_paths:
 
-        mask = mc_segmentation == merge_id
-        seg_ids = np.unique(seg[mask])
-
-        # map the extracted seg_ids to consecutive labels
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros=False)
-        # mapping = old to new,
-        # reverse = new to old
-        reverse_mapping = {val: key for key, val in mapping.iteritems()}
-
-        # FIXME Is this correct?
-        # mask the local uv ids in this object
-        local_uv_mask = np.in1d(uv_ids, seg_ids)
-        local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
+        local_uv_mask, lifted_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+                mc_segmentation,
+                merge_id,
+                uv_ids,
+                uv_ids_lifted
+                )
 
         # extract local uv ids and corresponding weights
-        uv_local = uv_ids[local_uv_mask]
-        mc_weights = mc_weights_all[local_uv_mask]
-        # map the uv ids to local labeling
-        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_local])
-
-        # mask the lifted uv ids in this object
-        lifted_uv_mask = np.in1d(uv_ids_lifted, seg_ids)
-        lifted_uv_mask = lifted_uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
+        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+        mc_weights     = mc_weights_all[local_uv_mask]
 
         # extract the lifted uv ids and corresponding weights
-        uv_local_lifted = uv_ids_lifted[lifted_uv_mask]
+        uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
         lifted_weights = lifted_weights_all[lifted_uv_mask]
-        uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_local_lifted])
 
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
@@ -737,19 +723,13 @@ def resolve_merges_with_lifted_edges_global(
 
     for merge_id in false_paths:
 
-        mask = mc_segmentation == merge_id
-        seg_ids = np.unique(seg[mask])
+        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+                mc_segmentation,
+                merge_id,
+                uv_ids
+                )
 
-        # extract the uv ids in this object
-        local_uv_mask = np.in1d(uv_ids, seg_ids)
-        local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
-        uv_ids_in_obj = uv_ids[local_uv_mask]
-
-        # map the extracted seg_ids to consecutive labels
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(seg_ids, start_label=0, keep_zeros=False)
-        reverse_mapping = {val: key for key, val in mapping.iteritems()}
-
-        uv_ids_in_obj_local = np.array([[mapping[u] for u in uv] for uv in uv_ids_in_obj])
+        uv_ids_in_obj_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
