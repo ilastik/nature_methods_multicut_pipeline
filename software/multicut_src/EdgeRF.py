@@ -297,9 +297,12 @@ def learn_rf(cache_folder,
 
     if with_defects:
         print "Start learning defect random forest"
-        rf_defects = RandomForest(features_skip.astype('float32'), labels_skip.ravel(),
-            treeCount = exp_params.n_trees,
-            n_threads = exp_params.n_threads)
+        rf_defects = RandomForest(
+            features_skip.astype('float32'),
+            labels_skip.ravel(),
+            treeCount=exp_params.n_trees,
+            n_threads=exp_params.n_threads
+            )
 
     if cache_folder is not None:
         rf.writeHDF5(rf_path, 'rf')
@@ -314,11 +317,16 @@ def learn_rf(cache_folder,
 
 # set cache folder to None if you dont want to cache the resulting rf
 # TODO use cacher hdf5 for caching!
-def learn_and_predict_rf_from_gt(cache_folder,
-        trainsets, ds_test,
-        seg_id_train, seg_id_test,
-        feature_list, exp_params,
-        with_defects = False):
+def learn_and_predict_rf_from_gt(
+        cache_folder,
+        trainsets,
+        ds_test,
+        seg_id_train,
+        seg_id_test,
+        feature_list,
+        exp_params,
+        with_defects=False
+        ):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
@@ -351,11 +359,14 @@ def learn_and_predict_rf_from_gt(cache_folder,
 
     if cache_folder is not None: # cache-folder exists => look if we already have a prediction
 
-        pred_folder = os.path.join(cache_folder, "pred_" + trainstr)
+        fold_name = "pred_" + trainstr
+        if len(fold_name) >= 255:
+            fold_name = str(hash(fold_name))
+        pred_folder = os.path.join(cache_folder, fold_name)
         pred_name = "prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
         if with_defects:
             pred_name =  pred_name[:-3] + "_with_defects.h5"
-        if len(pred_name) >= 256:
+        if len(pred_name) >= 255:
             pred_name = str(hash(pred_name[:-3])) + ".h5"
         if not os.path.exists(cache_folder):
             os.mkdir(cache_folder)

@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import vigra
 
 from multicut_src import DataSet
 from multicut_src import MetaSet
@@ -11,9 +12,7 @@ from cremi.evaluation import NeuronIds
 from cremi import Volume
 
 
-def init(cache_folder, data_folder, ds_prefix):
-
-    meta = MetaSet(cache_folder)
+def init_train(meta, cache_folder, data_folder, ds_prefix):
 
     ds_train = DataSet(cache_folder, '%s_train' % ds_prefix)
     ds_train.add_raw(  os.path.join( data_folder, 'raw_train.h5' ), 'data')
@@ -31,15 +30,24 @@ def init(cache_folder, data_folder, ds_prefix):
     ds_train.make_cutout([0, shape[0], 0, shape[1], z1, z2])
     ds_train.make_cutout([0, shape[0], 0, shape[1], z2, z3])
 
+    meta.add_dataset('%s_train' % ds_prefix, ds_train)
+    meta.save()
+
+
+def init_test(meta, cache_folder, data_folder, ds_prefix):
     ds_test = DataSet(cache_folder, '%s_test' % ds_prefix)
     ds_test.add_raw(  os.path.join(data_folder, 'raw_test.h5' ), 'data')
     ds_test.add_input(os.path.join(data_folder, 'pmap_test.h5'), 'data')
     ds_test.add_seg(  os.path.join(data_folder, 'seg_test.h5' ), 'data')
 
-    meta.add_dataset('%s_train' % ds_prefix, ds_train)
     meta.add_dataset('%s_test'  % ds_prefix, ds_test)
     meta.save()
 
+
+def init(cache_folder, data_folder, ds_prefix):
+    meta = MetaSet(cache_folder)
+    init_train(meta, cache_folder, data_folder, ds_prefix)
+    init_test(meta, cache_folder, data_folder, ds_prefix)
     return meta
 
 
@@ -61,6 +69,7 @@ def run_lmc(ds_train, ds_test, local_feature_list, lifted_feature_list, mc_param
 
 
 def evaluate(gt, segmentation):
+    gt, _, _ = vigra.analysis.relabelConsecutive(gt, start_label = 1)
     evaluate = NeuronIds( Volume(gt) )
 
     segmentation = Volume(segmentation)
@@ -78,13 +87,19 @@ def regression_test(
         expected_ri       = 0
         ):
     vi_split, vi_merge, ri = evaluate(ref_seg, seg)
-    assert vi_split < expected_vi_split, "%f, %f" % (vi_split, expected_vi_split)
-    assert vi_merge < expected_vi_merge, "%f, %f" % (vi_merge, expected_vi_split)
-    assert ri < expected_ri, "%f, %f" % (ri, expected_ri)
-    print "Passed with:"
-    print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
-    print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
-    print "RI::", ri, "(Ref:)", expected_ri
+    vi_s_pass = vi_split < expected_vi_split
+    vi_m_pass = vi_merge < expected_vi_merge
+    ri_pass   = ri < expected_ri
+    if vi_m_pass and vi_s_pass and ri_pass:
+        print "All passed with:"
+        print "Vi-Split:", vi_split, "(Ref:)", expected_vi_split
+        print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
+        print "RI:", ri, "(Ref:)", expected_ri
+    else:
+        print "Failed with"
+        print "Vi-Split: %s with %f, (Ref:) %f" % ('Passed' if vi_s_pass else 'Failed', vi_split, expected_vi_split)
+        print "Vi-Merge: %s with %f, (Ref:) %f" % ('Passed' if vi_m_pass else 'Failed', vi_merge, expected_vi_merge)
+        print "RI: %s with %f, (Ref:) %f" % ('Passed' if ri_pass else 'Failed', ri, expected_ri)
 
 
 def clean_up():
