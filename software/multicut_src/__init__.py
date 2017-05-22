@@ -19,6 +19,6 @@ from false_merges import shortest_paths, path_feature_aggregator
 from defect_handling import postprocess_segmentation
 from defect_handling import get_delete_edges, get_skip_edges, get_skip_starts, get_skip_ranges, modified_edge_features
 
-from tools import edges_to_volume
+from tools import edges_to_volume, find_matching_row_indices
 
 from workflow_no_learning import multicut_workflow_no_learning, costs_from_affinities, mala_clustering_workflow

@@ -5,44 +5,50 @@ from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
-from ..tools import replace_from_dict
+from ..tools import replace_from_dict, find_matching_row_indices
+
 
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):
     edge_volume = np.concatenate(
-            [vigra.analysis.regionImageToEdgeImage(segmentation[:,:,z])[:,:,None] for z in xrange(segmentation.shape[2])],
-            axis = 2)
+        [vigra.analysis.regionImageToEdgeImage(segmentation[:, :, z])[:, :, None] for z in xrange(segmentation.shape[2])],
+        axis=2
+    )
     dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
     return dt
 
 
 def extract_local_graph_from_segmentation(
-        segmentation,
+        ds,
+        seg_id,
+        mc_segmentation,
         object_id,
         uv_ids,
-        uv_ids_lifted = None
-        ):
+        uv_ids_lifted=None
+):
 
+    seg = ds.seg(seg_id)
     mask = mc_segmentation == object_id
     seg_ids = np.unique(seg[mask])
 
     # map the extracted seg_ids to consecutive labels
     seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
-            seg_ids,
-            start_label=0,
-            keep_zeros=False)
+        seg_ids,
+        start_label=0,
+        keep_zeros=False
+    )
     # mapping = old to new,
     # reverse = new to old
     reverse_mapping = {val: key for key, val in mapping.iteritems()}
 
     # mask the local uv ids in this object
     local_uv_mask = np.in1d(uv_ids, seg_ids)
-    local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis = 1)
+    local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
 
     if uv_ids_lifted is not None:
         # mask the lifted uv ids in this object
         lifted_uv_mask = np.in1d(uv_ids_lifted, seg_ids)
-        lifted_uv_mask = lifted_uv_mask.reshape(uv_ids_lifted.shape).all(axis = 1)
+        lifted_uv_mask = lifted_uv_mask.reshape(uv_ids_lifted.shape).all(axis=1)
         return local_uv_mask, lifted_uv_mask, mapping, reverse_mapping
 
     return local_uv_mask, mapping, reverse_mapping
@@ -52,7 +58,8 @@ def extract_local_graph_from_segmentation(
 def shortest_paths(
         indicator,
         pairs,
-        n_threads = 1):
+        n_threads=1
+):
     """
     This function was copied from processing_lib.py
     :param indicator:
@@ -62,11 +69,11 @@ def shortest_paths(
     gridgr         = graphs.gridGraph(indicator.shape)
     gridgr_edgeind = graphs.implicitMeanEdgeMap(gridgr, indicator.astype('float32'))
 
-    def single_path(pair, instance = None):
+    def single_path(pair, instance=None):
         source = pair[0]
         target = pair[1]
         print 'Calculating path from {} to {}'.format(source, target)
-        if instance == None:
+        if instance is None:
             instance = graphs.ShortestPathPathDijkstra(gridgr)
 
         targetNode = gridgr.coordinateToNode(target)
@@ -79,7 +86,7 @@ def shortest_paths(
 
     if n_threads > 1:
         print "Multi-threaded w/ n-threads = ", n_threads
-        with futures.ThreadPoolExecutor(max_workers = n_threads) as executor:
+        with futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
             tasks = [executor.submit(single_path, pair) for pair in pairs]
             paths = [t.result() for t in tasks]
     else:
@@ -98,9 +105,10 @@ def path_feature_aggregator(ds, paths):
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor), # we assume that the distance transform is added as inp_id 2
-        compute_path_lengths(paths, [1.,1.,anisotropy_factor]) ],
-        axis = 1)
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),  # we assume that the distance transform is added as inp_id 2
+        compute_path_lengths(paths, [1., 1., anisotropy_factor])],
+        axis=1
+    )
 
 
 # TODO this could be parallelized over the paths
@@ -116,8 +124,8 @@ def compute_path_lengths(paths, anisotropy):
     :return: path lengtht list(float)
     """
     def compute_path_length(path, aniso_temp):
-        #pathlen = 0.
-        #for i in xrange(1, len(path)):
+        # pathlen = 0.
+        # for i in xrange(1, len(path)):
         #    add2pathlen = 0.
         #    for j in xrange(0, len(path[0, :])):
         #        add2pathlen += (anisotropy[j] * (path[i, j] - path[i - 1, j])) ** 2
@@ -125,11 +133,10 @@ def compute_path_lengths(paths, anisotropy):
         #    pathlen += add2pathlen ** (1. / 2)
         # TODO check that this actually agrees
         path_euclidean_diff = aniso_temp * np.diff(path, axis=0)
-        path_euclidean_diff = np.sqrt(
-                np.sum( np.square(path_euclidean_diff), axis=1 ) )
+        path_euclidean_diff = np.sqrt(np.sum(np.square(path_euclidean_diff), axis=1))
         return np.sum(path_euclidean_diff, axis=0)
     aniso_temp = np.array(anisotropy)
-    return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:,None]
+    return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:, None]
 
 
 # don't cache for now
@@ -148,18 +155,20 @@ def path_features_from_feature_images(
 
     # compute the global bounding box
     global_min = np.min(
-            np.concatenate([np.min(path, axis = 0)[None,:] for path in paths], axis=0),
-            axis = 0
-            )
+        np.concatenate([np.min(path, axis=0)[None, :] for path in paths], axis=0),
+        axis=0
+    )
     global_max = np.max(
-            np.concatenate([np.max(path, axis = 0)[None,:] for path in paths], axis=0),
-            axis = 0
-            ) + 1
+        np.concatenate([np.max(path, axis=0)[None, :] for path in paths], axis=0),
+        axis=0
+    ) + 1
     # substract min coords from all paths to bring them to new coordinates
     paths_in_roi = [path - global_min for path in paths]
-    roi = np.s_[global_min[0]:global_max[0],
-            global_min[1]:global_max[1],
-            global_min[2]:global_max[2]]
+    roi = np.s_[
+        global_min[0]:global_max[0],
+        global_min[1]:global_max[1],
+        global_min[2]:global_max[2]
+    ]
 
     # load features in global boundng box
     feature_volumes = []
@@ -169,7 +178,7 @@ def path_features_from_feature_images(
             feat_shape = f['data'].shape
             # we add a singleton dimension to single channel features to loop over channel later
             if len(feat_shape) == 3:
-                feature_volumes.append(f['data'][roi][...,None])
+                feature_volumes.append(f['data'][roi][..., None])
             else:
                 feature_volumes.append(f['data'][roi])
     stats = ExperimentSettings().feature_stats
@@ -177,10 +186,10 @@ def path_features_from_feature_images(
     def extract_features_for_path(path):
 
         # calculate the local path bounding box
-        min_coords  = np.min(path, axis = 0)
-        max_coords = np.max(path, axis = 0)
+        min_coords  = np.min(path, axis=0)
+        max_coords = np.max(path, axis=0)
         max_coords += 1
-        shape = tuple( max_coords - min_coords)
+        shape = tuple(max_coords - min_coords)
         path_image = np.zeros(shape, dtype='uint32')
         path -= min_coords
         # we swapaxes to properly index the image properly
@@ -190,19 +199,25 @@ def path_features_from_feature_images(
         path_features = []
         for feature_volume in feature_volumes:
             for c in range(feature_volume.shape[-1]):
-                path_roi = np.s_[min_coords[0]:max_coords[0],
-                        min_coords[1]:max_coords[1],
-                        min_coords[2]:max_coords[2],
-                        c]
+                path_roi = np.s_[
+                    min_coords[0]:max_coords[0],
+                    min_coords[1]:max_coords[1],
+                    min_coords[2]:max_coords[2],
+                    c  # wee need to also add the channel to the slicing
+                ]
                 extractor = vigra.analysis.extractRegionFeatures(
-                        feature_volume[path_roi],
-                        path_image,
-                        ignoreLabel = 0,
-                        features = stats)
-                path_features.extend( [extractor[stat][1] for stat in stats]) # TODO make sure that dimensions match for more that 1d stats!
-        #ret = np.array(path_features)[:,None]
-        #print ret.shape
-        return np.array(path_features)[None,:]
+                    feature_volume[path_roi],
+                    path_image,
+                    ignoreLabel=0,
+                    features=stats
+                )
+                # TODO make sure that dimensions match for more that 1d stats!
+                path_features.extend(
+                    [extractor[stat][1] for stat in stats]
+                )
+        # ret = np.array(path_features)[:,None]
+        # print ret.shape
+        return np.array(path_features)[None, :]
 
     if len(paths) > 1:
 
@@ -211,22 +226,21 @@ def path_features_from_feature_images(
         # we avoid the single threaded i/o in the beginning!
         # it also lessens memory requirements if we have less threads than filters
         # parallel
-        with futures.ThreadPoolExecutor(max_workers = ExperimentSettings().n_threads) as executor:
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
             tasks = []
             for p_id, path in enumerate(paths_in_roi):
-                tasks.append( executor.submit( extract_features_for_path, path) )
-            out = np.concatenate([t.result() for t in tasks], axis = 0)
+                tasks.append(executor.submit(extract_features_for_path, path))
+            out = np.concatenate([t.result() for t in tasks], axis=0)
 
     else:
 
         out = np.concatenate([extract_features_for_path(path) for path in paths_in_roi])
 
-
     # serial for debugging
-    #out = []
-    #for p_id, path in enumerate(paths_in_roi):
-    #    out.append( extract_features_for_path(path) )
-    #out = np.concatenate(out, axis = 0)
+    # out = []
+    # for p_id, path in enumerate(paths_in_roi):
+    #     out.append( extract_features_for_path(path) )
+    # out = np.concatenate(out, axis = 0)
 
     assert out.ndim == 2, str(out.shape)
     assert out.shape[0] == len(paths), str(out.shape)
@@ -242,9 +256,9 @@ def multicut_path_features(
         ds,
         seg_id,
         mc_segmentation,
-        objs_to_paths, # dict[merge_ids : dict[path_ids : paths]]
+        objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
         edge_probabilities
-        ):
+):
 
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
@@ -252,12 +266,12 @@ def multicut_path_features(
     # find the local edge ids along the path
     def edges_along_path(path, mapping, uvs_local):
         edge_ids = []
-        u = mapping[seg[path[0]]] # TODO does this work ?
+        u = mapping[seg[path[0]]]  # TODO does this work ?
         for p in path[1:]:
-            v = mapping[seg[p]] # TODO does this work ?
+            v = mapping[seg[p]]  # TODO does this work ?
             if u != v:
-                uv = np.array( [min(u,v), max(u,v)] )
-                edge_id = find_matching_row_indices(uvs_local, uv)[0,0]
+                uv = np.array([min(u, v), max(u, v)])
+                edge_id = find_matching_row_indices(uvs_local, uv)[0, 0]
                 edge_ids.append(edge_id)
             u = v
         return np.array(edge_ids)
@@ -266,7 +280,7 @@ def multicut_path_features(
     # needed for weight transformation
     weighting_scheme = ExperimentSettings.weighting_scheme
     weight           = ExperimentSettings.weight
-    edge_areas       = ds.topology_features(seg_id, False)[:,0].astype('uint32')
+    edge_areas       = ds.topology_features(seg_id, False)[:, 0].astype('uint32')
     edge_indications = ds.edge_indications(seg_id)
 
     # transform edge-probabilities to weights
@@ -282,7 +296,7 @@ def multicut_path_features(
         probs = (p_max - p_min) * probs + p_min
 
         # probabilities to energies, second term is boundary bias
-        weights = np.log( (1. - probs) / probs ) + np.log( (1. - beta) / beta )
+        weights = np.log((1. - probs) / probs) + np.log((1. - beta) / beta)
 
         # weight edges
         if weighting_scheme == "z":
@@ -294,12 +308,11 @@ def multicut_path_features(
 
         return weights
 
-
     # TODO more_feats ?!
     betas = np.arange(0.3, 0.75, 0.05)
     n_feats = len(betas)
     n_paths = np.sum([len(paths) for paths in objs_to_paths])
-    features = np.zeros( (n_paths, n_feats), dtype = 'float32')
+    features = np.zeros((n_paths, n_feats), dtype='float32')
 
     # TODO parallelize
     for obj_id in objs_to_paths:
@@ -308,21 +321,21 @@ def multicut_path_features(
             mc_segmentation,
             obj_id,
             uv_ids
-            )
+        )
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
         n_var = uv_local.max() + 1
 
         path_edge_ids = {}
         for path_id, path in objs_to_paths[obj_id].iteritems():
-            path_edge_ids[path_id] = edges_along_path(path, mapping, uvs_local)
+            path_edge_ids[path_id] = edges_along_path(path, mapping, uv_local)
 
         for ii, beta in enumerate(betas):
             weights = to_weights(local_uv_mask, beta)
             node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
-            cut_edges = node_labels[[uv_local[:,0]]] != node_labels[[uv_local[:,1]]]
+            cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
             for path_id, e_ids in path_edge_ids.iteritems():
-                features[path_id,ii] = np.sum(cut_edges[e_ids])
+                features[path_id, ii] = np.sum(cut_edges[e_ids])
 
     return features
 
@@ -333,37 +346,37 @@ def cut_features(
         ds,
         seg_id,
         mc_segmentation,
-        objs_to_paths, # dict[merge_ids : dict[path_ids : paths]]
+        objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
         edge_weights,
         anisotropy_factor,
-        feat_list = ['raw', 'prob', 'distance_transform']
-        ):
+        feat_list=['raw', 'prob', 'distance_transform']
+):
 
     assert feat_list
 
     seg = ds.seg(seg_id)
-    uv_ids = rag.uv_ids(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
 
     # find the local edge ids along the path
     def edges_along_path(path, mapping, uvs_local):
 
         edge_ids = []
-        edge_ids_local = p[
+        edge_ids_local = []
 
-        u = seg[path[0]] # TODO does this work ?
-        u_local = mapping[seg[path[0]]] # TODO does this work ?
+        u = seg[path[0]]  # TODO does this work ?
+        u_local = mapping[seg[path[0]]]  # TODO does this work ?
 
         for p in path[1:]:
 
-            v = seg[p] # TODO does this work ?
-            v_local = mapping[seg[p]] # TODO does this work ?
+            v = seg[p]  # TODO does this work ?
+            v_local = mapping[seg[p]]  # TODO does this work ?
 
             if u != v:
-                uv = np.array( [min(u,v), max(u,v)] )
-                uv_local = np.array( [min(u_local,v_local), max(u_local,v_local)] )
+                uv = np.array([min(u, v), max(u, v)])
+                uv_local = np.array([min(u_local, v_local), max(u_local, v_local)])
 
-                edge_id = find_matching_row_indices(uv_ids, uv)[0,0]
-                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0,0]
+                edge_id = find_matching_row_indices(uv_ids, uv)[0, 0]
+                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0, 0]
 
                 edge_ids.append(edge_id)
                 edge_ids_local.append(edge_id_local)
@@ -372,19 +385,18 @@ def cut_features(
             u_local = v_local
         return np.array(edge_ids), np.array(edge_ids_local)
 
-
     # get the features
     edge_features = []
     if 'raw' in feat_list:
-        edge_features.append(ds.edge_features(seg_id,0,anisotropy_factor))
+        edge_features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
     if 'prob' in feat_list:
-        edge_features.append(ds.edge_features(seg_id,1,anisotropy_factor))
+        edge_features.append(ds.edge_features(seg_id, 1, anisotropy_factor))
     if 'distance_transform' in feat_list:
-        edge_features.append(ds.edge_features(seg_id,2,anisotropy_factor)) # we assume that the dt was already added as additional input
-    edge_features = np.concatenate(edge_features, axis = 1)
+        edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))  # we assume that the dt was already added as additional input
+    edge_features = np.concatenate(edge_features, axis=1)
 
     n_paths = np.sum([len(paths) for paths in objs_to_paths])
-    features = np.zeros( (n_paths, edge_features.shape[1]), dtype = 'float32')
+    features = np.zeros((n_paths, edge_features.shape[1]), dtype='float32')
 
     # TODO parallelize
     for obj_id in objs_to_paths:
@@ -393,16 +405,16 @@ def cut_features(
             mc_segmentation,
             obj_id,
             uv_ids
-            )
+        )
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
-        for path_id, path in objs_to_paths[obj_id].iteritems()
-            edge_ids, edge_ids_local = edges_along_path(path, mapping, uvs_local)
+        for path_id, path in objs_to_paths[obj_id].iteritems():
+            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
 
             # run cut with seeds at path end points, find cut edge,
-            cut_edge = 42 # TODO
+            cut_edge = 42  # TODO
 
             # cut-edge project back to global edge-indexing and get according features
             global_edge = edge_ids[edge_ids_local == cut_edge]

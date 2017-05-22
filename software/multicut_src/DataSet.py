@@ -686,7 +686,8 @@ class DataSet(object):
             rag = nrag.gridRag(
                 seg,
                 serialization=serialization,
-                numberOfThreads=ExperimentSettings().n_threads)
+                numberOfThreads=ExperimentSettings().n_threads
+            )
         return rag
 
     # save the uv ids seperately for convience, s.t. we don't have to deserialize the rag

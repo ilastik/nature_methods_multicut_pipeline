@@ -1,13 +1,13 @@
 import numpy as np
 import vigra
 import os
-import cPickle as pickle
-import shutil
-import itertools
+# import cPickle as pickle
+# import shutil
+# import itertools
 import h5py
 
 # relative imports from top level dir
-from ..MCSolverImpl   import probs_to_energies
+from ..MCSolverImpl import probs_to_energies
 from ..Postprocessing import remove_small_segments
 from ..lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh
 from ..EdgeRF import RandomForest
@@ -15,18 +15,20 @@ from ..ExperimentSettings import ExperimentSettings
 from ..tools import find_matching_row_indices
 
 # imports from this dir
-from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, extract_local_graph_from_segmentation
-from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, compute_border_contacts_old, compute_border_contacts
+from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, \
+    extract_local_graph_from_segmentation
+from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, \
+    compute_border_contacts_old, compute_border_contacts
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
 except ImportError:
     try:
-        import nifty_with_cplex as nifty # conda version build with cplex
+        import nifty_with_cplex as nifty  # conda version build with cplex
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty # conda version build with gurobi
+            import nifty_wit_gurobi as nifty  # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag
@@ -36,7 +38,8 @@ def extract_paths_from_segmentation(
         ds,
         seg_path,
         key,
-        paths_cache_folder = None):
+        paths_cache_folder=None
+):
 
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
@@ -50,18 +53,19 @@ def extract_paths_from_segmentation(
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
         if all_paths.size:
-            all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
+            all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
 
     # otherwise compute the paths
     else:
-        # TODO we don't remove small objects for now, because this would relabel the segmentation, which we don't want in this case
+        # TODO we don't remove small objects for now, because this would relabel the segmentation,
+        # which we don't want in this case
         seg = vigra.readHDF5(seg_path, key)
-        dt = ds.inp(ds.n_inp-1) # we assume that the last input is the distance transform
+        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
 
         # Compute path end pairs
         # TODO debug the new border contact computation, which is much faster
-        #border_contacts = compute_border_contacts(seg, False)
+        # border_contacts = compute_border_contacts(seg, False)
         border_contacts = compute_border_contacts_old(seg, dt)
 
         path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
@@ -583,11 +587,13 @@ def resolve_merges_with_lifted_edges(
     for merge_id in false_paths:
 
         local_uv_mask, lifted_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
-                mc_segmentation,
-                merge_id,
-                uv_ids,
-                uv_ids_lifted
-                )
+            ds,
+            seg_id,
+            mc_segmentation,
+            merge_id,
+            uv_ids,
+            uv_ids_lifted
+        )
 
         # extract local uv ids and corresponding weights
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
@@ -724,10 +730,12 @@ def resolve_merges_with_lifted_edges_global(
     for merge_id in false_paths:
 
         local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
-                mc_segmentation,
-                merge_id,
-                uv_ids
-                )
+            ds,
+            seg_id,
+            mc_segmentation,
+            merge_id,
+            uv_ids
+        )
 
         uv_ids_in_obj_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
