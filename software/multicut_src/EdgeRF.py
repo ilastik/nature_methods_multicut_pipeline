@@ -199,9 +199,11 @@ def learn_rf(cache_folder,
     if cache_folder is not None: # we use caching for the rf => look if already exists
         rf_folder = os.path.join(cache_folder, "rf_" + trainstr)
         rf_name = "rf_" + "_".join( [trainstr, paramstr] ) + ".h5"
+        if len(rf_name) >= 255:
+            rf_name = str(hash(rf_name[:-3])) + ".h5"
         if not os.path.exists(rf_folder):
             os.mkdir(rf_folder)
-        rf_path   = os.path.join(rf_folder, rf_name)
+        rf_path = os.path.join(rf_folder, rf_name)
         if os.path.exists(rf_path):
             print "Loading random forest from"
             print rf_path
