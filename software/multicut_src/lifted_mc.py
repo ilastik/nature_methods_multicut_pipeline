@@ -28,6 +28,7 @@ except ImportError:
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag
+import nifty.ground_truth as ngt
 
 
 # returns indices of lifted edges that are ignored due to defects
@@ -474,7 +475,7 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
 
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
-    overlaps = nifty.ground_truth.Overlap(
+    overlaps = ngt.Overlap(
         uv_ids.max(),
         ds.seg(seg_id),
         ds.gt()

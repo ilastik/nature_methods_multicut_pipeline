@@ -20,6 +20,7 @@ except ImportError:
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag
+import nifty.ground_truth as ngt
 
 #
 # Modified Adjacency
@@ -388,7 +389,7 @@ def modified_edge_gt(ds, seg_id):
 @cacher_hdf5()
 def modified_edge_gt_fuzzy(ds, seg_id, positive_threshold, negative_threshold):
     uv_ids = modified_adjacency(ds, seg_id)
-    overlaps = nifty.groundtruth.Overlap(
+    overlaps = ngt.Overlap(
         uv_ids.max(),
         ds.seg(seg_id),
         ds.gt()

@@ -23,6 +23,7 @@ except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag
 # import nifty.cgp as ncgp
+import nifty.ground_truth as ngt
 
 
 # this can be used in 2 different ways:
@@ -1259,7 +1260,7 @@ class DataSet(object):
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
         uv_ids = self.uv_ids(seg_id)
-        overlaps = nifty.ground_truth.Overlap(
+        overlaps = ngt.Overlap(
             uv_ids.max(),
             self.seg(seg_id),
             self.gt()
