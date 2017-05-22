@@ -24,7 +24,7 @@ except ImportError:
         import nifty_with_cplex as nifty  # conda version build with cplex
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag

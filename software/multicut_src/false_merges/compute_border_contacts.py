@@ -8,6 +8,7 @@ from ..Postprocessing import remove_small_segments
 # new border extraction
 #######################
 
+
 # for face and line numberings in cube, see:
 # https://drive.google.com/file/d/0B4_sYa95eLJ1VFZ5VjJtQlhXcEE/view?usp=sharing
 class Cube(object):
@@ -20,55 +21,55 @@ class Cube(object):
         # list of dicts matching lines belonging to relative positions in faces
         # 0 -> front in first dim, 1 -> front in second dim, 3 -> front in second dim, 4 -> back in second dim
         self._lines_to_faces = [
-                {0 : 0, 1 : 3, 2 : 2, 3 : 1}, # face 0 -> lower z face
-                {0 : 0, 4 : 1, 7 : 3, 8 : 2}, # face 1 -> front y face
-                {1 : 0, 6 : 1, 7 : 3, 9 : 2}, # face 2 -> right x face
-                {2 : 0, 5 : 1, 6 : 3, 10: 2}, # face 3 -> back y face
-                {3 : 0, 4 : 3, 5 : 1, 11: 2}, # face 4 -> left x face
-                {8 : 0, 9 : 3, 10: 2, 11: 1}  # face 5 -> upper z face,
-                ]
+            {0: 0, 1: 3,  2: 2,  3: 1},  # face 0 -> lower z face
+            {0: 0, 4: 1,  7: 3,  8: 2},  # face 1 -> front y face
+            {1: 0, 6: 1,  7: 3,  9: 2},  # face 2 -> right x face
+            {2: 0, 5: 1,  6: 3, 10: 2},  # face 3 -> back y face
+            {3: 0, 4: 3,  5: 1, 11: 2},  # face 4 -> left x face
+            {8: 0, 9: 3, 10: 2, 11: 1}   # face 5 -> upper z face,
+        ]
         self._faces_to_lines = [
-                [0,1], # line 0
-                [0,2], # line 1
-                [0,3], # line 2
-                [0,4], # line 3
-                [1,4], # line 4
-                [3,4], # line 5
-                [2,3], # line 6
-                [1,2], # line 7
-                [1,5], # line 8
-                [2,5], # line 9
-                [3,5], # line 10
-                [4,5]  # line 11
-                ]
+            [0, 1],  # line 0
+            [0, 2],  # line 1
+            [0, 3],  # line 2
+            [0, 4],  # line 3
+            [1, 4],  # line 4
+            [3, 4],  # line 5
+            [2, 3],  # line 6
+            [1, 2],  # line 7
+            [1, 5],  # line 8
+            [2, 5],  # line 9
+            [3, 5],  # line 10
+            [4, 5]   # line 11
+        ]
 
     def slice_from_line_id(self, line_id):
         assert line_id < self.n_lines
         # dim -> the dimension in which the coordinates varies
-        dim = 0 if line_id in (0,2,8,10) else (1 if line_id in (1,3,9,11) else 2)
+        dim = 0 if line_id in (0, 2, 8, 10) else (1 if line_id in (1, 3, 9, 11) else 2)
         # select 1 -> determines whether the first fixed coordinate is at the origin or at the end
-        select1 = 0 if line_id in (0,3,4,5,8,11) else -1
+        select1 = 0 if line_id in (0, 3, 4, 5, 8, 11) else -1
         # select 2 -> determines whether the second fixed coordinate is at the origin or at the end
-        select2 = 0 if line_id in (0,1,2,3,4,7) else -1
+        select2 = 0 if line_id in (0, 1, 2, 3, 4, 7) else -1
         if dim == 0:
-            return np.s_[:,select1,select2]
+            return np.s_[:, select1, select2]
         elif dim == 1:
-            return np.s_[select1,:,select2]
+            return np.s_[select1, :, select2]
         elif dim == 2:
-            return np.s_[select1,select2,:]
+            return np.s_[select1, select2, :]
 
     def slice_from_face_id(self, face_id):
         assert face_id < self.n_faces
         # dim -> the dimension in which the face is fixed
-        dim = 0 if face_id in (2,4) else (1 if face_id in (1,3) else 2)
+        dim = 0 if face_id in (2, 4) else (1 if face_id in (1, 3) else 2)
         # select -> determines whether dim is fixed at origin or at the end
-        select = 0 if face_id in (0,1,4) else -1
+        select = 0 if face_id in (0, 1, 4) else -1
         if dim == 0:
-            return np.s_[select,:,:]
+            return np.s_[select, :, :]
         elif dim == 1:
-            return np.s_[:,select,:]
+            return np.s_[:, select, :]
         elif dim == 2:
-            return np.s_[:,:,select]
+            return np.s_[:, :, select]
 
     def line_ids_from_face_id(self, face_id):
         assert face_id < self.n_faces
@@ -85,16 +86,16 @@ class Cube(object):
         # select -> determines whether line is at front or back of slice
         select = 0 if i > 1 else -1
         if i % 2 == 0:
-            return np.s_[:,select]
+            return np.s_[:, select]
         else:
-            return np.s_[select,:]
+            return np.s_[select, :]
 
     def centroids_face_to_vol(self, centroids, face_id):
         assert face_id < self.n_faces
         # dim -> the dimension in which the face is fixed
-        dim = 0 if face_id in (2,4) else (1 if face_id in (1,3) else 2)
+        dim = 0 if face_id in (2, 4) else (1 if face_id in (1, 3) else 2)
         # select -> determines whether dim is fixed at origin or at the end
-        extra_coord_val = 0 if face_id in (0,1,4) else self.shape[dim] - 1
+        extra_coord_val = 0 if face_id in (0, 1, 4) else self.shape[dim] - 1
         if dim == 0:
             return [(extra_coord_val,) + centr for centr in centroids]
         elif dim == 1:
@@ -104,10 +105,10 @@ class Cube(object):
 
 
 # FIXME merge along lines == True not tested yet
-def compute_border_contacts(seg, merge_along_lines = False):
+def compute_border_contacts(seg, merge_along_lines=False):
 
     cube = Cube(seg.shape)
-    min_size = 4*4 # removing smaller then 4*4 pixel segmentes -> TODO maybe this should be exposed ?!
+    min_size = 4 * 4  # removing smaller then 4*4 pixel segmentes -> TODO maybe this should be exposed ?!
 
     centroid_offset = 0
     centroid_list  = []
@@ -124,42 +125,45 @@ def compute_border_contacts(seg, merge_along_lines = False):
         seg_face = seg[face]
 
         # relabel and remove small border contacts
-        seg_labeled, seg_sizes =  remove_small_segments(
-                seg_face,
-                size_thresh = min_size,
-                relabel = True,
-                return_sizes = True)
+        seg_labeled, seg_sizes = remove_small_segments(
+            seg_face,
+            size_thresh=min_size,
+            relabel=True,
+            return_sizes=True
+        )
 
         # get the centroids via vigra eccentricity centers
         centroids   = vigra.filters.eccentricityCenters(seg_labeled)[1:]
 
         # associate centroid ids with labels
         for i, centr in enumerate(centroids):
-            centroid_ids_to_labels[i+centroid_offset] = seg_face[centr]
+            centroid_ids_to_labels[i + centroid_offset] = seg_face[centr]
 
         # if we merge the centroids along the lines of the cube later,
         # we now assign each line pixel to its corresponding centroid id
         if merge_along_lines:
 
             # match the relabeled segments to centroids
-            other_labels_to_centroid_ids = {seg_labeled[centr] : i + centroid_offset for i, centr in enumerate(centroids)}
+            other_labels_to_centroid_ids = {
+                seg_labeled[centr]: i + centroid_offset for i, centr in enumerate(centroids)
+            }
             line_id_to_centroid_lines = {}
 
             # for each line adjacent to this face, make an array that records the centroid id for each
             # pixel on the line
-            for line_ids in cube.line_ids_from_face_id(face_id):
+            for line_id in cube.line_ids_from_face_id(face_id):
                 line = cube.line_slice_from_face_id(face_id, line_id)
                 seg_line = seg_labeled[line]
-                line_to_centroid_ids = np.zeros_like(seg_line, dtype = 'int32')
+                line_to_centroid_ids = np.zeros_like(seg_line, dtype='int32')
                 for ii, label in enumerate(seg_line):
                     line_to_centroid_ids[ii] = other_labels_to_centroid_ids[label] if label != 0 else -1
-                line_ids_to_centroid_lines[line_id] = line_to_centroid_ids
+                line_id_to_centroid_lines[line_id] = line_to_centroid_ids
 
-            centroid_id_lines.append(line_ids_to_centroid_lines)
-            centroid_sizes.extend( [ seg_sizes[seg_labeled[centr]] for centr in centroids] )
+            centroid_id_lines.append(line_id_to_centroid_lines)
+            centroid_sizes.extend([seg_sizes[seg_labeled[centr]] for centr in centroids])
 
         # extend centroid list with centroids mapped to global coordinates
-        centroid_list.extend( cube.centroids_face_to_vol(centroids, face_id) )
+        centroid_list.extend(cube.centroids_face_to_vol(centroids, face_id))
         centroid_offset += len(centroids)
 
     # FIXME this neglects some edge cases:
@@ -188,12 +192,12 @@ def compute_border_contacts(seg, merge_along_lines = False):
                         size1, size2 = centroid_sizes[cent_id1], centroid_sizes[cent_id2]
                         ignore_centroid_ids.append(cent_id1 if size1 < size2 else cent_id2)
 
-                    visited.append( (cent_id1, cent_id2) )
+                    visited.append((cent_id1, cent_id2))
 
     # now we invert the centroids to labels, potentially leaving out ignore ids
     labels_to_centroids = {}
     for centroid_id, label in centroid_ids_to_labels.iteritems():
-        if not centroid_id in ignore_centroid_ids:
+        if centroid_id not in ignore_centroid_ids:
             labels_to_centroids.setdefault(label, []).append(centroid_list[centroid_id])
 
     # if we still have a zero-label, remove it
@@ -203,7 +207,7 @@ def compute_border_contacts(seg, merge_along_lines = False):
     # remove paths with only 1 end point
     for label in labels_to_centroids:
         if len(labels_to_centroids[label]) == 1:
-            del labels[label]
+            del labels_to_centroids[label]
 
     # debugging
     #print
@@ -216,30 +220,6 @@ def compute_border_contacts(seg, merge_along_lines = False):
     return labels_to_centroids
 
 
-##############################
-# extract paths from skeletons
-# (using skeletopyze)
-##############################
-
-def paths_from_skeletons(seg, labels):
-    import skeletopyze
-
-    params = skeletopyze.Parameters()
-    def _to_skeleton(label_id):
-        label_mask = seg.copy()
-        label_mask[seg != label_id] = 0
-        skeleton = skeletopyze.get_skeleton_graph(seg, params)
-
-    def _paths_from_skeleton(label_id):
-        skeleton = _to_skeleton(label_id)
-        # TODO extract all paths from skeletons
-
-    # TODO if this is performance critical, parallelize
-    # (dunno if skeletopyze lifts the gil...)
-    labels_to_paths = {label_id : _paths_from_skeleton(label_id)}
-    return labels_to_paths
-
-
 #######################
 # old border extraction
 #######################
@@ -250,7 +230,7 @@ def get_faces_with_neighbors(image):
 
     # --- XY ---
     # w = x + 2*z, h = y + 2*z
-    shpxy = (image.shape[0] + 2*image.shape[2], image.shape[1] + 2*image.shape[2])
+    shpxy = (image.shape[0] + 2 * image.shape[2], image.shape[1] + 2 * image.shape[2])
     xy0 = (0, 0)
     xy1 = (image.shape[2],) * 2
     xy2 = (image.shape[2] + image.shape[0], image.shape[2] + image.shape[1])
@@ -274,7 +254,7 @@ def get_faces_with_neighbors(image):
 
     # --- XZ ---
     # w = x + 2*y, h = z + 2*y
-    shpxz = (image.shape[0] + 2*image.shape[1], image.shape[2] + 2*image.shape[1])
+    shpxz = (image.shape[0] + 2 * image.shape[1], image.shape[2] + 2 * image.shape[1])
     xz0 = (0, 0)
     xz1 = (image.shape[1],) * 2
     xz2 = (image.shape[1] + image.shape[0], image.shape[1] + image.shape[2])
@@ -298,7 +278,7 @@ def get_faces_with_neighbors(image):
 
     # --- YZ ---
     # w = y + 2*x, h = z + 2*x
-    shpyz = (image.shape[1] + 2*image.shape[0], image.shape[2] + 2*image.shape[0])
+    shpyz = (image.shape[1] + 2 * image.shape[0], image.shape[2] + 2 * image.shape[0])
     yz0 = (0, 0)
     yz1 = (image.shape[0],) * 2
     yz2 = (image.shape[0] + image.shape[1], image.shape[0] + image.shape[2])
@@ -333,10 +313,10 @@ def get_faces_with_neighbors(image):
     bounds = {
         'xyf': np.s_[shp[2]:shp[2] + shp[0], shp[2]:shp[2] + shp[1]],
         'xyb': np.s_[shp[2]:shp[2] + shp[0], shp[2]:shp[2] + shp[1]],
-        'xzf': np.s_[shp[1]:shp[1] + shp[0], shp[1]+1:shp[1] + shp[2]-1],
-        'xzb': np.s_[shp[1]:shp[1] + shp[0], shp[1]+1:shp[1] + shp[2]-1],
-        'yzf': np.s_[shp[0]+1:shp[0] + shp[1]-1, shp[0]+1:shp[0] + shp[2]-1],
-        'yzb': np.s_[shp[0]+1:shp[0] + shp[1]-1, shp[0]+1:shp[0] + shp[2]-1]
+        'xzf': np.s_[shp[1]:shp[1] + shp[0], shp[1] + 1:shp[1] + shp[2] - 1],
+        'xzb': np.s_[shp[1]:shp[1] + shp[0], shp[1] + 1:shp[1] + shp[2] - 1],
+        'yzf': np.s_[shp[0] + 1:shp[0] + shp[1] - 1, shp[0] + 1:shp[0] + shp[2] - 1],
+        'yzb': np.s_[shp[0] + 1:shp[0] + shp[1] - 1, shp[0] + 1:shp[0] + shp[2] - 1]
     }
 
     return faces, bounds
@@ -353,9 +333,10 @@ def find_centroids(seg, dt, bounds):
 
         # Connected component analysis to detect when a label touches the border multiple times
         conncomp = vigra.analysis.labelImageWithBackground(
-                mask.astype(np.uint32),
-                neighborhood=8,
-                background_value=0)
+            mask.astype(np.uint32),
+            neighborhood=8,
+            background_value=0
+        )
 
         # Only these labels will be used for further processing
         # FIXME expose radius as parameter
@@ -405,7 +386,6 @@ def translate_centroids_to_volume(centroids, volume_shape):
 
     for orientation, centers in centroids.iteritems():
 
-
         if orientation == 'xyf':
             centers = {
                 lbl: [center + [0] for center in centers_in_lbl]
@@ -413,7 +393,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'xyb':
             centers = {
-                lbl: [center + [volume_shape[2]-1] for center in centers_in_lbl]
+                lbl: [center + [volume_shape[2] - 1] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
         elif orientation == 'xzf':
@@ -423,7 +403,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'xzb':
             centers = {
-                lbl: [[center[0], volume_shape[1]-1, center[1]] for center in centers_in_lbl]
+                lbl: [[center[0], volume_shape[1] - 1, center[1]] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
         elif orientation == 'yzf':
@@ -433,7 +413,7 @@ def translate_centroids_to_volume(centroids, volume_shape):
             }
         elif orientation == 'yzb':
             centers = {
-                lbl: [[volume_shape[0]-1, center[0], center[1]] for center in centers_in_lbl]
+                lbl: [[volume_shape[0] - 1, center[0], center[1]] for center in centers_in_lbl]
                 for lbl, centers_in_lbl in centers.iteritems()
             }
 
@@ -529,7 +509,7 @@ def compute_path_end_pairs_and_labels(
         np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
     uniques = np.unique(b)
     correspondence_list = uniques.view(correspondence_list.dtype)
-    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0]/2, 2))
+    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0] / 2, 2))
 
     return np.array(pairs), np.array(labels), np.array(classes), np.array(gt_labels), correspondence_list.tolist()
 

@@ -5,14 +5,25 @@ import nifty.graph.rag as nrag
 
 from multicut_src import find_matching_row_indices
 
+
+def compare_segs(segp, segp_transposed):
+    seg = vigra.readHDF5(segp, 'data')
+    seg_t = vigra.readHDF5(segp_transposed, 'data').transpose((2, 1, 0))
+    seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0, keep_zeros=False)
+    seg_t, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0, keep_zeros=False)
+    assert seg.shape == seg_t.shape
+    assert (seg == seg_t).all(), "%i / %i" % (np.sum(seg == seg_t), seg.size)
+    print "Passed"
+
+
 def check_rags(rag_vi_path, rag_ni_path, seg_ni_path):
     rag_vi = vigra.graphs.loadGridRagHDF5(rag_vi_path, 'rag')
     serialization = vigra.readHDF5(rag_ni_path, 'data')
     segmentation  = vigra.readHDF5(seg_ni_path, 'data')
     rag_ni = nrag.gridRag(
         segmentation,
-        serialization = serialization,
-        numberOfThreads = 8
+        serialization=serialization,
+        numberOfThreads=8
     )
 
     assert rag_vi.edgeNum == rag_ni.numberOfEdges
@@ -24,10 +35,11 @@ def check_rags(rag_vi_path, rag_ni_path, seg_ni_path):
     uvs_vi = np.sort(rag_vi.uvIds(), axis=1)
     assert uvs_ni.shape == uvs_vi.shape
 
-    ni_to_vi = find_matching_row_indices(uvs_ni, uvs_vi)[:,1]
+    ni_to_vi = find_matching_row_indices(uvs_ni, uvs_vi)[:, 0]
     assert len(ni_to_vi) == len(uvs_vi), "%i, %i" % (len(ni_to_vi), len(uvs_vi))
     uvs_nivi = uvs_ni[ni_to_vi]
-    print type(uvs_nivi)
+    print uvs_nivi[:10]
+    print uvs_vi[:10]
 
     assert (uvs_nivi == uvs_vi).all()
     print "Passed uv translator"
@@ -166,6 +178,11 @@ def compare_caches_train(cache_folder_1, cache_folder_2):
 
 
 if __name__ == '__main__':
+    #compare_segs(
+    #    '/mnt/data/stuff/regression_tests_lcc/sampleA_0_train/seg0.h5',
+    #    '/home/constantin/Work/home_hdd/cache/regression_tests_nfb/sampleA_0_train/seg0.h5'
+    #)
+
     check_rags(
         '/mnt/data/stuff/regression_tests_lcc/sampleA_0_train/rag_seg0.h5',
         '/home/constantin/Work/home_hdd/cache/regression_tests_nfb/sampleA_0_train/rag0.h5',

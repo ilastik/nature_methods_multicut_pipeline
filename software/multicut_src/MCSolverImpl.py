@@ -14,7 +14,7 @@ except ImportError:
         ilp_bkend = 'cplex'
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
             ilp_bkend = 'gurobi'
         except ImportError:
             raise ImportError("No valid nifty version was found.")

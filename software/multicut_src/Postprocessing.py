@@ -8,10 +8,10 @@ try:
     import nifty
 except ImportError:
     try:
-        import nifty_with_cplex as nifty # conda version build with cplex
+        import nifty_with_cplex as nifty  # conda version build with cplex
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty # conda version build with gurobi
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 import nifty.graph.rag as nrag
@@ -21,18 +21,21 @@ from tools import replace_from_dict
 
 # TODO 10,000 seems to be a pretty large default value !
 # TODO rethink the relabeling here, in which cases do we want it, can it hurt?
-def remove_small_segments(segmentation,
-        size_thresh = 10000,
-        relabel = True,
-        return_sizes = False):
+def remove_small_segments(
+    segmentation,
+    size_thresh=10000,
+    relabel=True,
+    return_sizes=False
+):
 
     # Make sure all objects have their individual label
     # NOTE this is very dangerous for sample C (black slices in groundtruth)
     if relabel:
         segmentation = vigra.analysis.labelMultiArrayWithBackground(
             segmentation.astype('uint32'),
-            background_value = 0,
-            neighborhood = 'indirect')
+            background_value=0,
+            neighborhood='indirect'
+        )
 
     # Get the unique values of the segmentation including counts
     uniq, counts = np.unique(segmentation, return_counts=True)
@@ -46,10 +49,10 @@ def remove_small_segments(segmentation,
     # I think this is the fastest (single threaded way) to do this
     # If we really need to parallelize this, we need to rethink a little, but for now, this should be totally fine!
     if relabel:
-        large_objs_to_consecutive = {obj_id : i+1 for i, obj_id in enumerate(large_objs)}
-        obj_dict = {obj_id : 0 if obj_id in small_objs else large_objs_to_consecutive[obj_id] for obj_id in uniq}
+        large_objs_to_consecutive = {obj_id: i + 1 for i, obj_id in enumerate(large_objs)}
+        obj_dict = {obj_id: 0 if obj_id in small_objs else large_objs_to_consecutive[obj_id] for obj_id in uniq}
     else:
-        obj_dict = {obj_id : 0 if obj_id in small_objs else obj_id for obj_id in uniq}
+        obj_dict = {obj_id: 0 if obj_id in small_objs else obj_id for obj_id in uniq}
     segmentation = replace_from_dict(segmentation, obj_dict)
 
     if return_sizes:
@@ -65,19 +68,19 @@ def merge_small_segments(mc_seg, min_seg_size):
     # take care of segmentations that don't start at zero
     seg_min = mc_seg.min()
     if seg_min > 0:
-        seg -= seg_min
+        mc_seg -= seg_min
 
     n_threads = ExperimentSettings().n_threads
     rag = nrag.gridRag(mc_seg, n_threads)
     n_nodes = rag.numberOfNodes
-    assert n_nodes == mc_seg.max() + 1, "%i, %i" % (n_nodes, mc_seg.max()+1)
+    assert n_nodes == mc_seg.max() + 1, "%i, %i" % (n_nodes, mc_seg.max() + 1)
 
     print "Merging segments in mc-result with size smaller than", min_seg_size
-    _, node_sizes = np.unique(mc_seg, return_counts = True)
-    edge_sizes = ngraph.rag.accumulateEdgeMeanAndLength(
-            rag,
-            np.zeros_like(mc_seg, dtype = 'float32')
-    )[:,1].astype('uint32')
+    _, node_sizes = np.unique(mc_seg, return_counts=True)
+    edge_sizes = nrag.rag.accumulateEdgeMeanAndLength(
+        rag,
+        np.zeros_like(mc_seg, dtype='float32')
+    )[:, 1].astype('uint32')
     assert len(node_sizes) == n_nodes
 
     # find nodes that shall be merged
@@ -96,7 +99,7 @@ def merge_small_segments(mc_seg, min_seg_size):
                 max_edge_size = edge_size
                 merge_n_id = v
         assert merge_n_id != -1
-        merge_pairs.append( [u,merge_n_id] )
+        merge_pairs.append([u, merge_n_id])
     merge_pairs = np.array(merge_pairs)
 
     # merge the nodes with ufd
@@ -105,5 +108,5 @@ def merge_small_segments(mc_seg, min_seg_size):
     merged_nodes = ufd.elmentLabeling()
 
     # make consecutive, starting from the original min val and make segmentation
-    merged_nodes,_,_ = vigra.analysis.relabelConsecutive(merged_nodes, start_label = seg_min, keep_zeros = False)
+    merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min, keep_zeros=False)
     return nrag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
