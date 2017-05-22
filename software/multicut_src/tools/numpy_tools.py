@@ -28,6 +28,7 @@ def find_matching_row_indices(x, y):
             indices.append([rows_x[tuple(row)], i])
     return np.array(indices)
 
+
 # return the indices of array which have at least one value from value list
 def find_matching_indices(array, value_list):
     assert isinstance(array, np.ndarray)
@@ -37,16 +38,17 @@ def find_matching_indices(array, value_list):
         from cython_tools import find_matching_indices_fast
         return find_matching_indices_fast(array.astype('uint32'), value_list.astype('uint32'))
     except ImportError:
-        #print "WARNING: Could not find cython function, using slow numpy version"
-        # TODO this is the proper numpy way to do it, check if it is actually slower and get rid of cython functionality if this is fast enough
+        # print "WARNING: Could not find cython function, using slow numpy version"
+        # TODO this is the proper numpy way to do it, check if it is actually slower
+        # and get rid of cython functionality if this is fast enough
         # also, don't need to wrap this if it is just a one-liner
         mask = np.in1d(array, value_list).reshape(array.shape)
         return np.where(mask.all(axis=1))[0]
 
+
 # numpy.replace: replcaces the values in array according to dict
 # cf. SO: http://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
 def replace_from_dict(array, dict_like):
-    replace_keys, replace_vals = np.array(list(zip( *sorted(dict_like.items() ))))
-    indices = np.digitize(array, replace_keys, right = True)
+    replace_keys, replace_vals = np.array(list(zip(*sorted(dict_like.items()))))
+    indices = np.digitize(array, replace_keys, right=True)
     return replace_vals[indices].astype(array.dtype)
-
