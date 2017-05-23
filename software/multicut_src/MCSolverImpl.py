@@ -201,7 +201,7 @@ def multicut_fusionmoves(n_var,
     solver = factory.create(obj)
 
     if exp_params.verbose:
-        visitor = obj.multicutVerboseVisitor(1)
+        visitor = obj.verboseVisitor(1)
         ret = solver.optimize(nodeLabels=ret,visitor=visitor)
     else:
         ret = solver.optimize(nodeLabels=ret)

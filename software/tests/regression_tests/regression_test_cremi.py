@@ -86,7 +86,7 @@ def regression_test_cremi(cache_folder, top_folder, with_lmc = True):
     for sample in ('A','B','C'):
         for postfix in (0,1):
             ds_test = 'sample%s_%i_train' % (sample, postfix)
-            ds      = load_dataset(cache_folder, ds_test)
+            ds      = meta.get_dataset(cache_folder)
             gt = ds.gt()
             mc_seg = mc_results[ds_test]
 
