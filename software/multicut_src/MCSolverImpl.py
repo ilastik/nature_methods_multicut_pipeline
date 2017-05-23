@@ -228,7 +228,7 @@ def multicut_fusionmoves(
 
     t_inf = time.time()
     if ExperimentSettings().verbose:
-        visitor = obj.multicutVerboseVisitor(1)
+        visitor = obj.verboseVisitor(1)
         ret = solver.optimize(visitor=visitor)
     else:
         ret = solver.optimize()
