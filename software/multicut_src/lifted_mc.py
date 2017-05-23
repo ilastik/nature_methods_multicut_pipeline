@@ -764,7 +764,7 @@ def optimize_lifted(
     )
     # we leave the number of iterations at default values for now
     solver_fm = lifted_obj.fusionMoveBasedFactory(
-        proposalGenerato=pgen,
+        proposalGenerator=pgen,
         # numberOfThreads = ExperimentSettings().n_threads
         numberOfThreads=1  # TODO only n = 1 implemented
     ).create(lifted_obj)
