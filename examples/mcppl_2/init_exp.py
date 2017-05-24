@@ -78,9 +78,10 @@ def init_trainset(data_folder, cache_folder, train_name):
     # in addition, you can make cutouts here that can be used e.g. for validation
     # here, we add three cutouts that are used during the lifted multicut training
     shape = ds.shape
+    z_dist = 5  # z-distance of the upper and lower cutout
     z0 = 0
-    z1 = 15
-    z2 = shape[0] - 15
+    z1 = z_dist
+    z2 = shape[0] - z_dist
     z3 = shape[0]
     shape = ds.shape
     ds.make_cutout([z0, 0, 0], [z1, shape[1], shape[2]])
@@ -130,10 +131,10 @@ def init_testset(data_folder, cache_folder, test_name):
 
 if __name__ == '__main__':
     train_data_folder, test_data_folder, cache_folder = parse_args()
-    #try:
-    # name / key of your dataset with training data (== having gt)
-    init_trainset(train_data_folder, cache_folder, 'my_train')
-    # name / key of your dataset with test data
-    init_testset(test_data_folder, cache_folder, 'my_test')
-    #except AssertionError as e:
-    #    print_instructions(e)
+    try:
+        # name / key of your dataset with training data (== having gt)
+        init_trainset(train_data_folder, cache_folder, 'my_train')
+        # name / key of your dataset with test data
+        init_testset(test_data_folder, cache_folder, 'my_test')
+    except AssertionError as e:
+        print_instructions(e)

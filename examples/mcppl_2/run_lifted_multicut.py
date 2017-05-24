@@ -1,13 +1,12 @@
 import vigra
 import os
-
-from init_exp import meta_folder
+import argparse
 
 from multicut_src import lifted_multicut_workflow  # , lifted_multicut_workflow_with_defect_correction
 from multicut_src import ExperimentSettings, load_dataset
 
 
-def run_lmc(ds_train_name, ds_test_name, save_path):
+def run_lmc(cache_folder, ds_train_name, ds_test_name, save_path):
 
     assert os.path.exists(os.path.split(save_path)[0]), "Please choose an existing folder to save your results"
 
@@ -24,8 +23,8 @@ def run_lmc(ds_train_name, ds_test_name, save_path):
     # this factor determines the weighting of lifted vs. local edge costs
     gamma = 2.
 
-    ds_train = load_dataset(meta_folder, ds_train_name)
-    ds_test  = load_dataset(meta_folder, ds_test_name)
+    ds_train = load_dataset(cache_folder, ds_train_name)
+    ds_test  = load_dataset(cache_folder, ds_test_name)
 
     # use this for running the mc without defected slices
     mc_nodes, _, _, _ = lifted_multicut_workflow(
@@ -46,10 +45,10 @@ def run_lmc(ds_train_name, ds_test_name, save_path):
     vigra.writeHDF5(segmentation, save_path, 'data', compression='gzip')
 
 
-if __name__ == '__main__':
+def run_experiment(cache_folder):
 
     # this object stores different  experiment settings
-    ExperimentSettings().set_rfcache(os.path.join(meta_folder, "rf_cache"))
+    ExperimentSettings().rf_cache_folder = os.path.join(cache_folder, "rf_cache")
 
     # set to 1. for isotropic data,
     # to the actual degree for mildly anisotropic data
@@ -76,8 +75,22 @@ if __name__ == '__main__':
     ExperimentSettings().weighting_scheme = "z"
 
     # range of lifted edges
-    ExperimentSettings().set_lifted_neighborhood(3)
+    ExperimentSettings().lifted_neighborhood = 3
 
     # path to save the segmentation result, order has to already exist
     save_path = '/path/to/mc_result.h5'
-    run_lmc('my_train', 'my_test', save_path)
+    run_lmc(cache_folder, 'my_train', 'my_test', save_path)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('cache_folder')
+    args = parser.parse_args()
+    cache_folder = args.cache_folder
+    assert os.path.exists(cache_folder), cache_folder
+    return cache_folder
+
+
+if __name__ == '__main__':
+    cache_folder = parse_args()
+    run_experiment(cache_folder)

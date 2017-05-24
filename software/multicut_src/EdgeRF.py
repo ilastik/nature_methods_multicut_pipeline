@@ -49,7 +49,7 @@ class RandomForest(object):
         if use_sklearn:
             self._learn_rf_sklearn(train_data, train_labels)
         else:
-            self._learn_vigra_sklearn(train_data, train_labels)
+            self._learn_rf_vigra(train_data, train_labels)
 
     @classmethod
     def load_from_file(self, file_path, key, n_threads):
