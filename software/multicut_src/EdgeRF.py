@@ -108,7 +108,7 @@ class RandomForest(object):
         return self.rf.predict_proba(test_data)
 
     def _predict_vigra(self, test_data):
-        prediction = self.rf.predict_probabilities(test_data, n_threads=self.n_threads)
+        prediction = self.rf.predictProbabilities(test_data, n_threads=self.n_threads)
         # normalize the prediction
         prediction /= self.n_trees
         # normalize by the number of trees and remove nans
@@ -629,11 +629,12 @@ def learn_and_predict_rf_from_gt(
 
     # strings for caching
     # str for all relevant params
-    paramstr = "_".join(["_".join(feature_list), str(ExperimentSettings().anisotropy_factor),
-        str(ExperimentSettings().learn_2d), str(ExperimentSettings().learn_fuzzy),
-        str(ExperimentSettings().n_trees), str(ExperimentSettings().negative_threshold),
-        str(ExperimentSettings().positive_threshold), str(ExperimentSettings().use_2d),
-        str(ExperimentSettings().use_ignore_mask), str(with_defects), str(use_2rfs)]
+    paramstr = "_".join(
+        ["_".join(feature_list), str(ExperimentSettings().anisotropy_factor),
+         str(ExperimentSettings().learn_2d), str(ExperimentSettings().learn_fuzzy),
+         str(ExperimentSettings().n_trees), str(ExperimentSettings().negative_threshold),
+         str(ExperimentSettings().positive_threshold), str(ExperimentSettings().use_2d),
+         str(ExperimentSettings().use_ignore_mask), str(with_defects), str(use_2rfs)]
     )
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id_train)

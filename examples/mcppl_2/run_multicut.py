@@ -56,6 +56,10 @@ def run_experiment(cache_folder):
     # number of trees used in the random forest
     ExperimentSettings().n_trees = 200
 
+    # use 2 different random forests for xy-and z edges
+    # only makes sense for anisotropic data with flat superpixels
+    ExperimentSettings().use_2rfs = True
+
     # solver used for the multicut
     ExperimentSettings().solver  = "multicut_fusionmoves"
     ExperimentSettings().verbose = True
