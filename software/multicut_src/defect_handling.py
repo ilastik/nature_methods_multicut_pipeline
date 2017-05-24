@@ -11,16 +11,20 @@ from DataSet import _topology_features_impl
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
+    import nifty.graph.rag as nrag
+    import nifty.ground_truth as ngt
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
+        import nifty_with_cplex.ground_truth as ngt
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
+            import nifty_with_gurobi.ground_truth as ngt
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-import nifty.graph.rag as nrag
-import nifty.ground_truth as ngt
 
 #
 # Modified Adjacency
@@ -235,7 +239,9 @@ def modified_adjacency(ds, seg_id):
 
     delete_edges = []  # the z-edges between defected and non-defected nodes that are deleted from the graph
     delete_edge_ids = []
-    ignore_edges = []  # the xy-edges between defected and non-defected nodes, that will be set to maximally repulsive weights
+
+    # the xy-edges between defected and non-defected nodes, that will be set to maximally repulsive weights
+    ignore_edges = []
 
     skip_edges   = []  # the skip edges that run over the defects in z
     skip_ranges  = []  # z-distance of the skip edges
@@ -293,7 +299,8 @@ def modified_adjacency(ds, seg_id):
     skip_ranges = np.array(skip_ranges, dtype="uint32")[idx]
     skip_starts = np.array(skip_starts, dtype="uint32")[idx]
 
-    # if we have a seg mask, the skip edges can have entries connecting the ignore segment with itself, we need to remove these
+    # if we have a seg mask, the skip edges can have entries connecting the ignore segment with itself,
+    # we need to remove these
     if ds.has_seg_mask:
         duplicate_mask = skip_edges[:, 0] != skip_edges[:, 1]
         if not duplicate_mask.all():  # -> we have entries that will be masked out
@@ -325,7 +332,8 @@ def modified_adjacency(ds, seg_id):
     if matches.size:
         assert ds.has_seg_mask, "There should only be duplicates in skip edges and uvs if we have a seg mask"
         # make sure that all removed edges are ignore edges
-        assert all((skip_edges[matches[:, 1]] == ExperimentSettings().ignore_seg_value).any(axis=1)), "All duplicate skip edges should connect to a ignore segment"
+        assert all((skip_edges[matches[:, 1]] == ExperimentSettings().ignore_seg_value).any(axis=1)), \
+            "All duplicate skip edges should connect to a ignore segment"
 
         print "Removing %i skip edges that were duplicates of uv ids." % len(matches)
         # get a mask for the duplicates
@@ -409,7 +417,7 @@ def modified_edge_gt_fuzzy(ds, seg_id, positive_threshold, negative_threshold):
 def modified_edge_features_from_affinity_maps(ds, seg_id, inp_ids, anisotropy_factor, z_direction):
     modified_features = ds.edge_features_from_affinity_maps(seg_id, inp_ids, anisotropy_factor, z_direction)
 
-    skip_edges   = get_skip_edges( ds, seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id)
     skip_starts  = get_skip_starts(ds, seg_id)
     skip_ranges  = get_skip_ranges(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
@@ -516,7 +524,7 @@ def modified_edge_features(ds, seg_id, inp_id, anisotropy_factor):
 
     modified_features = ds.edge_features(seg_id, inp_id, anisotropy_factor)
 
-    skip_edges   = get_skip_edges( ds, seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id)
     skip_starts  = get_skip_starts(ds, seg_id)
     skip_ranges  = get_skip_ranges(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
@@ -558,7 +566,7 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
 
     modified_features = ds.region_features(seg_id, inp_id, uv_ids, lifted_nh)
 
-    skip_edges   = get_skip_edges( ds, seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id)
     skip_ranges  = get_skip_ranges(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
 
@@ -597,7 +605,8 @@ def modified_region_features(ds, seg_id, inp_id, uv_ids, lifted_nh):
 
     assert skip_center_feats.shape[0] == skip_stat_feats.shape[0]
     skip_features = np.concatenate([skip_stat_feats, skip_center_feats], axis=1)
-    assert skip_features.shape[1] == modified_features.shape[1], "%s, %s" % (str(skip_features.shape), str(modified_features.shape))
+    assert skip_features.shape[1] == modified_features.shape[1], \
+        "%s, %s" % (str(skip_features.shape), str(modified_features.shape))
 
     return np.nan_to_num(np.concatenate([modified_features, skip_features], axis=0))
 
@@ -662,7 +671,7 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
 
     modified_features = ds.topology_features(seg_id, use_2d_edges)
 
-    skip_edges   = get_skip_edges( ds, seg_id)
+    skip_edges   = get_skip_edges(ds, seg_id)
     skip_ranges  = get_skip_ranges(ds, seg_id)
     skip_starts  = get_skip_starts(ds, seg_id)
     delete_edge_ids = get_delete_edge_ids(ds, seg_id)
@@ -784,7 +793,9 @@ def _get_replace_slices(defected_slices, shape):
             replace_slice[z2] = z2 + 1 if z2 < shape[0] - 1 else z2 - 3
             replace_slice[z3] = z3 + 2 if z3 < shape[0] - 1 else z3 - 4
         else:
-            raise RuntimeError("Postprocessing is not implemented for more than 4 consecutively defected slices. Go and clean your data!")
+            raise RuntimeError(
+                "Postprocessing is not implemented for more than 4 consecutively defected slices. Clean your data!"
+            )
     return replace_slice
 
 

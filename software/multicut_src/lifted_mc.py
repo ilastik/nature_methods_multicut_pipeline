@@ -19,16 +19,20 @@ from defect_handling import modified_topology_features, modified_edge_indication
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
+    import nifty.graph.rag as nrag
+    import nifty.ground_truth as ngt
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
+        import nifty_with_cplex.ground_truth as ngt
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
+            import nifty_with_gurobi.ground_truth as ngt
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-import nifty.graph.rag as nrag
-import nifty.ground_truth as ngt
 
 
 # returns indices of lifted edges that are ignored due to defects

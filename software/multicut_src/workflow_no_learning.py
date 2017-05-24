@@ -1,7 +1,7 @@
 import vigra
 import numpy as np
 
-from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
+# from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from MCSolver import run_mc_solver
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
@@ -11,15 +11,17 @@ from ExperimentSettings import ExperimentSettings
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:
     import nifty
+    import nifty.graph.rag as nrag
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-import nifty.graph.rag as nrag
 
 
 def accumulate_affinities_over_edges(
@@ -70,7 +72,8 @@ def accumulate_affinities_over_edges(
         ExperimentSettings().n_threads
     )
     assert accumulated.shape[0] == accumulated_z.shape[0], "%i, %i" % (accumulated.shape[0], accumulated_z.shape[0])
-    assert accumulated.shape[0] == edge_indications.shape[0], "%s, %s" % (str(accumulated.shape), str(edge_indications.shape))
+    assert accumulated.shape[0] == edge_indications.shape[0], \
+        "%s, %s" % (str(accumulated.shape), str(edge_indications.shape))
 
     # split xy and z edges accordingly (0 indicates z-edges !)
     accumulated[edge_indications == 0] = accumulated_z[edge_indications == 0]
@@ -89,7 +92,9 @@ def costs_from_affinities(
         feature='max',
         beta=.5,
         weighting_scheme='z',
-        #  FIXME this is a magic parameter determining the strength of the weighting, I once determined 16 as a good value by grid search (on a different dataset....), this should be determined again!
+        # FIXME this is a magic parameter determining the strength of the weighting,
+        # I once determined 16 as a good value by grid search (on a different dataset....),
+        # this should be determined again!
         weight=16,
         with_defcts=False,
         z_direction=2
@@ -118,23 +123,23 @@ def costs_from_affinities(
 
     return costs
 
-    #edge_sizes = ds.topology_features(seg_id, False)[:,0]
+    # edge_sizes = ds.topology_features(seg_id, False)[:,0]
 
-    ## weight with the edge lens according to the weighting scheme
-    #if weighting_scheme == "z":
-    #    print "Weighting Z edges"
-    #    costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
-    #elif weighting_scheme == "xyz":
-    #    print "Weighting xyz edges"
-    #    costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
-    #elif weighting_scheme == "all":
-    #    print "Weighting all edges"
-    #    costs = weight_all_edges(costs, edge_sizes, weight)
-    #else:
-    #    print "Edges are not weighted"
+    # # weight with the edge lens according to the weighting scheme
+    # if weighting_scheme == "z":
+    #     print "Weighting Z edges"
+    #     costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
+    # elif weighting_scheme == "xyz":
+    #     print "Weighting xyz edges"
+    #     costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
+    # elif weighting_scheme == "all":
+    #     print "Weighting all edges"
+    #     costs = weight_all_edges(costs, edge_sizes, weight)
+    # else:
+    #     print "Edges are not weighted"
 
-    #assert not np.isinf(costs).any()
-    #return costs
+    # assert not np.isinf(costs).any()
+    # return costs
 
 
 # calculate the costs for lifted edges from the costs of the local edges

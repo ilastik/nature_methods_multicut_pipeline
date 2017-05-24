@@ -7,7 +7,6 @@ import os
 import h5py
 
 # relative imports from top level dir
-#from ..MCSolverImpl import probs_to_energies
 from ..Postprocessing import remove_small_segments
 from ..lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh
 from ..EdgeRF import RandomForest
@@ -18,20 +17,22 @@ from ..tools import find_matching_row_indices
 from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, \
     extract_local_graph_from_segmentation
 from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, \
-    compute_border_contacts_old, compute_border_contacts
+    compute_border_contacts_old  # , compute_border_contacts
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
+    import nifty.graph.rag as nrag
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-import nifty.graph.rag as nrag
 
 
 def extract_paths_from_segmentation(
@@ -292,7 +293,10 @@ def train_random_forest_for_merges(
                 # Calculate the new distance transform and replace it in the dataset inputs
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
                 dt  = distance_transform(seg, [1., 1., ExperimentSettings().anisotropy_factor])
-                # NOTE IMPORTANT: We assume that the distance transform always has the last inp_id and that a (dummy) dt was already added in the beginning
+
+                # NOTE IMPORTANT:
+                # We assume that the distance transform always has the last inp_id and
+                # that a (dummy) dt was already added in the beginning
                 current_ds.replace_inp_from_data(current_ds.n_inp - 1, dt, clear_cache=False)
                 # we delete all filters based on the distance transform
                 current_ds.clear_filters(current_ds.n_inp - 1)
@@ -395,11 +399,11 @@ def compute_false_merges(
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
 
-    # Cache features for debugging TODO deactivated for now
-    #if not os.path.exists(paths_save_folder + '../debug'):
-    #    os.mkdir(paths_save_folder + '../debug')
-    #with open(paths_save_folder + '../debug/features_test.pkl', mode='w') as f:
-    #    pickle.dump(features_test, f)
+    #  Cache features for debugging TODO deactivated for now
+    # if not os.path.exists(paths_save_folder + '../debug'):
+    #     os.mkdir(paths_save_folder + '../debug')
+    # with open(paths_save_folder + '../debug/features_test.pkl', mode='w') as f:
+    #     pickle.dump(features_test, f)
 
     return paths_test, rf.predict_probabilities(features_test)[:, 1], paths_to_objs_test
 
@@ -641,7 +645,7 @@ def resolve_merges_with_lifted_edges(
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO disabled for now
-        #with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+        # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
         #    pickle.dump(features, f)
 
         # compute the lifted weights from rf probabilities
@@ -774,7 +778,7 @@ def resolve_merges_with_lifted_edges_global(
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO not caching for now
-        #with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+        # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
         #    pickle.dump(features, f)
 
         # compute the lifted weights from rf probabilities
