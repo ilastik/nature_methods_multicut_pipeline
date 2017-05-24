@@ -6,9 +6,10 @@ from multicut_src import lifted_multicut_workflow  # , lifted_multicut_workflow_
 from multicut_src import ExperimentSettings, load_dataset
 
 
-def run_lmc(cache_folder, ds_train_name, ds_test_name, save_path):
+def run_lmc(cache_folder, ds_train_name, ds_test_name):
 
-    assert os.path.exists(os.path.split(save_path)[0]), "Please choose an existing folder to save your results"
+    # path to save the segmentation result
+    save_path = os.path.join(cache_folder, 'lmc_segmentation.h5')
 
     # if you have added multiple segmentations, you can choose on which one to run
     # experiments with the seg_id
@@ -81,9 +82,7 @@ def run_experiment(cache_folder):
     # range of lifted edges
     ExperimentSettings().lifted_neighborhood = 3
 
-    # path to save the segmentation result, order has to already exist
-    save_path = '/path/to/mc_result.h5'
-    run_lmc(cache_folder, 'my_train', 'my_test', save_path)
+    run_lmc(cache_folder, 'my_train', 'my_test')
 
 
 def parse_args():

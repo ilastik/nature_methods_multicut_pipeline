@@ -8,7 +8,8 @@ from multicut_src import ExperimentSettings, load_dataset
 
 def run_mc(cache_folder, ds_train_name, ds_test_name, save_path):
 
-    assert os.path.exists(os.path.split(save_path)[0]), "Please choose an existing folder to save your results"
+    # path to save the segmentation result
+    save_path = os.path.join(cache_folder, 'mc_segmentation.h5')
 
     # if you have added multiple segmentations, you can choose on which one to run
     # experiments with the seg_id
@@ -70,9 +71,7 @@ def run_experiment(cache_folder):
     # 'all' for isotropic data with 3d superpixel
     ExperimentSettings().weighting_scheme = "z"
 
-    # path to save the segmentation result, order has to already exist
-    save_path = os.path.join(cache_folder, 'mc_segmentation.h5')
-    run_mc(cache_folder, 'my_train', 'my_test', save_path)
+    run_mc(cache_folder, 'my_train', 'my_test')
 
 
 def parse_args():
