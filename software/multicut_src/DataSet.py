@@ -159,7 +159,6 @@ class DataSet(object):
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
 
-
     def __str__(self):
         return self.ds_name
 
@@ -536,7 +535,8 @@ class DataSet(object):
         self.save()
 
     def seg(self, seg_id):
-        assert seg_id < self.n_seg, "Trying to read seg_id %i but there are only %i segmentations" % (seg_id, self.n_seg)
+        assert seg_id < self.n_seg, \
+            "Trying to read seg_id %i but there are only %i segmentations" % (seg_id, self.n_seg)
         internal_seg_path = os.path.join(self.cache_folder, "seg%i.h5" % seg_id)
         if os.path.exists(internal_seg_path):
             return vigra.readHDF5(internal_seg_path, "data")
@@ -569,7 +569,6 @@ class DataSet(object):
         self.external_gt_key  = gt_key
         self.save()
 
-
     # add grountruth
     def add_gt_from_data(self, gt):
         assert isinstance(gt, np.ndarray)
@@ -581,7 +580,6 @@ class DataSet(object):
         self.external_gt_path = internal_gt_path
         self.external_gt_key  = 'data'
         self.save()
-
 
     # get the groundtruth
     def gt(self):
@@ -596,7 +594,6 @@ class DataSet(object):
             vigra.writeHDF5(gt, internal_gt_path, 'data', compression=ExperimentSettings().compression)
             return gt
 
-
     def add_seg_mask(self, mask_path, mask_key):
         assert self.has_raw
         assert not self.has_seg_mask
@@ -606,7 +603,6 @@ class DataSet(object):
         self.external_seg_mask_path = mask_path
         self.external_seg_mask_key  = mask_key
         self.save()
-
 
     def add_seg_mask_from_data(self, mask):
         assert self.has_raw
@@ -618,7 +614,6 @@ class DataSet(object):
         self.external_seg_mask_path = internal_mask_path
         self.external_seg_mask_key  = 'data'
         self.save()
-
 
     def seg_mask(self):
         assert self.has_seg_mask
@@ -634,7 +629,6 @@ class DataSet(object):
             vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
             return mask
 
-
     def add_defect_mask(self, mask_path, mask_key):
         assert self.external_defect_mask_path is None
         self._check_input(mask_path, mask_key)
@@ -643,7 +637,6 @@ class DataSet(object):
         self.external_defect_mask_path = mask_path
         self.external_defect_mask_key  = mask_key
         self.save()
-
 
     def add_defect_mask_from_data(self, mask):
         assert self.external_defect_mask_path is None
@@ -654,7 +647,6 @@ class DataSet(object):
         self.external_defect_mask_path = internal_mask_path
         self.external_defect_mask_key  = 'data'
         self.save()
-
 
     def defect_mask(self):
         assert self.external_defect_mask_path is not None
@@ -727,7 +719,6 @@ class DataSet(object):
         else:
             return vigra.filters.eccentricityCenters(seg)
 
-
     #
     # Feature Calculation
     #
@@ -746,7 +737,7 @@ class DataSet(object):
         sigmas=[1.6, 4.2, 8.3]
     ):
 
-        import fastfilters # very weird, if we built nifty with debug, this causes a segfault
+        import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
@@ -821,7 +812,6 @@ class DataSet(object):
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data=filter_res, chunks=chunks)
 
-
             def _calc_filter_3d(filter_fu, sig, filt_path):
                 filter_res = filter_fu(inp, sig)
                 assert not np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
@@ -895,7 +885,6 @@ class DataSet(object):
                 names_return.extend(["_".join(["EdgeFeature", filt_name, "c%i" % c, suffix]) for suffix in suffixes])
         return np.concatenate(feats_return, axis=1), names_return
 
-
     # filters from affinity maps for xy and z edges
     # z-direction determines how the z features from z edges are accumulated:
     # 0 -> features are accumulated both from z and z + 1
@@ -944,7 +933,6 @@ class DataSet(object):
         assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" % (edge_features.shape[0], rag.numberOfEdges)
         return np.nan_to_num(edge_features)
 
-
     # Features from different filters, accumulated over the edges
     @cacher_hdf5("feature_folder", True)
     def edge_features(self, seg_id, inp_id, anisotropy_factor):
@@ -991,7 +979,6 @@ class DataSet(object):
 
         return np.nan_to_num(edge_features)
 
-
     # get the name of the edge features
     def edge_features_names(self, seg_id, inp_id, anisotropy_factor):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
@@ -1000,7 +987,6 @@ class DataSet(object):
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
         assert os.path.exists(save_file)
         return vigra.readHDF5(save_file, "edge_features_names")
-
 
     # get region statistics with the vigra region feature extractor
     @cacher_hdf5(folder="feature_folder")
@@ -1046,7 +1032,6 @@ class DataSet(object):
         vigra.writeHDF5(reg_center_names, save_path, "region_center_names")
 
         return statistics
-
 
     # the argument 'with_defects' is needed for correctly caching the lmc features
     @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
@@ -1155,7 +1140,6 @@ class DataSet(object):
 
         return allFeat
 
-
     # get the names of the region features
     def region_features_names(self, seg_id, inp_id, lifted_nh):
 
@@ -1172,7 +1156,6 @@ class DataSet(object):
 
         return vigra.readHDF5(save_file, "region_features_names")
 
-
     # FIXME this is undefined for non-flat superpixel, but does not crash for 3d superpixel
     @cacher_hdf5()
     def node_z_coord(self, seg_id):
@@ -1182,7 +1165,6 @@ class DataSet(object):
             lz = seg[z, :, :]
             nz[lz] = z
         return nz
-
 
     # find the edge-type indications
     # 0 for z-edges, 1 for xy-edges
@@ -1197,7 +1179,6 @@ class DataSet(object):
         # xy edges (same z coordinate are) set to 1
         # z  edges (different z coordinates) set to 0
         return (z_u == z_v).astype('uint8')
-
 
     # Features from edge_topology
     @cacher_hdf5("feature_folder")
@@ -1230,7 +1211,6 @@ class DataSet(object):
 
         return topo_feats
 
-
     # get the names of the region features
     def topology_features_names(self, seg_id, use_2d_edges):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
@@ -1255,7 +1235,6 @@ class DataSet(object):
         v_gt = node_gt[uv_ids[:, 1]]
         return (u_gt != v_gt).astype('uint8')
 
-
     # get edge gt from thresholding the overlaps
     # edges with ovlp > positive_threshold are taken as positive trainging examples
     # edges with ovlp < negative_threshold are taken as negative training examples
@@ -1274,7 +1253,6 @@ class DataSet(object):
         edge_gt_fuzzy[edge_overlaps > positive_threshold] = 1.
         edge_gt_fuzzy[edge_overlaps < negative_threshold] = 0.
         return edge_gt_fuzzy
-
 
     # return mask that hides edges that lie between 2 superpixel
     # which are projected to an ignore label
@@ -1304,7 +1282,6 @@ class DataSet(object):
         print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
         return ignore_mask
 
-
     # return mask that hides edges that lie between 2 superpixel for lifted edges
     # which are projected to an ignore label
     # -> we don t want to learn on these!
@@ -1332,7 +1309,6 @@ class DataSet(object):
         print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
         return ignore_mask
 
-
     # get the projection of the gt to the segmentation
     @cacher_hdf5()
     def seg_gt(self, seg_id):
@@ -1345,7 +1321,6 @@ class DataSet(object):
         seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads)
         assert seg_gt.shape == self.shape
         return seg_gt
-
 
     # get the projection of a multicut result to the segmentation
     def project_mc_result(self, seg_id, mc_node):
@@ -1366,10 +1341,14 @@ class DataSet(object):
         assert self.has_raw, "Need at least raw data to make a cutout"
         assert len(start) == 3
         assert len(stop)  == 3
-        assert start[0] < stop[0] and start[1] < stop[1] and start[2] < stop[2]
+
+        assert start[0] < stop[0] and start[1] < stop[1] and start[2] < stop[2], \
+            "%s, %s" % (str(start), str(stop))
+
         assert stop[0] <= self.shape[0] and \
             stop[1] <= self.shape[1] and \
-            stop[2] <= self.shape[2], "%s, %s" % (str(self.shape), str(stop))
+            stop[2] <= self.shape[2], \
+            "%s, %s" % (str(self.shape), str(stop))
 
         cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
 
@@ -1426,7 +1405,6 @@ class DataSet(object):
 
         self.cutouts.append(cutout_name)
         self.save()
-
 
     def get_cutout(self, cutout_id):
         assert cutout_id < self.n_cutouts, str(cutout_id) + " , " + str(self.n_cutouts)
@@ -1506,7 +1484,6 @@ class Cutout(DataSet):
         inp_key  = self.external_inp_keys[inp_id]
         with h5py.File(inp_path) as f:
             return f[inp_key][self.bb]
-
 
     # we get the paths to the filters of the top dataset
     def make_filters(

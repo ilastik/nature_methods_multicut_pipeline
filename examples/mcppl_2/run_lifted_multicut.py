@@ -3,8 +3,9 @@ import os
 
 from init_exp import meta_folder
 
-from multicut_src import lifted_multicut_workflow, lifted_multicut_workflow_with_defect_correction
+from multicut_src import lifted_multicut_workflow  # , lifted_multicut_workflow_with_defect_correction
 from multicut_src import ExperimentSettings, load_dataset
+
 
 def run_lmc(ds_train_name, ds_test_name, save_path):
 
@@ -28,27 +29,31 @@ def run_lmc(ds_train_name, ds_test_name, save_path):
 
     # use this for running the mc without defected slices
     mc_nodes, _, _, _ = lifted_multicut_workflow(
-            ds_train, ds_test,
-            seg_id, seg_id,
-            feature_list, feature_list_lifted,
-            gamma = gamma)
+        ds_train, ds_test,
+        seg_id, seg_id,
+        feature_list, feature_list_lifted,
+        gamma=gamma
+    )
 
     # use this for running the mc with defected slices
-    #mc_nodes, _, _, _ = lifted_multicut_workflow_with_defect_correction(
-    #        ds_train, ds_test,
-    #        seg_id, seg_id,
-    #        feature_list, feature_list_lifted,
-    #        gamma = gamma)
+    # mc_nodes, _, _, _ = lifted_multicut_workflow_with_defect_correction(
+    #     ds_train, ds_test,
+    #     seg_id, seg_id,
+    #     feature_list, feature_list_lifted,
+    #     gamma=gamma)
 
     segmentation = ds_test.project_mc_result(seg_id, mc_nodes)
-    vigra.writeHDF5(segmentation, save_path, 'data', compression = 'gzip')
+    vigra.writeHDF5(segmentation, save_path, 'data', compression='gzip')
+
 
 if __name__ == '__main__':
 
     # this object stores different  experiment settings
     ExperimentSettings().set_rfcache(os.path.join(meta_folder, "rf_cache"))
 
-    # set to 1. for isotropic data, to the actual degree for mildly anisotropic data or to > 20. to compute filters in 2d
+    # set to 1. for isotropic data,
+    # to the actual degree for mildly anisotropic data
+    # or to > 20. to compute filters in 2d
     ExperimentSettings().anisotropy_factor = 25.
 
     # set to true for segmentations with flat superpixels
