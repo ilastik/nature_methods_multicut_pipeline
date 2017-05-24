@@ -6,7 +6,7 @@ from multicut_src import multicut_workflow  # , multicut_workflow_with_defect_co
 from multicut_src import ExperimentSettings, load_dataset
 
 
-def run_mc(cache_folder, ds_train_name, ds_test_name, save_path):
+def run_mc(cache_folder, ds_train_name, ds_test_name):
 
     # path to save the segmentation result
     save_path = os.path.join(cache_folder, 'mc_segmentation.h5')
