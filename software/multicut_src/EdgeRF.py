@@ -206,7 +206,7 @@ def local_feature_aggregator_with_defects(
     if "extra_input" in feature_list:
         features.append(modified_edge_features(ds, seg_id, 2, anisotropy_factor))
     if "reg" in feature_list:
-        features.append(modified_region_features(ds, seg_id, 0, ds.uv_is(seg_id), False))
+        features.append(modified_region_features(ds, seg_id, 0, ds.uv_ids(seg_id), False))
     if "topo" in feature_list:
         features.append(modified_topology_features(ds, seg_id, use_2d))
 
