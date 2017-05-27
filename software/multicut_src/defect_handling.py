@@ -43,12 +43,12 @@ def defects_to_nodes(ds, seg_id):
 
     # TODO test the heuristics
     def defects_to_nodes_z(z):
-        defect_mask_z = defect_mask[:, :, z]
+        defect_mask_z = defect_mask[z]
         where_defect = defect_mask_z > 0
         n_defect_pix = np.sum(where_defect)
         completely_defected = False
         if n_defect_pix > 0:
-            seg_z = seg[:, :, z]
+            seg_z = seg[z]
             # heuristics to determine completely defected slice
             # -> all nodes are set to defected and this slice will be replaced in postprocessing
             if n_defect_pix > .5 * defect_mask_z.size:
@@ -64,9 +64,9 @@ def defects_to_nodes(ds, seg_id):
         return list(defect_nodes_z), len(defect_nodes_z) * [z], completely_defected
 
     completely_defected_slices = []
-    with futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
         tasks = []
-        for z in xrange(seg.shape[2]):
+        for z in xrange(seg.shape[0]):
             tasks.append(executor.submit(defects_to_nodes_z, z))
         defect_nodes = []
         nodes_z      = []
@@ -169,7 +169,10 @@ def get_skip_starts(ds, seg_id):
 def compute_skip_edges_z(
         z,
         seg,
-        defect_node_dict):
+        defect_node_dict
+):
+
+    print "Computing skip edges for slice %i" % z
 
     def skip_edges_for_nodes(z_up, z_dn, nodes_dn, mask):
         skip_range = z_up - z_dn
@@ -178,8 +181,8 @@ def compute_skip_edges_z(
 
         for node_dn in nodes_dn:
             # find the connected nodes in the upper slice
-            mask_dn = seg[:, :, z_dn][mask] == node_dn
-            seg_up = seg[:, :, z_up][mask]
+            mask_dn = seg[z_dn][mask] == node_dn
+            seg_up = seg[z_up][mask]
             connected_nodes = np.unique(seg_up[mask_dn])
             # if any of the connected nodes are defected go to the next slice
             if defect_nodes_up.size:
@@ -197,9 +200,9 @@ def compute_skip_edges_z(
 
     for defect_node in defect_nodes_z:
         # get the mask
-        mask = seg[:, :, z] == defect_node
+        mask = seg[z] == defect_node
         # find the lower nodes overlapping with the defect in the lower slice
-        nodes_dn = np.unique(seg[:, :, z - 1][mask])
+        nodes_dn = np.unique(seg[z - 1][mask])
         # discard defected nodes in lower slice (if present) because they were already taken care of
         nodes_dn = np.array([n_dn for n_dn in nodes_dn if n_dn not in defect_nodes_z])
         # if we have lower nodes left, we look for skip edges
@@ -217,7 +220,7 @@ def modified_adjacency(ds, seg_id):
     defect_nodes = defects_to_nodes(ds, seg_id)
     if not ds.has_defects:
         return np.array([0])
-    nodes_z      = get_defect_node_z(ds, seg_id)
+    nodes_z = get_defect_node_z(ds, seg_id)
 
     # make sure that z is monotonically increasing (not strictly!)
     assert np.all(np.diff(nodes_z.astype(int)) >= 0), "Defected slice index is not increasing monotonically!"
@@ -281,7 +284,7 @@ def modified_adjacency(ds, seg_id):
         # get the skip edges between adjacent slices
         # skip for first or last slice or slice with lower defect
         has_lower_defect = True if z in has_lower_defect_list else False
-        if z == 0 or z == seg.shape[2] - 1 or has_lower_defect:
+        if z == 0 or z == seg.shape[0] - 1 or has_lower_defect:
             continue
 
         skip_edges_z, skip_ranges_z = compute_skip_edges_z(z, seg, defect_node_dict)
@@ -471,7 +474,6 @@ def _get_skip_edge_features_for_slices(
     targets = unique_ranges + z_dn
 
     n_threads = ExperimentSettings().n_threads
-    print "Computing skip edge features from slice ", z_dn
     for i, z_up in enumerate(targets):
         print "to", z_up
 
@@ -720,7 +722,8 @@ def modified_probs_to_energies(
         weighting_scheme,
         weight,
         beta,
-        feat_cache):
+        feat_cache
+):
 
     assert edge_probs.shape[0] == uv_ids.shape[0], "%s, %s" % (str(edge_probs.shape), str(uv_ids.shape))
 
@@ -807,7 +810,7 @@ def postprocess_segmentation(ds, seg_id, seg_result):
     replace_slices = _get_replace_slices(defect_slices, seg_result.shape)
     for defect_slice in defect_slices:
         replace = replace_slices[defect_slice]
-        seg_result[:, :, defect_slice] = seg_result[:, :, replace]
+        seg_result[defect_slice] = seg_result[replace]
     return seg_result
 
 
@@ -821,7 +824,7 @@ def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
     for insrt in replace_slices:
         repl = replace_slices[insrt]
         repl += total_insertions
-        slice_repl = seg_result[:, :, repl]
-        np.insert(seg_result, slice_repl, axis=2)
+        slice_repl = seg_result[repl]
+        np.insert(seg_result, slice_repl, axis=0)
         total_insertions += 1
     return seg_result
