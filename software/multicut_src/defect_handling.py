@@ -694,20 +694,25 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
     n_feats = modified_features.shape[1]
     skip_topo_features = np.zeros((skip_edges.shape[0], n_feats))
 
-    for z in lower_slices:
-        _get_skip_topo_features_for_slices(
-            z,
-            seg,
-            skip_edge_pairs_to_slice[z],
-            skip_edge_ranges_to_slice[z],
-            skip_edge_indices_to_slice[z],
-            use_2d_edges,
-            skip_topo_features
-        )
+    # only compute extra features if 'use_2d_edges' is true
+    # this is currently not supported -> need working cgp
+    if use_2d_edges:
 
-    skip_topo_features[np.isinf(skip_topo_features)] = 0.
-    skip_topo_features[np.isneginf(skip_topo_features)] = 0.
-    skip_topo_features = np.nan_to_num(skip_topo_features)
+        for z in lower_slices:
+            _get_skip_topo_features_for_slices(
+                z,
+                seg,
+                skip_edge_pairs_to_slice[z],
+                skip_edge_ranges_to_slice[z],
+                skip_edge_indices_to_slice[z],
+                use_2d_edges,
+                skip_topo_features
+            )
+
+        skip_topo_features[np.isinf(skip_topo_features)] = 0.
+        skip_topo_features[np.isneginf(skip_topo_features)] = 0.
+        skip_topo_features = np.nan_to_num(skip_topo_features)
+
     assert skip_topo_features.shape[1] == modified_features.shape[1]
     return np.concatenate([modified_features, skip_topo_features], axis=0)
 
