@@ -1449,6 +1449,24 @@ class DataSet(object):
 
         volumina_n_layer(data, labels)
 
+    # TODO include volumina_viewer in conda package
+    def view_raw(self, extra_data=None):
+        assert self.has_raw
+        if extra_data is not None:
+            assert isinstance(extra_data, list)
+
+        from volumina_viewer import volumina_n_layer
+        data = [self.inp(0).astype('float32')]
+        labels = ['raw']
+
+        if extra_data is not None:
+            for ii, extra in enumerate(extra_data):
+                assert extra.shape == self.shape, "%s, %s" % (str(extra.shape), str(self.shape))
+                data.append(extra)
+                labels.append('external_data_%i' % ii)
+
+        volumina_n_layer(data, labels)
+
 
 # cutout from a given Dataset, used for cutouts and tesselations
 # calls the cache of the parent dataset for inp, seg, gt and filter

@@ -96,13 +96,18 @@ def costs_from_affinities(
         # I once determined 16 as a good value by grid search (on a different dataset....),
         # this should be determined again!
         weight=16,
-        with_defcts=False,
-        z_direction=2
+        with_defcts=False
 ):
 
     print "Computing mc costs from affinities"
     # NOTE we need to invert, because we have affinity maps, not boundary probabilities
-    costs = 1. - accumulate_affinities_over_edges(ds, seg_id, inp_ids, feature, z_direction)
+    costs = 1. - accumulate_affinities_over_edges(
+        ds,
+        seg_id,
+        inp_ids,
+        feature,
+        ExperimentSettings().affinity_z_direction
+    )
 
     # make sure that we are in a valid range of values
     assert (costs >= 0.).all(), str(costs.min())
@@ -205,8 +210,7 @@ def multicut_workflow_no_learning(
         ExperimentSettings().beta_local,
         ExperimentSettings().weighting_scheme,
         ExperimentSettings().weight,
-        with_defects,
-        ExperimentSettings().affinity_z_direction
+        with_defects
     )
 
     # if we have a seg mask set edges to the ignore segment to be max repulsive
