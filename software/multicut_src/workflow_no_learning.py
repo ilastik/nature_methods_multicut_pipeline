@@ -70,8 +70,8 @@ def accumulate_affinities_over_edges(
         aff_z.max(),
         z_direction,
         ExperimentSettings().n_threads
-    )
-    assert accumulated.shape[0] == accumulated_z.shape[0], "%i, %i" % (accumulated.shape[0], accumulated_z.shape[0])
+    )[:, index]
+    assert accumulated.shape == accumulated_z.shape, "%s, %s" % (accumulated.shape, accumulated_z.shape)
     assert accumulated.shape[0] == edge_indications.shape[0], \
         "%s, %s" % (str(accumulated.shape), str(edge_indications.shape))
 
@@ -216,7 +216,7 @@ def multicut_workflow_no_learning(
     # if we have a seg mask set edges to the ignore segment to be max repulsive
     if ds_test.has_seg_mask:
         max_repulsive = 2 * costs.min()
-        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
+        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).any(axis=1)
         costs[ignore_ids] = max_repulsive
 
     return run_mc_solver(n_var, uv_ids, costs)
