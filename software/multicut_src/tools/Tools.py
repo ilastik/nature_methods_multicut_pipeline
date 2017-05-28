@@ -81,14 +81,15 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
     return actualDecorator
 
 
+# FIXME this is deprecated, use nrag.ragCoordinates.edgesToVolume
+# properly !
 # for visualizing edges
 def edges_to_volume(rag, edges, ignore_z=False):
 
     assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
     volume = np.zeros(rag.shape, dtype='uint32')
-    edge_coordinates = nrag.edgeCoordinates(rag)
-    assert len(edge_coordinates) == rag.numberOfEdges, "%i, %i" % (len(edge_coordinates), rag.numberOfEdges)
+    rag_coords = nrag.ragCoordinates(rag, numberOfThreads=ExperimentSettings().n_threads)
 
     for edge_id in xrange(rag.numberOfEdges):
 
@@ -96,7 +97,7 @@ def edges_to_volume(rag, edges, ignore_z=False):
         if edges[edge_id] == 0:
             continue
 
-        edge_coords = edge_coordinates[edge_id]
+        edge_coords = rag_coords.edgeCoordinates(edge_id)
         if ignore_z:
             unique_z = np.unique(edge_coords[:, 0])
             if len(unique_z) > 1:

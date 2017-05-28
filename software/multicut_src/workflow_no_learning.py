@@ -126,8 +126,6 @@ def costs_from_affinities(
     assert not np.isinf(costs).any()
     print "Cost range after scaling:", costs.min(), costs.max()
 
-    return costs
-
     # edge_sizes = ds.topology_features(seg_id, False)[:,0]
 
     # # weight with the edge lens according to the weighting scheme
@@ -144,7 +142,15 @@ def costs_from_affinities(
     #     print "Edges are not weighted"
 
     # assert not np.isinf(costs).any()
-    # return costs
+
+    # if we have a seg mask set edges to the ignore segment to be max repulsive
+    if ds.has_seg_mask:
+        uv_ids = ds.uv_ids(seg_id)
+        max_repulsive = 2 * costs.min()
+        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).any(axis=1)
+        costs[ignore_ids] = max_repulsive
+
+    return costs
 
 
 # calculate the costs for lifted edges from the costs of the local edges
@@ -212,12 +218,6 @@ def multicut_workflow_no_learning(
         ExperimentSettings().weight,
         with_defects
     )
-
-    # if we have a seg mask set edges to the ignore segment to be max repulsive
-    if ds_test.has_seg_mask:
-        max_repulsive = 2 * costs.min()
-        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).any(axis=1)
-        costs[ignore_ids] = max_repulsive
 
     return run_mc_solver(n_var, uv_ids, costs)
 
