@@ -220,7 +220,7 @@ def lifted_multicut_workflow(
         seg_id_test,
         edgeZdistance,
         ExperimentSettings().lifted_neighborhood,
-        ExperimentSettings().beta_global,
+        ExperimentSettings().beta_lifted,
         gamma
     )
 
@@ -315,7 +315,7 @@ def lifted_multicut_workflow_with_defect_correction(
         seg_id_test,
         edgeZdistance,
         ExperimentSettings().lifted_neighborhood,
-        ExperimentSettings().beta_global,
+        ExperimentSettings().beta_lifted,
         gamma,
         True
     )

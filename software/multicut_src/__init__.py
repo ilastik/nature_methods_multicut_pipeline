@@ -21,4 +21,4 @@ from defect_handling import get_delete_edges, get_skip_edges, get_skip_starts, g
 
 from tools import edges_to_volume, find_matching_row_indices
 
-from workflow_no_learning import multicut_workflow_no_learning, costs_from_affinities, mala_clustering_workflow
+from workflow_no_learning import multicut_workflow_no_learning, costs_from_affinities, mala_clustering_workflow, lifted_multicut_workflow_no_learning

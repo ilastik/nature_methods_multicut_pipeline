@@ -1457,7 +1457,9 @@ class DataSet(object):
 
         from volumina_viewer import volumina_n_layer
         data = [self.inp(0).astype('float32')]
-        labels = ['raw']
+        data.append(self.inp(1))
+        data.append(self.inp(2))
+        labels = ['raw', 'aff_xy', 'aff_z']
 
         if extra_data is not None:
             for ii, extra in enumerate(extra_data):

@@ -66,8 +66,8 @@ class ExperimentSettings(object):
         self.weight = 16.
         # beta for the normal (local) multicut
         self.beta_local   = 0.5
-        # beta for the lifteed multicut
-        self.beta_global   = 0.5
+        # beta for the lifted multicut
+        self.beta_lifted  = 0.5
 
         # mc fusion settings
         self.seed_fraction = 0.001  # seed fraction for fusion moves

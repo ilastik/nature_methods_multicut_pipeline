@@ -5,6 +5,8 @@ from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from MCSolver import run_mc_solver
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
+from lifted_mc import optimize_lifted, compute_and_save_lifted_nh
+
 # for future uses
 # from tools import cacher_hdf5
 
@@ -96,12 +98,13 @@ def costs_from_affinities(
         # I once determined 16 as a good value by grid search (on a different dataset....),
         # this should be determined again!
         weight=16,
-        with_defcts=False
+        with_defcts=False,
+        return_probs=False
 ):
 
     print "Computing mc costs from affinities"
     # NOTE we need to invert, because we have affinity maps, not boundary probabilities
-    costs = 1. - accumulate_affinities_over_edges(
+    probs = 1. - accumulate_affinities_over_edges(
         ds,
         seg_id,
         inp_ids,
@@ -110,10 +113,11 @@ def costs_from_affinities(
     )
 
     # make sure that we are in a valid range of values
-    assert (costs >= 0.).all(), str(costs.min())
-    assert (costs <= 1.).all(), str(costs.max())
+    assert (probs >= 0.).all(), str(probs.min())
+    assert (probs <= 1.).all(), str(probs.max())
 
-    print "Cost range before scaling:", costs.min(), costs.max()
+    print "Cost range before scaling:", probs.min(), probs.max()
+    costs = probs.copy()
 
     # map affinities to weight space
     # first, scale to 0.001, 1. - 0.001 to avoid diverging costs
@@ -142,7 +146,7 @@ def costs_from_affinities(
     else:
         print "Edges are not weighted"
 
-    # assert not np.isinf(costs).any()
+    assert not np.isinf(costs).any()
 
     # if we have a seg mask set edges to the ignore segment to be max repulsive
     if ds.has_seg_mask:
@@ -151,7 +155,10 @@ def costs_from_affinities(
         ignore_ids = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
         costs[ignore_ids] = max_repulsive
 
-    return costs
+    if return_probs:
+        return costs, probs
+    else:
+        return costs
 
 
 # calculate the costs for lifted edges from the costs of the local edges
@@ -221,6 +228,56 @@ def multicut_workflow_no_learning(
     )
 
     return run_mc_solver(n_var, uv_ids, costs)
+
+
+# TODO implement with defects
+# multicut on the test dataset, weights learned with a rf on the train dataset
+def lifted_multicut_workflow_no_learning(
+        ds_test,
+        seg_id,
+        inp_ids,
+        local_feature,
+        liftd_feature,
+        with_defects=False
+):
+
+    # this should also work for cutouts, because they inherit from dataset
+    assert isinstance(ds_test, DataSet)
+
+    print "Running Lifted Multicut with weights from affinities"
+
+    # get all parameters for the multicut
+    uv_ids = ds_test.uv_ids(seg_id)
+
+    # weights for the multicut
+    local_costs, local_probs = costs_from_affinities(
+        ds_test,
+        seg_id,
+        inp_ids,
+        local_feature,
+        ExperimentSettings().beta_local,
+        ExperimentSettings().weighting_scheme,
+        ExperimentSettings().weight,
+        with_defects,
+        return_probs=True
+    )
+
+    lifted_uv_ids = compute_and_save_lifted_nh(
+        ds_test,
+        seg_id,
+        ExperimentSettings().lifted_neighborhood,
+        with_defects
+    )
+
+    lifted_costs = lifted_multicut_costs_from_shortest_paths(
+        ds_test,
+        seg_id,
+        local_probs,
+        lifted_uv_ids,
+        liftd_feature
+    )
+
+    return optimize_lifted(uv_ids, lifted_uv_ids, local_costs, lifted_costs)
 
 
 def mala_clustering_workflow(
