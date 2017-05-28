@@ -147,7 +147,7 @@ def costs_from_affinities(
     if ds.has_seg_mask:
         uv_ids = ds.uv_ids(seg_id)
         max_repulsive = 2 * costs.min()
-        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_ids = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
         costs[ignore_ids] = max_repulsive
 
     return costs
