@@ -141,12 +141,12 @@ def clusteringFeatures(
         # if we have completely defected slcies, we get a non-connected merge graph
         # TODO I don't know if this is a problem, if it is, we could first remove them
         # and then add dummy values later
-        #if not with_defects:
-        #    assert mg.nodeNum == 1, str(mg.nodeNum)
-        #else:
-        #    # TODO need list of defected slices
-        #    # TODO test hypothesis
-        #    assert mg.nodeNum == len(defect_slices) + 1, "%i, %i" % (mg.nodeNum, len(defect_slices) + 1)
+        # if not with_defects:
+        #     assert mg.nodeNum == 1, str(mg.nodeNum)
+        # else:
+        #     # TODO need list of defected slices
+        #     # TODO test hypothesis
+        #     assert mg.nodeNum == len(defect_slices) + 1, "%i, %i" % (mg.nodeNum, len(defect_slices) + 1)
 
         tweight = edgeIndicatorNew.copy()
         hc.ucmTransform(tweight)
@@ -200,6 +200,12 @@ def compute_lifted_feature_mala_agglomeration(
 
     indicators = 1. - \
         accumulate_affinities_over_edges(ds, seg_id, inp_ids, 'max', ExperimentSettings().affinity_z_direction)
+
+    # if we have a seg mask set edges to the ignore segment to be max repulsive
+    if ds.has_seg_mask:
+        uv_ids = ds.uv_ids(seg_id)
+        ignore_ids = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        indicators[ignore_ids] = 0.
 
     def agglomerate(threshold, use_edge_len):
         policy = nifty.graph.agglo.malaClusterPolicy(
@@ -288,11 +294,11 @@ def compute_lifted_feature_multicut(
         return mc_node
 
     # serial for debugging
-    #mc_nodes = []
-    #for beta in (0.4, 0.45, 0.5, 0.55, 0.65):
-    #    for w in (12, 16, 25):
-    #        res = single_mc(beta, w)
-    #        mc_nodes.append(res)
+    # mc_nodes = []
+    # for beta in (0.4, 0.45, 0.5, 0.55, 0.65):
+    #     for w in (12, 16, 25):
+    #         res = single_mc(beta, w)
+    #         mc_nodes.append(res)
 
     # parralel
     with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
@@ -324,8 +330,8 @@ def lifted_feature_aggregator(
 
     assert len(featureList) > 0
     # deprecated features
-    #for feat in featureList:
-    #    assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
+    # for feat in featureList:
+    #     assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
     for feat in featureList:
         assert feat in ("mc", "cluster", "reg", "mala"), feat
 
@@ -439,7 +445,7 @@ def compute_and_save_lifted_nh(
 
 
 # we assume that uv is consecutive
-#@cacher_hdf5()
+# @cacher_hdf5()
 # sample size 0 means we do not sample!
 def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
     import random
@@ -647,10 +653,12 @@ def learn_and_predict_lifted_rf(
 
     # strings for caching
     # str for all relevant params
-    paramstr = "_".join(["_".join(feature_list_lifted), "_".join(feature_list_local),
-        str(ExperimentSettings().anisotropy_factor), str(ExperimentSettings().learn_2d),
-        str(ExperimentSettings().use_2d), str(ExperimentSettings().lifted_neighborhood),
-        str(ExperimentSettings().use_ignore_mask), str(with_defects)])
+    paramstr = "_".join(
+        ["_".join(feature_list_lifted), "_".join(feature_list_local),
+         str(ExperimentSettings().anisotropy_factor), str(ExperimentSettings().learn_2d),
+         str(ExperimentSettings().use_2d), str(ExperimentSettings().lifted_neighborhood),
+         str(ExperimentSettings().use_ignore_mask), str(with_defects)]
+    )
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id_train)
 

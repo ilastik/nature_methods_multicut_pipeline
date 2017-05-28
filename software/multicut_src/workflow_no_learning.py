@@ -1,7 +1,7 @@
 import vigra
 import numpy as np
 
-# from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
+from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from MCSolver import run_mc_solver
 from DataSet import DataSet
 from ExperimentSettings import ExperimentSettings
@@ -126,20 +126,21 @@ def costs_from_affinities(
     assert not np.isinf(costs).any()
     print "Cost range after scaling:", costs.min(), costs.max()
 
-    # edge_sizes = ds.topology_features(seg_id, False)[:,0]
+    edge_sizes = ds.topology_features(seg_id, False)[:, 0]
+    edge_indications = ds.edge_indications(seg_id)
 
-    # # weight with the edge lens according to the weighting scheme
-    # if weighting_scheme == "z":
-    #     print "Weighting Z edges"
-    #     costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
-    # elif weighting_scheme == "xyz":
-    #     print "Weighting xyz edges"
-    #     costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
-    # elif weighting_scheme == "all":
-    #     print "Weighting all edges"
-    #     costs = weight_all_edges(costs, edge_sizes, weight)
-    # else:
-    #     print "Edges are not weighted"
+    # weight with the edge lens according to the weighting scheme
+    if weighting_scheme == "z":
+        print "Weighting Z edges"
+        costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
+    elif weighting_scheme == "xyz":
+        print "Weighting xyz edges"
+        costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
+    elif weighting_scheme == "all":
+        print "Weighting all edges"
+        costs = weight_all_edges(costs, edge_sizes, weight)
+    else:
+        print "Edges are not weighted"
 
     # assert not np.isinf(costs).any()
 
