@@ -161,6 +161,7 @@ def costs_from_affinities(
         return costs
 
 
+# TODO cache...
 # calculate the costs for lifted edges from the costs of the local edges
 # via agglomerating costs along the shortest local paths
 def lifted_multicut_costs_from_shortest_paths(
@@ -168,31 +169,73 @@ def lifted_multicut_costs_from_shortest_paths(
         seg_id,
         local_probabilities,
         lifted_uv_ids,
-        agglomeration_method='max'
+        agglomeration_method='max',
+        gamma=1,
+        beta_lifted=0.5,
+        edge_z_distance=None
 ):
 
+    # TODO add quantiles ?!
     agglomerators = {
         'max': np.max,
         'min': np.min,
-        'mean': np.mean,
-        'sum': np.sum
+        'mean': np.mean
     }
     agglomerator = agglomerators[agglomeration_method]
-    assert agglomeration_method in agglomerators.keys()  # TODO more ?!
+    assert agglomeration_method in agglomerators.keys()
 
     uv_ids = ds.uv_ids(seg_id)
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
 
     lifted_costs = np.zeros(lifted_uv_ids.shape[0], dtype=local_probabilities.dtype)
+
     # process the lifted uv-ids s.t. we can run singleSourceMultiTarget
-    # TODO parallelize this on the c++ end
+    # TODO use parallel shortest path version
     shortest_path = nifty.graph.ShortestPathDijkstra(graph)
     for u in np.unique(lifted_uv_ids[:, 0]):
         where_u = np.where(lifted_uv_ids[:, 0] == u)
         targets = lifted_uv_ids[where_u][:, 1].tolist()
-        paths = shortest_path.runSingleSourceMultiTarget(local_probabilities, u, targets)
-        lifted_costs[where_u] = np.array([agglomerator(pp) for pp in paths], dtype=local_probabilities.dtype)
+        paths = shortest_path.runSingleSourceMultiTarget(local_probabilities, u, targets, returnNodes=False)
+        assert len(paths) == len(targets)
+
+        # agglomerate based on local_probabilities !
+        # TODO there is nifty functionality for this but maybe it is a good idea
+        # to expose this in the shortest path !
+        lifted_costs[where_u] = np.array(
+            [agglomerator(local_probabilities[pp]) for pp in paths],
+            dtype=local_probabilities.dtype
+        )
+        print u
+        print
+        print targets
+        print
+        print paths
+        print
+        print lifted_costs[where_u]
+        quit()
+
     # TODO probabilities to costs
+    p_min = 0.001
+    p_max = 1. - p_min
+    lifted_costs = (p_max - p_min) * lifted_costs + p_min
+
+    # probabilities to energies, second term is boundary bias
+    lifted_costs = np.log((1. - lifted_costs) / lifted_costs) + np.log((1. - beta_lifted) / beta_lifted)
+
+    # additional weighting
+    lifted_costs /= gamma
+
+    # weight down the z - edges with increasing distance
+    if edge_z_distance is not None:
+        assert edge_z_distance.shape[0] == lifted_costs.shape[0], \
+            "%s, %s" % (str(edge_z_distance.shape), str(lifted_costs.shape))
+        lifted_costs /= (edge_z_distance + 1.)
+
+    # set the edges within the segmask to be maximally repulsive
+    # these should all be removed, check !
+    if ds.has_seg_mask:
+        assert np.sum((lifted_uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
+
     return lifted_costs
 
 
@@ -237,7 +280,8 @@ def lifted_multicut_workflow_no_learning(
         seg_id,
         inp_ids,
         local_feature,
-        liftd_feature,
+        lifted_feature,
+        gamma=1,
         with_defects=False
 ):
 
@@ -269,12 +313,15 @@ def lifted_multicut_workflow_no_learning(
         with_defects
     )
 
+    # TODO weight z lifted edges with their distance
     lifted_costs = lifted_multicut_costs_from_shortest_paths(
         ds_test,
         seg_id,
         local_probs,
         lifted_uv_ids,
-        liftd_feature
+        lifted_feature,
+        gamma,
+        ExperimentSettings().beta_lifted
     )
 
     return optimize_lifted(uv_ids, lifted_uv_ids, local_costs, lifted_costs)

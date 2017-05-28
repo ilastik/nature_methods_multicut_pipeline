@@ -797,9 +797,9 @@ def lifted_probs_to_energies(
         ds,
         edge_probs,
         seg_id,
-        edgeZdistance,
+        edge_z_distance,
         lifted_nh,
-        betaGlobal=0.5,
+        beta_lifted=0.5,
         gamma=1.,
         with_defects=False
 ):
@@ -809,15 +809,15 @@ def lifted_probs_to_energies(
     edge_probs = (p_max - p_min) * edge_probs + p_min
 
     # probabilities to energies, second term is boundary bias
-    e = np.log((1. - edge_probs) / edge_probs) + np.log((1. - betaGlobal) / betaGlobal)
+    e = np.log((1. - edge_probs) / edge_probs) + np.log((1. - beta_lifted) / beta_lifted)
 
     # additional weighting
     e /= gamma
 
     # weight down the z - edges with increasing distance
-    if edgeZdistance is not None:
-        assert edgeZdistance.shape[0] == e.shape[0], "%s, %s" % (str(edgeZdistance.shape), str(e.shape))
-        e /= (edgeZdistance + 1.)
+    if edge_z_distance is not None:
+        assert edge_z_distance.shape[0] == e.shape[0], "%s, %s" % (str(edge_z_distance.shape), str(e.shape))
+        e /= (edge_z_distance + 1.)
 
     uv_ids = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
     # find all lifted edges that touch a defected node and ignore them
