@@ -143,7 +143,6 @@ def multicut_exact(
 
     solver = obj.multicutIlpFactory(
         ilpSolver=ilp_bkend,
-        verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     ).create(obj)
@@ -207,7 +206,6 @@ def multicut_fusionmoves(
 
     ilpFac = obj.multicutIlpFactory(
         ilpSolver=ilp_bkend,
-        verbose=0,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
     )
