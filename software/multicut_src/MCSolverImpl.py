@@ -204,7 +204,7 @@ def multicut_fusionmoves(
     # greedy = obj.greedyAdditiveFactory()
     kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart=True)
 
-    ilpFac = obj.multicutIlpFactory(
+    ilp_fac = obj.multicutIlpFactory(
         ilpSolver=ilp_bkend,
         addThreeCyclesConstraints=True,
         addOnlyViolatedThreeCyclesConstraints=True
@@ -212,7 +212,7 @@ def multicut_fusionmoves(
 
     fm_factory = obj.fusionMoveBasedFactory(
         verbose=1,
-        fusionMove=obj.fusionMoveSettings(mcFactory=ilpFac),
+        fusionMove=obj.fusionMoveSettings(mcFactory=ilp_fac),
         proposalGen=obj.watershedProposals(sigma=10, seedFraction=ExperimentSettings().seed_fraction),
         numberOfIterations=ExperimentSettings().num_it,
         numberOfParallelProposals=2 * n_threads,
