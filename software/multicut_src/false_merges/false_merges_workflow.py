@@ -647,7 +647,8 @@ def resolve_merges_with_lifted_edges(
         lifted_path_weights = np.log((1 - lifted_path_weights) / lifted_path_weights)
 
         # Weighting edges with their length for proper lifted to local scaling
-        lifted_path_weights /= lifted_path_weights.shape[0] * ExperimentSettings().lifted_path_weights_factor
+        lifted_path_weights /= lifted_path_weights.shape[0]
+        lifted_path_weights *= ExperimentSettings().lifted_path_weights_factor
         lifted_weights /= lifted_weights.shape[0]
         mc_weights /= mc_weights.shape[0]
 
