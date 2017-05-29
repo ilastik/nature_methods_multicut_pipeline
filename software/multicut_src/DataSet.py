@@ -851,6 +851,7 @@ class DataSet(object):
 
         if filter_and_sigmas_to_compute:
             inp = self.inp(inp_id)
+            assert not np.isnan(inp).any(), "%i / %i" % (np.sum(np.isnan(inp)), inp.size)
 
             def _calc_filter_2d(filter_fu, sig, filt_path):
                 filt_name = os.path.split(filt_path)[1].split(".")[-2].split('_')[0] # some string gymnastics to recover the name
@@ -860,12 +861,14 @@ class DataSet(object):
                 filter_res = np.zeros(f_shape, dtype = 'float32')
                 for z in xrange(inp.shape[2]):
                     filter_res[:,:,z] = filter_fu(inp[:,:,z], sig)
+                assert not np.isnan(filter_res).any(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = chunks)
 
 
             def _calc_filter_3d(filter_fu, sig, filt_path):
                 filter_res = filter_fu( inp, sig )
+                assert not np.isnan(filter_res).any(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
                 with h5py.File(filt_path) as f:
                     f.create_dataset(filter_key, data = filter_res, chunks = True)
 
@@ -1364,7 +1367,7 @@ class DataSet(object):
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
         uv_ids = self._adjacent_segments(seg_id)
-        overlaps = nifty.groundtruth.Overlap(
+        overlaps = nifty.ground_truth.Overlap(
                 uv_ids.max(),
                 self.seg(seg_id),
                 self.gt() )

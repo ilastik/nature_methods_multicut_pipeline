@@ -693,7 +693,6 @@ def optimize_lifted(
     # build the graph with local and lifted edges
     graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
-    graph.insertEdges(uvs_lifted)
     # build the lifted objective, insert local and lifted costs
     lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
     lifted_obj.setCosts(uvs_local, costs_local)
@@ -728,7 +727,7 @@ def optimize_lifted(
     print "optimize_lifted: run fusion move solver"
     # proposal generator -> watersheds
     pgen = lifted_obj.watershedProposalGenerator(
-            seedingStrategy = ExperimentSettings().seed_strategy_lifted,
+            seedingStrategie = ExperimentSettings().seed_strategy_lifted,
             sigma = ExperimentSettings().sigma_lifted,
             numberOfSeeds = ExperimentSettings().seed_fraction_lifted
             )
@@ -744,7 +743,8 @@ def optimize_lifted(
     print "Fusion moves took %f s" % t_fm
 
     assert len(result) == n_nodes
-    return result.astype('uint32'), energy_fm, t_fm + t_kl
+    result, _, _ = vigra.analysis.relabelConsecutive(result, start_label = 1)
+    return result, energy_fm, t_fm + t_kl
 
 
 # TODO weight connections in plane: kappa=20
