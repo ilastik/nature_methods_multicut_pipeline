@@ -101,16 +101,16 @@ def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_in_plane
     print "Computing edge volume from uv ids in plane"
-    return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels)
+    return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
 # for visualizing between edges
 @cacher_hdf5(ignoreNumpyArrays=True)
-def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_dn):
+def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
     print "Computing edge volume from uv ids between planes"
-    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_dn)
+    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
 # for visualizing skip edges
@@ -150,8 +150,8 @@ def edges_to_volumes_for_skip_edges(
         for i, upper in enumerate(targets):
             print "to", upper
 
-            seg_dn = seg[:, :, lower]
-            seg_up = seg[:, :, upper]
+            seg_dn = seg[lower]
+            seg_up = seg[upper]
 
             # get the mask for skip edges connecting to this upper slice
             mask_upper = ranges_lower == unique_ranges[i]
@@ -163,9 +163,9 @@ def edges_to_volumes_for_skip_edges(
                 seg_dn,
                 seg_up,
                 uvs_to_upper,
-                labels_upper
+                labels_upper.astype('uint8')
             )
-            volume[:, :, lower] = vol_dn
-            volume[:, :, upper] = vol_up
+            volume[lower] = vol_dn
+            volume[upper] = vol_up
 
     return volume

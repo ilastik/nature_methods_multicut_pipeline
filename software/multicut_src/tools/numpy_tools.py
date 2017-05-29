@@ -33,17 +33,8 @@ def find_matching_row_indices(x, y):
 def find_matching_indices(array, value_list):
     assert isinstance(array, np.ndarray)
     assert isinstance(value_list, np.ndarray)
-    # reimplemented in cython for speed # TODO !!! include in conda package
-    try:
-        from cython_tools import find_matching_indices_fast
-        return find_matching_indices_fast(array.astype('uint32'), value_list.astype('uint32'))
-    except ImportError:
-        # print "WARNING: Could not find cython function, using slow numpy version"
-        # TODO this is the proper numpy way to do it, check if it is actually slower
-        # and get rid of cython functionality if this is fast enough
-        # also, don't need to wrap this if it is just a one-liner
-        mask = np.in1d(array, value_list).reshape(array.shape)
-        return np.where(mask.all(axis=1))[0]
+    mask = np.in1d(array, value_list).reshape(array.shape)
+    return np.where(mask.any(axis=1))[0]
 
 
 # numpy.replace: replcaces the values in array according to dict

@@ -1089,16 +1089,19 @@ class DataSet(object):
         self._region_statistics(seg_id, inp_id)
         region_statistics_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
 
-        # if we have a segmentation mask, we don't calculate features for uv-ids which
-        # include 0 (== everything outside of the mask)
-        # otherwise the ram consumption for the lmc can blow up...
-        if self.has_seg_mask:
-            where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
-            # for lifted edges assert that no ignore segments are in lifted uvs
-            if lifted_nh:
-                assert np.sum(where_uv) == where_uv.size
-            else:
-                uv_ids = uv_ids[where_uv]
+        # FIXME I think we don't need this hack any longer
+        # because it was only necessary for the too-large lifted nh
+        # (with short-cuts through the ignore label)
+        # # if we have a segmentation mask, we don't calculate features for uv-ids which
+        # # include 0 (== everything outside of the mask)
+        # # otherwise the ram consumption for the lmc can blow up...
+        # if self.has_seg_mask:
+        #     where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
+        #     # for lifted edges assert that no ignore segments are in lifted uvs
+        #     if lifted_nh:
+        #         assert np.sum(where_uv) == where_uv.size
+        #     else:
+        #         uv_ids = uv_ids[where_uv]
 
         # compute feature from region statistics
         regStats = vigra.readHDF5(region_statistics_path, 'region_statistics')
@@ -1152,18 +1155,19 @@ class DataSet(object):
         assert allFeat.shape[0] == uv_ids.shape[0]
         assert len(feat_names) == allFeat.shape[1], str(len(feat_names)) + " , " + str(allFeat.shape[1])
 
+        # FIXME I think we don't need this hack any longer
         # if we have excluded the ignore segments before, we need to reintroduce
         # them now to keep edge numbering consistent
-        if self.has_seg_mask and not lifted_nh:
-            where_ignore = np.logical_not(where_uv)
-            n_ignore = np.sum(where_ignore)
-            newFeat = np.zeros(
-                (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
-                dtype='float32'
-            )
-            newFeat[where_uv] = allFeat
-            allFeat = newFeat
-            assert allFeat.shape[0] == uv_ids.shape[0] + n_ignore
+        # if self.has_seg_mask and not lifted_nh:
+        #     where_ignore = np.logical_not(where_uv)
+        #     n_ignore = np.sum(where_ignore)
+        #     newFeat = np.zeros(
+        #         (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
+        #         dtype='float32'
+        #     )
+        #     newFeat[where_uv] = allFeat
+        #     allFeat = newFeat
+        #     assert allFeat.shape[0] == uv_ids.shape[0] + n_ignore
 
         # save feature names
         save_folder = os.path.join(self.cache_folder, "features")

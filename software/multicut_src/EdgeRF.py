@@ -282,8 +282,7 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects=False):
 
     seg = ds.seg(seg_id)
     edge_vol_xy   = edges_to_volume_from_uvs_in_plane(ds, seg, uv_xy, labels_xy)
-    edge_vol_z_dn = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z, True)
-    edge_vol_z_up = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z, False)
+    edge_vol_z = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z)
 
     raw = ds.inp(0).astype('float32')
     gt  = ds.gt()
@@ -300,13 +299,13 @@ def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects=False):
             skip_ranges
         )
         volumina_n_layer(
-            [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_skip, edge_vol_xy],
-            ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_skip', 'labels_xy']
+            [raw, seg, gt, edge_vol_z, edge_vol_skip, edge_vol_xy],
+            ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_skip', 'labels_xy']
         )
     else:
         volumina_n_layer(
-            [raw, seg, gt, edge_vol_z_dn, edge_vol_z_up, edge_vol_xy],
-            ['raw', 'seg', 'groundtruth', 'labels_z_down', 'labels_z_up', 'labels_xy']
+            [raw, seg, gt, edge_vol_z, edge_vol_z, edge_vol_xy],
+            ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_xy']
         )
 
 
