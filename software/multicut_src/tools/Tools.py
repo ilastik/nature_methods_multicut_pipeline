@@ -82,31 +82,17 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
 
 
 # FIXME this is deprecated, use nrag.ragCoordinates.edgesToVolume
-# properly !
 # for visualizing edges
-def edges_to_volume(rag, edges, ignore_z=False):
+def edges_to_volume(rag, edges, edge_direction=0):
 
     assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
-    volume = np.zeros(rag.shape, dtype='uint32')
     rag_coords = nrag.ragCoordinates(rag, numberOfThreads=ExperimentSettings().n_threads)
-
-    for edge_id in xrange(rag.numberOfEdges):
-
-        # don't write zeros
-        if edges[edge_id] == 0:
-            continue
-
-        edge_coords = rag_coords.edgeCoordinates(edge_id)
-        if ignore_z:
-            unique_z = np.unique(edge_coords[:, 0])
-            if len(unique_z) > 1:
-                continue
-        # FIXME this is ugly, there must be a better way to make write to volume from a numpy array
-        edge_coords = (edge_coords[:, 0], edge_coords[:, 1], edge_coords[:, 2])
-        volume[edge_coords] = edges[edge_id]
-
-    return volume
+    return rag_coords.edgesToVolume(
+        edges,
+        edgeDirection=edge_direction,
+        numberOfThreads=ExperimentSettings().n_threads
+    )
 
 
 # for visualizing in plane edges
@@ -172,18 +158,6 @@ def edges_to_volumes_for_skip_edges(
             uvs_to_upper = np.sort(uvs_lower[mask_upper], axis=1)
             assert uvs_to_upper.shape[1] == 2
             labels_upper = labels_lower[mask_upper]
-
-            # for debugging
-            # uniques_up = np.unique(seg_up)
-            # uniques_dn = np.unique(seg_dn)
-            # unique_uvs = np.unique(uvs_to_upper)
-            # # this should more or less add up (except for bg value)
-            # matches_dn = np.intersect1d(uniques_up, unique_uvs).size
-            # matches_up = np.intersect1d(uniques_dn, unique_uvs).size
-            # print "Matches_up", matches_up, '/', unique_uvs.size
-            # print "Matches_dn", matches_dn, '/', unique_uvs.size
-            # print "Combined:", matches_up + matches_dn, '/', unique_uvs.size
-            # assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
 
             vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
                 seg_dn,

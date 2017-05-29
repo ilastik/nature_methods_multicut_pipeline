@@ -528,7 +528,7 @@ def learn_rf(
         )
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
-        if False:
+        if True:
             view_edges(
                 ds,
                 seg_id,

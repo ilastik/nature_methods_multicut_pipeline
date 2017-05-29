@@ -74,20 +74,25 @@ def _topo_feats_xy(rag, seg):
 
     # iterate over the slices and
     for z in xrange(seg.shape[0]):
-        seg_z, _, mapping = vigra.analysi.relabelConsecutive(seg[z], start_label=1)
-        reverse_mapping = {old: new for new, old in mapping.iteritems()}
+        seg_z, _, mapping = vigra.analysis.relabelConsecutive(seg[z], start_label=1, keep_zeros=False)
+        # reverse_mapping = {old: new for new, old in mapping.iteritems()}
         tgrid = ncgp.TopologicalGrid2D(seg_z)
 
         # extract the cell geometry
-        cell_geometry = tgrid.extractCellGeometry()
-        cell_bounds = tgrid.extractCelBounds()
+        print "pre-geo"
+        cell_geometry = tgrid.extractCellsGeometry()
+        print "Have geo"
+        cell_bounds = tgrid.extractCellslBounds()
+        print "Have geo and bounds"
 
         # get curvature feats, needs cell1geometry vector and cell1boundedby vector
         curvature_calculator = ncgp.Cell1CurvatureFeatures2D()
+        print "Have curvature calc"
         curve_feats = curvature_calculator(
             cell_geometry[1],
-            cell_bounds[1].reverseMapping()
+            cell_bounds[0].reverseMapping()
         )
+        print "Have curvature"
         print curve_feats.shape
 
         # get line segment feats, needs cell1geometry vector
@@ -113,8 +118,8 @@ def _topo_feats_xy(rag, seg):
         topo_feats = topo_calculator(
             cell_bounds[0],
             cell_bounds[1],
-            cell_bounds[1].reverseMapping(),
-            cell_bounds[2].reverseMapping()
+            cell_bounds[0].reverseMapping(),
+            cell_bounds[1].reverseMapping()
         )
         print topo_feats.shape
         quit()
@@ -133,8 +138,6 @@ def _topo_feats_z(rag, seg):
 
 
 def _topology_features_impl(rag, seg, edge_indications, edge_lens):
-    assert False, "Not ported to nifty backend yet"
-
     # calculate the topo features for xy and z edges
     # for now we use the same number if features here
     # if that should change, we need to pad with zeros
