@@ -29,12 +29,20 @@ def find_matching_row_indices(x, y):
     return np.array(indices)
 
 
-# return the indices of array which have at least one value from value list
+# return the indices of the array which have at least one value from value list
 def find_matching_indices(array, value_list):
     assert isinstance(array, np.ndarray)
     assert isinstance(value_list, np.ndarray)
     mask = np.in1d(array, value_list).reshape(array.shape)
     return np.where(mask.any(axis=1))[0]
+
+
+# return the indices of the array which have only values from value list
+def find_exclusive_matching_indices(array, value_list):
+    assert isinstance(array, np.ndarray)
+    assert isinstance(value_list, np.ndarray)
+    mask = np.in1d(array, value_list).reshape(array.shape)
+    return np.where(mask.all(axis=1))[0]
 
 
 # numpy.replace: replcaces the values in array according to dict

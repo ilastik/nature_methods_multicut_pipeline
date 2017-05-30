@@ -1,6 +1,8 @@
 import numpy as np
 import vigra
 
+from tools import find_matching_row_indices, replace_from_dict, find_exclusive_matching_indices
+
 # from concurrent import futures
 # from ExperimentSettings import ExperimentSettings
 
@@ -24,22 +26,30 @@ except ImportError:
 # -> each edge corresponds to (potentially multiple)
 # line faces and we calculate features via the mean
 # over the line faces
-# features: curvature....
-def _topo_feats_xy(rag, seg):
+# features: curvature, line distances, geometry, topology
+def _topo_feats_xy(rag, seg, node_z_coords):
 
-    # TODO nfeats
-    n_feats = 10
+    n_feats = 92
     feats_xy = np.zeros((rag.numberOfEdges, n_feats), dtype='float32')
+    uv_ids = rag.uvIds()
 
     # iterate over the slices and
+    # TODO parallelize
     for z in xrange(seg.shape[0]):
+
+        # get the uv_ids in this slice
+        nodes_z = np.where(node_z_coords == z)[0]
+        uv_mask = find_exclusive_matching_indices(uv_ids, nodes_z)
+        uv_ids_z = uv_ids[uv_mask]
+
+        # get the segmentation in this slice and map it
+        # to a consecutive labeling starting from 1
         seg_z, _, mapping = vigra.analysis.relabelConsecutive(seg[z], start_label=1, keep_zeros=False)
         assert seg_z.min() == 1
 
         # print seg_z.shape
         # vigra.writeHDF5(seg_z, '/home/constantin/seg_cgp.h5', 'data', compression='gzip')
 
-        # reverse_mapping = {old: new for new, old in mapping.iteritems()}
         tgrid = ncgp.TopologicalGrid2D(seg_z)
 
         # extract the cell geometry
@@ -88,6 +98,20 @@ def _topo_feats_xy(rag, seg):
         print topo_feats.shape
         quit()
 
+        feats = np.concatenate(
+            [curve_feats, line_dist_feats, geo_feats, topo_feats],
+            axis=1
+        )
+
+        # get the uv ids corresponding to the lines / faces
+        # (== 1 cells), and map them back to the original ids
+        line_uv_ids = np.array(cell_bounds[1]) - 1
+        line_uv_ids = replace_from_dict(line_uv_ids, mapping)
+
+        # TODO take care of duplicates resulting from edges made up of multiple faces
+        edge_ids = find_matching_row_indices(uv_ids_z, line_uv_ids)
+        feats_xy[edge_ids] = feats
+
     return feats_xy
 
 
@@ -101,11 +125,11 @@ def _topo_feats_z(rag, seg):
     pass
 
 
-def topology_features_impl(rag, seg, edge_indications, edge_lens):
+def topology_features_impl(rag, seg, edge_indications, edge_lens, node_z_coords):
     # calculate the topo features for xy and z edges
     # for now we use the same number if features here
     # if that should change, we need to pad with zeros
-    feats_xy = _topo_feats_xy(rag, seg)
+    feats_xy = _topo_feats_xy(rag, seg, node_z_coords)
     feats_z  = _topo_feats_z(rag, seg)
 
     # merge features
@@ -115,3 +139,22 @@ def topology_features_impl(rag, seg, edge_indications, edge_lens):
 
     extra_names = ['blub']  # TODO proper names
     return extra_features, extra_names
+
+
+if __name__ == '__main__':
+    import nifty.graph.rag as nrag
+    seg_z = vigra.readHDF5('/home/consti/seg_cgp.h5', 'data') - 1
+    seg_z2 = seg_z + seg_z.max() + 1
+    seg = np.concatenate(
+        [seg_z[None, :], seg_z2[None, :]],
+        axis=0
+    )
+    print seg.shape
+    rag = nrag.gridRag(seg)
+    edge_lens = np.ones(rag.numberOfEdges, dtype='uint32')
+    nodes_z = np.zeros(rag.numberOfNodes)
+    nodes_z[seg[0]] = 0
+    nodes_z[seg[1]] = 1
+    uv_ids = rag.uvIds()
+    edge_indications = nodes_z[uv_ids[:, 0]] == nodes_z[uv_ids[:, 1]].astype('uint8')
+    topology_features_impl(rag, seg, edge_indications, edge_lens)
