@@ -1152,7 +1152,8 @@ class DataSet(object):
                 rag,
                 self.seg(seg_id),
                 self.edge_indications(seg_id),
-                topo_feats.squeeze()
+                topo_feats.squeeze(),
+                self.node_z_coord(seg_id)
             )
             topo_feats = np.concatenate([topo_feats, extra_feats], axis=1)
             topo_feat_names.extend(extra_names)

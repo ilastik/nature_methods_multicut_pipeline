@@ -6,7 +6,7 @@ from tools import cacher_hdf5, cache_name, get_unique_rows, find_matching_row_in
 
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
-from feature_impls import topology_features_impl
+from feature_impls import topo_feats_z
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
@@ -620,7 +620,7 @@ def _get_topo_feats(rag, seg, use_2d_edges):
     feats.append(edge_lens)
     # extra feats for z-edges in 2,5 d
     if use_2d_edges:
-        extra_feats, _ = topology_features_impl(rag, seg, np.zeros(rag.edgeNum, dtype='uint8'), edge_lens)
+        extra_feats, _ = topo_feats_z(rag, seg, np.zeros(rag.edgeNum, dtype='uint8'))
         feats.extend(extra_feats)
     return np.concatenate(feats, axis=1)
 
