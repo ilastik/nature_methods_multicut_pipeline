@@ -94,8 +94,7 @@ def fast_edge_volume_for_skip_edges_slice(
         np.ndarray[LabelType, ndim=2] seg_up,
         np.ndarray[LabelType, ndim=2] skip_uv_ids,
         np.ndarray[ValueType, ndim=1] edge_labels
-        ):
-
+):
 
     cdef np.ndarray[ValueType, ndim=2] volume_dn = np.zeros_like(seg_dn, dtype = PyValueType)
     cdef np.ndarray[ValueType, ndim=2] volume_up = np.zeros_like(seg_up, dtype = PyValueType)
@@ -105,8 +104,8 @@ def fast_edge_volume_for_skip_edges_slice(
 
     cdef LabelType l_u, l_v
 
-    for y in xrange(volume_dn.shape[1]):
-        for x in xrange(volume_dn.shape[2]):
+    for y in xrange(volume_dn.shape[0]):
+        for x in xrange(volume_dn.shape[1]):
             l_u = seg_dn[y,x]
             l_v = seg_up[y,x]
 

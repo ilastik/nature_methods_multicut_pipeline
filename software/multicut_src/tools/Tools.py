@@ -54,7 +54,7 @@ def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
 
 # TODO check for arguments too long for caching
 # cache result as hdf5
-def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=False):
+def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=False, compress=False):
     assert folder in ("dset_folder", "feature_folder")
     _folder = folder
     _cache_edgefeats = cache_edgefeats
@@ -71,7 +71,10 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
                 print args[1:]
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
-                vigra.writeHDF5(_res, filepath, fkey)
+                if compress:
+                    vigra.writeHDF5(_res, filepath, fkey, compression='gzip')
+                else:
+                    vigra.writeHDF5(_res, filepath, fkey)
                 # compressing does not make much sense for most of the files we cache
                 # vigra.writeHDF5(_res, filepath, fkey, compression = ExperimentSettings().compression)
             else:
@@ -96,7 +99,7 @@ def edges_to_volume(rag, edges, edge_direction=0):
 
 
 # for visualizing in plane edges
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
 def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_in_plane
@@ -105,7 +108,7 @@ def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
 
 
 # for visualizing between edges
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
 def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
@@ -114,7 +117,7 @@ def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
 
 
 # for visualizing skip edges
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
 def edges_to_volumes_for_skip_edges(
         ds,
         seg,
@@ -152,6 +155,9 @@ def edges_to_volumes_for_skip_edges(
 
             seg_dn = seg[lower]
             seg_up = seg[upper]
+            print seg_dn.shape
+            print seg_up.shape
+            assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
 
             # get the mask for skip edges connecting to this upper slice
             mask_upper = ranges_lower == unique_ranges[i]

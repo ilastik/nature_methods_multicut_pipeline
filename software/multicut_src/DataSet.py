@@ -8,26 +8,27 @@ import itertools
 import cPickle as pickle
 
 from tools import cacher_hdf5, cache_name
+from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
+from tools import edges_to_volumes_for_skip_edges
+
 from ExperimentSettings import ExperimentSettings
+from feature_impls import topology_features_impl
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
     import nifty.graph.rag as nrag
     import nifty.ground_truth as ngt
-    import nifty.cgp as ncgp
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
         import nifty_with_cplex.ground_truth as ngt
-        import nifty_with_cplex.cgp as ncgp
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
             import nifty_with_gurobi.ground_truth as ngt
-            import nifty_with_gurobi.cgp as ncgp
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -59,98 +60,6 @@ def is_inp_name(file_name):
         return True
     else:
         return False
-
-
-# calculate topological features for xy-edges
-# -> each edge corresponds to (potentially multiple)
-# line faces and we calculate features via the mean
-# over the line faces
-# features: curvature....
-def _topo_feats_xy(rag, seg):
-
-    # TODO nfeats
-    n_feats = 10
-    feats_xy = np.zeros((rag.numberOfEdges, n_feats), dtype='float32')
-
-    # iterate over the slices and
-    for z in xrange(seg.shape[0]):
-        seg_z, _, mapping = vigra.analysis.relabelConsecutive(seg[z], start_label=1, keep_zeros=False)
-        # reverse_mapping = {old: new for new, old in mapping.iteritems()}
-        tgrid = ncgp.TopologicalGrid2D(seg_z)
-
-        # extract the cell geometry
-        print "pre-geo"
-        cell_geometry = tgrid.extractCellsGeometry()
-        print "Have geo"
-        cell_bounds = tgrid.extractCellslBounds()
-        print "Have geo and bounds"
-
-        # get curvature feats, needs cell1geometry vector and cell1boundedby vector
-        curvature_calculator = ncgp.Cell1CurvatureFeatures2D()
-        print "Have curvature calc"
-        curve_feats = curvature_calculator(
-            cell_geometry[1],
-            cell_bounds[0].reverseMapping()
-        )
-        print "Have curvature"
-        print curve_feats.shape
-
-        # get line segment feats, needs cell1geometry vector
-        line_dist_calculator = ncgp.Cell1LineSegmentDist2D()
-        line_dist_feats = line_dist_calculator(
-            cell_geometry[1]
-        )
-        print line_dist_feats.shape
-
-        # get geometry feats, needs cell1geometry, cell2geometr vectors
-        # and cell1boundsvector
-        geo_calculator = ncgp.Cell1BasicGeometricFeatures2D()
-        geo_feats = geo_calculator(
-            cell_geometry[1],
-            cell_geometry[2],
-            cell_bounds[1]
-        )
-        print geo_feats.shape
-
-        # get topology feats, needs bounds 0 and 1 and boundedBy 1 and 2
-        # and cell1boundsvector
-        topo_calculator = ncgp.Cell1BasicTopologicalFeatures()
-        topo_feats = topo_calculator(
-            cell_bounds[0],
-            cell_bounds[1],
-            cell_bounds[0].reverseMapping(),
-            cell_bounds[1].reverseMapping()
-        )
-        print topo_feats.shape
-        quit()
-
-    return feats_xy
-
-
-# calculate topological features for z-edges
-# -> each edge corresponds to an area that is bounded
-# by line faces. we calculate features via statistics
-# over the line faces
-# features: curvature....
-# TODO potential extra features: Union, IoU, segmentShape (= edge_area / edge_circumference)
-def _topo_feats_z(rag, seg):
-    pass
-
-
-def _topology_features_impl(rag, seg, edge_indications, edge_lens):
-    # calculate the topo features for xy and z edges
-    # for now we use the same number if features here
-    # if that should change, we need to pad with zeros
-    feats_xy = _topo_feats_xy(rag, seg)
-    feats_z  = _topo_feats_z(rag, seg)
-
-    # merge features
-    extra_features = np.zeros_like(feats_xy, dtype='float32')
-    extra_features[edge_indications == 1] = feats_xy[edge_indications == 1]
-    extra_features[edge_indications == 0] = feats_z[edge_indications == 0]
-
-    extra_names = ['blub']  # TODO proper names
-    return extra_features, extra_names
 
 
 class DataSet(object):
@@ -1204,7 +1113,7 @@ class DataSet(object):
         seg = self.seg(seg_id)
         nz = np.zeros(seg.max() + 1, dtype='uint32')
         for z in xrange(seg.shape[0]):
-            lz = seg[z, :, :]
+            lz = seg[z]
             nz[lz] = z
         return nz
 
@@ -1231,7 +1140,7 @@ class DataSet(object):
         rag = self.rag(seg_id)
 
         # length / area of the edge
-        topo_feats      = nrag.accumulateMeanAndLength(
+        topo_feats = nrag.accumulateMeanAndLength(
             rag,
             np.zeros(self.shape, dtype='float32')  # fake data
         )[0][:, 1:]
@@ -1239,7 +1148,7 @@ class DataSet(object):
 
         # extra feats for z-edges in 2,5 d
         if use_2d_edges:
-            extra_feats, extra_names = _topology_features_impl(
+            extra_feats, extra_names = topology_features_impl(
                 rag,
                 self.seg(seg_id),
                 self.edge_indications(seg_id),
@@ -1510,6 +1419,81 @@ class DataSet(object):
                 labels.append('external_data_%i' % ii)
 
         volumina_n_layer(data, labels)
+
+    def view_edge_labels(self, seg_id, with_defects=False):
+        from volumina_viewer import volumina_n_layer
+        from EdgeRF import mask_edges
+        from defect_handling import modified_edge_indications, modified_adjacency
+        from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
+        from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
+
+        uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
+
+        if ExperimentSettings().learn_fuzzy:
+            pt = ExperimentSettings().positive_threshold
+            nt = ExperimentSettings().negative_threshold
+            labels = modified_edge_gt_fuzzy(self, seg_id, pt, nt) if with_defects else \
+                self.edge_gt_fuzzy(seg_id, pt, nt)
+        else:
+            labels = modified_edge_gt(self, seg_id) if with_defects else self.edge_gt(seg_id)
+
+        labeled = mask_edges(self, seg_id, labels, uv_ids, with_defects)
+
+        assert uv_ids.shape[0] == labels.shape[0]
+        assert labels.shape[0] == labeled.shape[0]
+
+        labels_debug = np.zeros(labels.shape, dtype='uint32')
+        labels_debug[labels == 1.]  = 1
+        labels_debug[labels == 0.]  = 2
+        labels_debug[np.logical_not(labeled)] = 5
+
+        if with_defects:
+            skip_transition = labels_debug.shape[0] - get_skip_edges(self, seg_id).shape[0]
+            edge_indications = modified_edge_indications(self, seg_id)[:skip_transition]
+            # get  uv ids and labels for the skip edges
+            uv_skip     = uv_ids[skip_transition:]
+            labels_skip = labels_debug[skip_transition:]
+            # get uv ids and labels for the normal edges
+            uv_ids      = uv_ids[:skip_transition]
+            labels_debug = labels_debug[:skip_transition]
+        else:
+            edge_indications = self.edge_indications(seg_id)
+
+        assert edge_indications.shape[0] == labels_debug.shape[0], \
+            "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
+        # xy - and z - labels
+        labels_xy = labels_debug[edge_indications == 1]
+        labels_z  = labels_debug[edge_indications == 0]
+        uv_xy = uv_ids[edge_indications == 1]
+        uv_z  = uv_ids[edge_indications == 0]
+
+        seg = self.seg(seg_id)
+        edge_vol_xy   = edges_to_volume_from_uvs_in_plane(self, seg, uv_xy, labels_xy)
+        edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z)
+
+        raw = self.inp(0).astype('float32')
+        gt  = self.gt()
+
+        if with_defects:
+            skip_ranges = get_skip_ranges(self, seg_id)
+            skip_starts = get_skip_starts(self, seg_id)
+            edge_vol_skip = edges_to_volumes_for_skip_edges(
+                self,
+                seg,
+                uv_skip,
+                labels_skip,
+                skip_starts,
+                skip_ranges
+            )
+            volumina_n_layer(
+                [raw, seg, gt, edge_vol_z, edge_vol_skip, edge_vol_xy],
+                ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_skip', 'labels_xy']
+            )
+        else:
+            volumina_n_layer(
+                [raw, seg, gt, edge_vol_z, edge_vol_z, edge_vol_xy],
+                ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_xy']
+            )
 
 
 # cutout from a given Dataset, used for cutouts and tesselations

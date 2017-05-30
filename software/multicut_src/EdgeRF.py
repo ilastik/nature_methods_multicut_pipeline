@@ -4,14 +4,11 @@ import h5py
 import os
 from functools import partial
 
-from DataSet import DataSet
 from defect_handling import modified_edge_features, modified_region_features, modified_topology_features
 from defect_handling import modified_edge_features_from_affinity_maps
 from defect_handling import modified_edge_indications, modified_edge_gt, modified_edge_gt_fuzzy
-from defect_handling import get_skip_edges, modified_adjacency, get_skip_ranges, get_skip_starts, get_ignore_edge_ids
+from defect_handling import get_skip_edges, modified_adjacency, get_ignore_edge_ids
 from ExperimentSettings import ExperimentSettings
-from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
-from tools import edges_to_volumes_for_skip_edges
 
 try:
     from sklearn.ensemble import RandomForestClassifier as RFType
@@ -220,7 +217,8 @@ def mask_edges(
         seg_id,
         labels,
         uv_ids,
-        with_defects):
+        with_defects
+):
 
     labeled = np.ones_like(labels, dtype=bool)
     # set ignore mask to 0.5
@@ -247,66 +245,6 @@ def mask_edges(
             labeled[ignore_edge_ids] = False
 
     return labeled
-
-
-# TODO make volumina viewer conda package and ship this too
-def view_edges(ds, seg_id, uv_ids, labels, labeled, with_defects=False):
-    assert uv_ids.shape[0] == labels.shape[0]
-    assert labels.shape[0] == labeled.shape[0]
-    from volumina_viewer import volumina_n_layer
-
-    labels_debug = np.zeros(labels.shape, dtype='uint32')
-    labels_debug[labels == 1.]  = 1
-    labels_debug[labels == 0.]  = 2
-    labels_debug[np.logical_not(labeled)] = 5
-
-    if with_defects:
-        skip_transition = labels_debug.shape[0] - get_skip_edges(ds, seg_id).shape[0]
-        edge_indications = modified_edge_indications(ds, seg_id)[:skip_transition]
-        # get  uv ids and labels for the skip edges
-        uv_skip     = uv_ids[skip_transition:]
-        labels_skip = labels_debug[skip_transition:]
-        # get uv ids and labels for the normal edges
-        uv_ids      = uv_ids[:skip_transition]
-        labels_debug = labels_debug[:skip_transition]
-    else:
-        edge_indications = ds.edge_indications(seg_id)
-
-    assert edge_indications.shape[0] == labels_debug.shape[0], \
-        "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
-    # xy - and z - labels
-    labels_xy = labels_debug[edge_indications == 1]
-    labels_z  = labels_debug[edge_indications == 0]
-    uv_xy = uv_ids[edge_indications == 1]
-    uv_z  = uv_ids[edge_indications == 0]
-
-    seg = ds.seg(seg_id)
-    edge_vol_xy   = edges_to_volume_from_uvs_in_plane(ds, seg, uv_xy, labels_xy)
-    edge_vol_z = edges_to_volume_from_uvs_between_plane(ds, seg, uv_z, labels_z)
-
-    raw = ds.inp(0).astype('float32')
-    gt  = ds.gt()
-
-    if with_defects:
-        skip_ranges = get_skip_ranges(ds, seg_id)
-        skip_starts = get_skip_starts(ds, seg_id)
-        edge_vol_skip = edges_to_volumes_for_skip_edges(
-            ds,
-            seg,
-            uv_skip,
-            labels_skip,
-            skip_starts,
-            skip_ranges
-        )
-        volumina_n_layer(
-            [raw, seg, gt, edge_vol_z, edge_vol_skip, edge_vol_xy],
-            ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_skip', 'labels_xy']
-        )
-    else:
-        volumina_n_layer(
-            [raw, seg, gt, edge_vol_z, edge_vol_z, edge_vol_xy],
-            ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_xy']
-        )
 
 
 # FIXME: For now, we don't support different feature strings for the edge types
@@ -491,7 +429,6 @@ def learn_rf(
     # iterate over the datasets in our traninsets
     for ds in trainsets:
 
-        assert isinstance(ds, DataSet)
         assert ds.has_gt
 
         features_sub = feature_aggregator(ds, seg_id)
@@ -527,13 +464,9 @@ def learn_rf(
         )
 
         # inspect the edges FIXME this has dependencies outside of conda, so we can't expose it for now
-        if True:
-            view_edges(
-                ds,
+        if False:
+            ds.view_edge_labels(
                 seg_id,
-                uv_ids,
-                labels_sub,
-                labeled,
                 with_defects and ds.has_defects
             )
 
@@ -603,12 +536,8 @@ def learn_and_predict_rf_from_gt(
         use_2rfs=False
 ):
 
-    # this should also work for cutouts, because they inherit from dataset
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
-    assert isinstance(ds_test, DataSet)
-
     # for only a single ds, put it in a list
-    if isinstance(trainsets, DataSet):
+    if not isinstance(trainsets, list):
         trainsets = [trainsets]
 
     if with_defects:
