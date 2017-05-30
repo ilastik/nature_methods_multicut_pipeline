@@ -5,13 +5,26 @@ from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
-from ..tools import replace_from_dict, find_matching_row_indices
+from ..tools import find_matching_row_indices
+
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty  # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
 
 
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):
     edge_volume = np.concatenate(
-        [vigra.analysis.regionImageToEdgeImage(segmentation[:, :, z])[:, :, None] for z in xrange(segmentation.shape[2])],
+        [vigra.analysis.regionImageToEdgeImage(segmentation[:, :, z])[:, :, None]
+         for z in xrange(segmentation.shape[2])],
         axis=2
     )
     dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
@@ -105,7 +118,8 @@ def path_feature_aggregator(ds, paths):
     return np.concatenate([
         path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
         path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),  # we assume that the distance transform is added as inp_id 2
+        # we assume that the distance transform is added as inp_id 2
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),
         compute_path_lengths(paths, [1., 1., anisotropy_factor])],
         axis=1
     )
@@ -148,7 +162,7 @@ def path_features_from_feature_images(
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
-    #print feat_paths
+    # print feat_paths
     # TODO sort the feat_path correctly
     # load the feature images ->
     # FIXME this might be too memory hungry if we have a large global bounding box
@@ -276,7 +290,6 @@ def multicut_path_features(
             u = v
         return np.array(edge_ids)
 
-
     # needed for weight transformation
     weighting_scheme = ExperimentSettings.weighting_scheme
     weight           = ExperimentSettings.weight
@@ -340,6 +353,32 @@ def multicut_path_features(
     return features
 
 
+def cut_watershed(graph, weights, source, sink):
+
+    # TODO I don't know if this is the correct way to do this
+    # make the seeds from source and sing
+    seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
+    seeds[source] = 1
+    seeds[sink] = 2
+    node_labeling = nifty.graph.edgeWeightedWatershedsSegmentation(
+        graph,
+        seeds,
+        weights
+    )
+
+    uvs = graph.uvIds()
+    # return the edge labels (cut or not cut for each edge)
+    return node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]]
+
+
+def cut_graphcut(graph, weights, source, sink):
+    raise NotImplementedError("Cutting with graph cut is too cutting edge.")
+
+
+def cut_seeded_agglomeration(graph, weights, source, sink):
+    raise NotImplementedError("Cutting with seeded agglo not implemented yet.")
+
+
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
 def cut_features(
@@ -349,15 +388,24 @@ def cut_features(
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
         edge_weights,
         anisotropy_factor,
-        feat_list=['raw', 'prob', 'distance_transform']
+        feat_list=['raw', 'prob', 'distance_transform'],
+        cut_method='watershed'
 ):
 
+    cutters = {
+        'watershed': cut_watershed,
+        'graphcut': cut_graphcut,
+        'seeded_clustering': cut_seeded_agglomeration
+    }
     assert feat_list
+    assert cut_method in cutters
+    cutter = cutters[cut_method]
 
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
 
-    # find the local edge ids along the path
+    # find the global and local edge ids along the path, as well as the local
+    # start and ed point of the path
     def edges_along_path(path, mapping, uvs_local):
 
         edge_ids = []
@@ -366,6 +414,8 @@ def cut_features(
         u = seg[path[0]]  # TODO does this work ?
         u_local = mapping[seg[path[0]]]  # TODO does this work ?
 
+        # find edge-ids along the path
+        # if this turns out to be a bottleneck, we can c++ it
         for p in path[1:]:
 
             v = seg[p]  # TODO does this work ?
@@ -383,16 +433,18 @@ def cut_features(
 
             u = v
             u_local = v_local
+
         return np.array(edge_ids), np.array(edge_ids_local)
 
-    # get the features
+    # get the edge features already calculated for the mc-ppl
     edge_features = []
     if 'raw' in feat_list:
         edge_features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
     if 'prob' in feat_list:
         edge_features.append(ds.edge_features(seg_id, 1, anisotropy_factor))
     if 'distance_transform' in feat_list:
-        edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))  # we assume that the dt was already added as additional input
+        # we assume that the dt was already added as additional input
+        edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))
     edge_features = np.concatenate(edge_features, axis=1)
 
     n_paths = np.sum([len(paths) for paths in objs_to_paths])
@@ -408,13 +460,29 @@ def cut_features(
         )
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
+        # local weights and graph for the cutter
+        weights_local = edge_weights[local_uv_mask]
+        graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
+        graph_local.insertEdges(uv_local)
+
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
         for path_id, path in objs_to_paths[obj_id].iteritems():
-            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
+            edge_ids, edge_ids_local, source, sink = edges_along_path(path, mapping, uv_local)
 
-            # run cut with seeds at path end points, find cut edge,
-            cut_edge = 42  # TODO
+            # get source and sink
+            # == start and end node of the path
+            source = mapping[seg[path[0]]]
+            sink = mapping[seg[path[-1]]]
+
+            # run cut with seeds at path end points
+            # returns the cut edges
+            local_two_coloring = cutter(graph_local, weights_local, source, sink)
+            # find the cut edge along the path
+            cut_edge = np.where(local_two_coloring == 1)[0]
+            # make sure we only have 1 cut edge
+            assert len(cut_edge) == 1
+            cut_edge = cut_edge[0]
 
             # cut-edge project back to global edge-indexing and get according features
             global_edge = edge_ids[edge_ids_local == cut_edge]
