@@ -10,19 +10,22 @@ from tools import find_matching_row_indices, replace_from_dict, find_exclusive_m
 try:
     import nifty
     import nifty.cgp as ncgp
+    import nifty.graph.rag as nrag
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.cgp as ncgp
+        import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.cgp as ncgp
+            import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
-def topo_feats_xy_slice(seg, uv_ids_z):
+def topo_feats_slice(seg, uv_ids):
 
     # get the segmentation in this slice and map it
     # to a consecutive labeling starting from 1
@@ -75,13 +78,12 @@ def topo_feats_xy_slice(seg, uv_ids_z):
 
     # assert (np.unique(line_uv_ids) == np.unique(uv_ids_z)).all()
     # find the mapping from the global uv-ids to the line-uv-ids
-    matching_indices = find_matching_row_indices(uv_ids_z, line_uv_ids)
+    matching_indices = find_matching_row_indices(uv_ids, line_uv_ids)
     edge_ids = matching_indices[:, 0]
-    # edge_ids_local = find_matching_row_indices(line_uv_ids, uv_ids_z)[:, 0]
     edge_ids_local = matching_indices[:, 1]
     assert len(edge_ids) == len(edge_ids_local), "%i, %i" % (len(edge_ids), len(edge_ids_local))
 
-    n_edges = len(uv_ids_z)
+    n_edges = len(uv_ids)
     # take care of duplicates resulting from edges made up of multiple faces
     assert len(edge_ids) >= n_edges, "%i, %i" % (len(edge_ids), n_edges)
     unique_ids, unique_idx, face_counts = np.unique(
@@ -144,7 +146,7 @@ def topo_feats_xy_slice(seg, uv_ids_z):
         topo_feats[multi_edge] = np.mean(topo_feats_[multi_indices[multi_edge], :], axis=0)
 
     # face count features
-    face_count_feats = np.ones((len(uv_ids_z), 1), dtype='float32')
+    face_count_feats = np.ones((len(uv_ids), 1), dtype='float32')
     face_count_feats[edges_w_multiple_faces] = face_counts[edges_w_multiple_faces]
 
     # TODO face_counts
@@ -160,7 +162,7 @@ def topo_feats_xy_slice(seg, uv_ids_z):
 # line faces and we calculate features via the mean
 # over the line faces
 # features: curvature, line distances, geometry, topology
-def topo_feats_xy(rag, seg, node_z_coords):
+def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
 
     # number of features:
     # curvature features -> 33
@@ -169,8 +171,9 @@ def topo_feats_xy(rag, seg, node_z_coords):
     # topology features  ->  6
     # faces per edge     ->  1
     n_feats = 93
-    feats_xy = np.zeros((rag.numberOfEdges, n_feats), dtype='float32')
-    uv_ids = rag.uvIds()
+    uv_ids = rag.uvIds()[edge_indications == 1]
+
+    feats_xy = np.zeros((len(uv_ids), n_feats), dtype='float32')
 
     # iterate over the slices and
     # TODO parallelize
@@ -181,7 +184,7 @@ def topo_feats_xy(rag, seg, node_z_coords):
         uv_mask = find_exclusive_matching_indices(uv_ids, nodes_z)
         uv_ids_z = uv_ids[uv_mask]
 
-        feats = topo_feats_xy_slice(
+        feats = topo_feats_slice(
             seg[z],
             uv_ids_z
         )
@@ -197,39 +200,93 @@ def topo_feats_xy(rag, seg, node_z_coords):
 # features: curvature....
 # TODO potential extra features: Union, IoU, segmentShape (= edge_area / edge_circumference)
 def topo_feats_z(rag, seg, edge_indications):
-    pass
+
+    # number of features:
+    # curvature features -> 33
+    # line dist features -> 33
+    # geometry features  -> 20
+    # topology features  ->  6
+    # faces per edge     ->  1
+    n_feats = 93
+
+    # get the uv-ids of z-edges
+    z_edge_ids = np.where([edge_indications == 0])[0]
+    feats_z = np.zeros((len(z_edge_ids), n_feats), dtype='float32')
+
+    coordinate_calc = nrag.ragCoordinates(rag)
+    coordinates = [coordinate_calc.edgeCoordinate(edge_id) for edge_id in xrange(z_edge_ids)]
+    start_coordinates = np.array([np.min(coord[:, 0]) for coord in coordinates], dtype='uint32')
+
     # iterate over the pairs of adjacent slices, map z-edges to
     # a segmentation and compute the corresponding features
+    for z in xrange(seg.shape[0] - 1):
+
+        # z-edges to segmentation:
+        # first find the edges in connecting slice z to z + 1
+        # then map them to a segmentation (note that z edges coresspond to areas !)
+        this_edge_ids = np.where(start_coordinates == z)
+        edge_seg = np.zeros(seg.shape[1:], dtype='uint32')
+        for edge_id in this_edge_ids:
+            edge_seg[coordinates[edge_id][:, 1:]] = edge_id
+
+        # build a rag based on the edge segmentation to have the uv-ids
+        # and extract features for the lines between the z-edges
+        edge_rag = nrag.gridRag(edge_seg)
+        edge_uv_ids = edge_rag.uvIds()
+        feats_lines = topo_feats_slice(edge_seg, edge_uv_ids)
+
+        # map the feats back to the z-edges via averaging over the line feats
+        feats = np.zeros((len(this_edge_ids), feats_lines.shape[1]), dtype='float32')
+
+        for ii, edge_id in enumerate(this_edge_ids):
+            edge_mask = (edge_uv_ids == edge_id).any(axis=1)
+            feats[ii] = np.mean(feats[edge_mask], axis=0)
+
+        feats_z[this_edge_ids] = feats
+
+    return feats_z
 
 
 def topology_features_impl(rag, seg, edge_indications, edge_lens, node_z_coords):
     # calculate the topo features for xy and z edges
     # for now we use the same number if features here
     # if that should change, we need to pad with zeros
-    feats_xy = topo_feats_xy(rag, seg, node_z_coords)
+    feats_xy = topo_feats_xy(rag, seg, edge_indications, node_z_coords)
     feats_z  = topo_feats_z(rag, seg, edge_indications)
 
     # merge features
     extra_features = np.zeros_like(feats_xy, dtype='float32')
-    extra_features[edge_indications == 1] = feats_xy[edge_indications == 1]
-    extra_features[edge_indications == 0] = feats_z[edge_indications == 0]
+    extra_features[edge_indications == 1] = feats_xy
+    extra_features[edge_indications == 0] = feats_z
 
     extra_names = ['blub']  # TODO proper names
     return extra_features, extra_names
 
 
 if __name__ == '__main__':
-    import nifty.graph.rag as nrag
-
     # test the 'topology_features_xy_slice' function
-    def test_topofeats_xy():
+    def test_topofeats_slice():
         seg = np.zeros((128, 128), dtype='uint32')
         seg[64:] = 1
         seg[32:96, 32:96] = 2
         rag = nrag.gridRag(seg)
         uv_ids = rag.uvIds()
-        feats = topo_feats_xy_slice(seg, uv_ids)
+        feats = topo_feats_slice(seg, uv_ids)
         print feats.shape
         print feats[:, -5:]
+
+    def test_topofeats_xy():
+        seg_ = vigra.readHDF5('/home/consti/seg_cgp.h5', 'data')
+        seg_ -= 1
+        seg = np.concatenate([
+            seg_[None, :, :], seg_[None, :, :] + seg_.max() + 1],
+            axis=0
+        )
+        rag = nrag.gridRag(seg)
+        nodes_z = np.zeros(rag.numberOfNodes, dtype='uint32')
+        nodes_z[seg[0]] = 0
+        nodes_z[seg[1]] = 1
+        feats = topo_feats_xy(rag, seg, nodes_z)
+        print feats.shape
 
     test_topofeats_xy()
