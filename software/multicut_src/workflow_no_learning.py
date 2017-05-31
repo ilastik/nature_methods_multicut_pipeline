@@ -175,6 +175,8 @@ def lifted_multicut_costs_from_shortest_paths(
         edge_z_distance=None
 ):
 
+    print "Computing lifted costs along shortest paths"
+
     # TODO add quantiles ?!
     agglomerators = {
         'max': np.max,
@@ -186,32 +188,38 @@ def lifted_multicut_costs_from_shortest_paths(
 
     uv_ids = ds.uv_ids(seg_id)
     graph = nifty.graph.UndirectedGraph(uv_ids.max() + 1)
+    graph.insertEdges(uv_ids)
 
     lifted_costs = np.zeros(lifted_uv_ids.shape[0], dtype=local_probabilities.dtype)
 
-    # process the lifted uv-ids s.t. we can run singleSourceMultiTarget
-    # TODO use parallel shortest path version
-    shortest_path = nifty.graph.ShortestPathDijkstra(graph)
-    for u in np.unique(lifted_uv_ids[:, 0]):
-        where_u = np.where(lifted_uv_ids[:, 0] == u)
-        targets = lifted_uv_ids[where_u][:, 1].tolist()
-        paths = shortest_path.runSingleSourceMultiTarget(local_probabilities, u, targets, returnNodes=False)
-        assert len(paths) == len(targets)
+    # FIXME parallelisation does not work properly
 
-        # agglomerate based on local_probabilities !
-        # TODO there is nifty functionality for this but maybe it is a good idea
-        # to expose this in the shortest path !
+    # run singleSource (u) to multi target (list of v;s connected to u) shortest path
+    # in parallel
+
+    sources = lifted_uv_ids[:, 0]
+    start_nodes = np.unique(sources)
+    targets = lifted_uv_ids[:, 1]
+    all_shortest_paths = nifty.graph.shortestPathMultiTargetParallel(
+        graph,
+        (1. - local_probabilities).tolist(),
+        start_nodes,
+        [targets[sources == u] for u in start_nodes],
+        returnNodes=False,
+        numberOfThreads=ExperimentSettings().n_threads
+    )
+    assert len(all_shortest_paths) == len(sources)
+
+    # agglomerate the lifted costs based on the local probabilities
+    # along the shortest path
+    for ii, u in enumerate(start_nodes):
+        where_u = sources == u
+        shortest_paths = all_shortest_paths[ii]
         lifted_costs[where_u] = np.array(
-            [agglomerator(local_probabilities[pp]) for pp in paths],
+            [agglomerator(local_probabilities[pp]) for pp in shortest_paths],
             dtype=local_probabilities.dtype
         )
-        print u
-        print
-        print targets
-        print
-        print paths
-        print
-        print lifted_costs[where_u]
+        print shortest_paths
         quit()
 
     # TODO probabilities to costs
@@ -323,6 +331,10 @@ def lifted_multicut_workflow_no_learning(
         gamma,
         ExperimentSettings().beta_lifted
     )
+
+    # TODO weight lifted vs. local costs properly
+    # maybe we should start doing this differently, as
+    # the current method might be not very stable numerically
 
     return optimize_lifted(uv_ids, lifted_uv_ids, local_costs, lifted_costs)
 
