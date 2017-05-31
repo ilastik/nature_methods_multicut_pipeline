@@ -417,8 +417,8 @@ class DataSet(object):
     # FIXME: Doesn't work for internal paths as key (e.g., key = 'a/b/data')
     def _check_input(self, path, key):
         assert os.path.exists(path), path
-        with h5py.File(path) as f:
-            assert key in f.keys(), "%s, %s" % (key, f.keys())
+        # with h5py.File(path) as f:
+        #     assert key in f.keys(), "%s, %s" % (key, f.keys())
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
