@@ -76,7 +76,7 @@ def topo_feats_slice(seg, uv_ids):
     line_uv_ids = np.array(cell_bounds[1])
     line_uv_ids = replace_from_dict(line_uv_ids, reverse_mapping)
 
-    # assert (np.unique(line_uv_ids) == np.unique(uv_ids_z)).all()
+    assert (np.unique(line_uv_ids) == np.unique(uv_ids)).all()
     # find the mapping from the global uv-ids to the line-uv-ids
     matching_indices = find_matching_row_indices(uv_ids, line_uv_ids)
     edge_ids = matching_indices[:, 0]
@@ -118,40 +118,39 @@ def topo_feats_slice(seg, uv_ids):
     # multiple faces via average over the faces
     curve_feats = np.zeros((n_edges, curve_feats_.shape[1]), dtype='float32')
     curve_feats[edges_w_single_face] = curve_feats_[edges_w_single_face_idx]
-    for multi_edge in edges_w_multiple_faces:
-        curve_feats[multi_edge] = np.mean(curve_feats_[multi_indices[multi_edge], :], axis=0)
+    for jj, multi_edge in enumerate(edges_w_multiple_faces):
+        curve_feats[multi_edge] = np.mean(curve_feats_[multi_indices[jj], :], axis=0)
 
     # map the line dist features to the proper rag-edges
     # first for the edges with single face, then for edges with
     # multiple faces via average over the faces
     line_dist_feats = np.zeros((n_edges, line_dist_feats_.shape[1]), dtype='float32')
     line_dist_feats[edges_w_single_face] = line_dist_feats_[edges_w_single_face_idx]
-    for multi_edge in edges_w_multiple_faces:
-        line_dist_feats[multi_edge] = np.mean(line_dist_feats_[multi_indices[multi_edge], :], axis=0)
+    for jj, multi_edge in enumerate(edges_w_multiple_faces):
+        line_dist_feats[multi_edge] = np.mean(line_dist_feats_[multi_indices[jj], :], axis=0)
 
     # map the geometry features to the proper rag-edges
     # first for the edges with single face, then for edges with
     # multiple faces via average over the faces
     geo_feats = np.zeros((n_edges, geo_feats_.shape[1]), dtype='float32')
     geo_feats[edges_w_single_face] = geo_feats_[edges_w_single_face_idx]
-    for multi_edge in edges_w_multiple_faces:
-        geo_feats[multi_edge] = np.mean(geo_feats_[multi_indices[multi_edge], :], axis=0)
+    for jj, multi_edge in enumerate(edges_w_multiple_faces):
+        geo_feats[multi_edge] = np.mean(geo_feats_[multi_indices[jj], :], axis=0)
 
     # map the topology features to the proper rag-edges
     # first for the edges with single face, then for edges with
     # multiple faces via average over the faces
     topo_feats = np.zeros((n_edges, topo_feats_.shape[1]), dtype='float32')
     topo_feats[edges_w_single_face] = topo_feats_[edges_w_single_face_idx]
-    for multi_edge in edges_w_multiple_faces:
-        topo_feats[multi_edge] = np.mean(topo_feats_[multi_indices[multi_edge], :], axis=0)
+    for jj, multi_edge in enumerate(edges_w_multiple_faces):
+        topo_feats[multi_edge] = np.mean(topo_feats_[multi_indices[jj], :], axis=0)
 
     # face count features
-    face_count_feats = np.ones((len(uv_ids), 1), dtype='float32')
+    face_count_feats = np.ones(len(uv_ids), dtype='float32')
     face_count_feats[edges_w_multiple_faces] = face_counts[edges_w_multiple_faces]
 
-    # TODO face_counts
     feats = np.concatenate(
-        [curve_feats, line_dist_feats, geo_feats, topo_feats, face_count_feats],
+        [curve_feats, line_dist_feats, geo_feats, topo_feats, face_count_feats[:, None]],
         axis=1
     )
     return feats
@@ -214,8 +213,9 @@ def topo_feats_z(rag, seg, edge_indications):
     feats_z = np.zeros((len(z_edge_ids), n_feats), dtype='float32')
 
     coordinate_calc = nrag.ragCoordinates(rag)
-    coordinates = [coordinate_calc.edgeCoordinate(edge_id) for edge_id in xrange(z_edge_ids)]
+    coordinates = [coordinate_calc.edgeCoordinates(edge_id) for edge_id in z_edge_ids]
     start_coordinates = np.array([np.min(coord[:, 0]) for coord in coordinates], dtype='uint32')
+    assert len(start_coordinates) == len(z_edge_ids)
 
     # iterate over the pairs of adjacent slices, map z-edges to
     # a segmentation and compute the corresponding features
@@ -224,7 +224,7 @@ def topo_feats_z(rag, seg, edge_indications):
         # z-edges to segmentation:
         # first find the edges in connecting slice z to z + 1
         # then map them to a segmentation (note that z edges coresspond to areas !)
-        this_edge_ids = np.where(start_coordinates == z)
+        this_edge_ids = np.where(start_coordinates == z)[0]
         edge_seg = np.zeros(seg.shape[1:], dtype='uint32')
         for edge_id in this_edge_ids:
             edge_seg[coordinates[edge_id][:, 1:]] = edge_id
@@ -275,18 +275,36 @@ if __name__ == '__main__':
         print feats.shape
         print feats[:, -5:]
 
-    def test_topofeats_xy():
-        seg_ = vigra.readHDF5('/home/consti/seg_cgp.h5', 'data')
+    def test_seg():
+        import os
+        home = os.path.expanduser('~')
+        seg_ = vigra.readHDF5(
+            os.path.join(home, 'seg_cgp1.h5'),
+            'data'
+        )
         seg_ -= 1
         seg = np.concatenate([
             seg_[None, :, :], seg_[None, :, :] + seg_.max() + 1],
             axis=0
         )
+        assert seg.min() == 0
         rag = nrag.gridRag(seg)
         nodes_z = np.zeros(rag.numberOfNodes, dtype='uint32')
         nodes_z[seg[0]] = 0
         nodes_z[seg[1]] = 1
-        feats = topo_feats_xy(rag, seg, nodes_z)
+        uv_ids = rag.uvIds()
+        edge_indications = (nodes_z[uv_ids[:, 0]] == nodes_z[uv_ids[:, 1]]).astype('uint8')
+        return seg, rag, nodes_z, edge_indications
+
+    def test_topofeats_xy():
+        seg, rag, nodes_z, edge_indications = test_seg()
+        feats = topo_feats_xy(rag, seg, edge_indications, nodes_z)
         print feats.shape
 
-    test_topofeats_xy()
+    def test_topofeats_z():
+        seg, rag, nodes_z, edge_indications = test_seg()
+        feats = topo_feats_z(rag, seg, nodes_z)
+        print feats.shape
+
+    # test_topofeats_xy()
+    test_topofeats_z()
