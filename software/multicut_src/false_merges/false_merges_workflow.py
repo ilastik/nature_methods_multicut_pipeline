@@ -339,10 +339,106 @@ def check_connected_components(g):
     n_ccs = len(np.unique(components))
     assert n_ccs == 1, str(n_ccs)
 
+def edge_paths_and_counts_for_nodes(g, weights, node_list, n_threads=1):
+    """
+    Returns the path of edges for all pairs of nodes in node list as
+    well as the number of times each edge is included in a shortest path.
+    @params:
+    g         : nifty.graph.UndirectedGraph, the underlying graph
+    weights   : list[float], the edge weights for shortest paths
+    node_list : list[int],   the list of nodes that will be considered for the shortest paths
+    n_threads : int, number of threads used
+    @returns:
+    edge_paths: dict[tuple(int,int),list[int]] : Dictionary with list of edge-ids corresponding to the
+                shortest path for each pair in node_list
+    edge_counts: np.array[int] : Array with number of times each edge was visited in a shortest path
+    """
+
+    edge_paths = {}
+    edge_counts = np.zeros(g.numberOfEdges, dtype='uint32')
+
+    # single threaded implementation
+    if n_threads < 2:
+
+        # build the nifty shortest path object
+        path_finder = nifty.graph.ShortestPathDijkstra(g)
+
+        # iterate over the source nodes
+        # we don't need to go to the last node, because it won't have any more targets
+        for ii, u in enumerate(node_list[:-1]):
+
+            # target all nodes in node list tat we have not visited as source
+            # already (for these the path is already present)
+            target_nodes = node_list[ii + 1:]
+
+            # find the shortest path from source node u to the target nodes
+            shortest_paths = path_finder.runSingleSourceMultiTarget(
+                weights.tolist(),
+                u,
+                target_nodes,
+                returnNodes=False
+            )
+            assert len(shortest_paths) == len(target_nodes)
+
+            # extract the shortest path for each node pair and
+            # increase the edge counts
+            for jj, sp in enumerate(shortest_paths):
+                v = target_nodes[jj]
+                edge_paths[(u, v)] = sp
+                edge_counts[sp] += 1
+
+    # multi-threaded implementation
+    # this might be quite memory hungry!
+    else:
+
+        # construct the target nodes for all source nodes and run shortest paths
+        # in parallel, don't need last node !
+        all_target_nodes = [node_list[ii + 1:] for ii in xrange(len(node_list[:-1]))]
+        all_shortest_paths = nifty.graph.shortestPathMultiTargetParallel(
+            g,
+            weights.tolist(),
+            node_list[:-1],
+            all_target_nodes,
+            returnNodes=False,
+            numberOfThreads=n_threads
+        )
+        assert len(all_shortest_paths) == len(node_list) - 1, "%i, %i" % (len(all_shortest_paths), len(node_list) - 1)
+
+        # TODO this is still quite some serial computation overhead.
+        # for good paralleliztion, this should also be parallelized
+
+        # extract the shortest paths for all node pairs and edge counts
+        for ii, shortest_paths in enumerate(all_shortest_paths):
+
+            u = node_list[ii]
+            target_nodes = all_target_nodes[ii]
+            for jj, sp in enumerate(shortest_paths):
+                v = target_nodes[jj]
+                edge_paths[(u, v)] = sp
+                edge_counts[sp] += 1
+
+    return edge_paths, edge_counts
+
+
+#
+def check_edge_paths(edge_paths, node_list):
+    from itertools import combinations
+    pairs = combinations(node_list, 2)
+    pair_list = [pair for pair in pairs]
+
+    # make sure that we have all combination in the edge_paths
+    for pair in pair_list:
+        assert pair in edge_paths
+
+    # make sure that we don't have any spurious pairs in edge_paths
+    for pair in edge_paths:
+        assert pair in pair_list
+
+    print "passed"
 
 
 
-def edge_paths_and_counts_for_nodes(g, weights, node_list):
+def edge_paths_and_counts_for_nodes_dump(g, weights, node_list):
     """
     Returns the path of edges for all pairs of nodes in node list as
     well as the number of times each edge is included in a shortest path.
@@ -416,8 +512,8 @@ def compute_graph_and_paths(img):
 
     check_connected_components(g)
 
-    edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g, edge_lens, term_list[:30])
-
+    edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g, edge_lens, term_list[:30],24)
+    check_edge_paths(edge_paths, term_list[:30])
     edge_paths_julian = {}
 
     for pair in edge_paths.keys():
