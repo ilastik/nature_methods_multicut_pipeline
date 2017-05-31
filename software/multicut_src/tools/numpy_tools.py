@@ -5,14 +5,19 @@ import numpy as np
 # make the rows of array unique
 # see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
 # TODO this could also be done in place
-def get_unique_rows(array, return_index=False):
+def get_unique_rows(array, return_index=False, return_inverse=False):
     array_view = np.ascontiguousarray(array).view(np.dtype((np.void, array.dtype.itemsize * array.shape[1])))
-    _, idx = np.unique(array_view, return_index=True)
-    unique_rows = array[idx]
-    if return_index:
-        return unique_rows, idx
+    if return_inverse:
+        _, idx, inverse_idx = np.unique(array_view, return_index=True, return_inverse=True)
     else:
-        return unique_rows
+        _, idx = np.unique(array_view, return_index=True)
+    unique_rows = array[idx]
+    return_vals = (unique_rows,)
+    if return_index:
+        return_vals += (idx,)
+    if return_inverse:
+        return_vals += (inverse_idx,)
+    return return_vals
 
 
 # this returns a 2d array with the all the indices of matching rows for a and b
