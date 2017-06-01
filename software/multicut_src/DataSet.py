@@ -11,24 +11,28 @@ from tools import cacher_hdf5, cache_name
 from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
 from tools import edges_to_volumes_for_skip_edges
 
+from defect_handling import modified_edge_indications, modified_adjacency
+from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
+from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
+
 from ExperimentSettings import ExperimentSettings
 from feature_impls import topology_features_impl
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.graph.rag as nrag
     import nifty.ground_truth as ngt
+    import nifty.segmentation as nseg
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
         import nifty_with_cplex.ground_truth as ngt
+        import nifty_with_cplex.segmentation as nseg
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
             import nifty_with_gurobi.ground_truth as ngt
+            import nifty_with_gurobi.segmentation as nseg
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -449,17 +453,9 @@ class DataSet(object):
             # TODO change once we allow more general values
             assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
             seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
-            # FIXME FIXME FIXME
-            # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
-            seg, _, _ = vigra.analysis.relabelConsecutive(
-                seg.astype('uint32'),
-                start_label=1,
-                keep_zeros=True
-            )
+            seg = nseg.connectedComponents(seg, ignoreBackground=True)
         else:
-            # FIXME FIXME FIXME
-            # TODO do we need to transpose here, because otherwise fortran order messes up the flat superpixels ??
-            seg, _, _ = vigra.analysis.relabelConsecutive(seg.astype('uint32'), start_label=0, keep_zeros=False)
+            seg = nseg.connectedComponents(seg, ignoreBackground=False)
         return seg
 
     def add_seg(self, seg_path, seg_key):
@@ -1161,7 +1157,7 @@ class DataSet(object):
         save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
         vigra.writeHDF5(topo_feat_names, save_file, "topology_features_names")
 
-        return topo_feats
+        return np.nan_to_num(topo_feats)
 
     # get the names of the region features
     def topology_features_names(self, seg_id, use_2d_edges):
@@ -1421,12 +1417,12 @@ class DataSet(object):
 
         volumina_n_layer(data, labels)
 
-    def view_edge_labels(self, seg_id, with_defects=False):
-        from volumina_viewer import volumina_n_layer
+    def view_edge_labels(
+        self,
+        seg_id,
+        with_defects=False
+    ):
         from EdgeRF import mask_edges
-        from defect_handling import modified_edge_indications, modified_adjacency
-        from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
-        from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
 
         uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
 
@@ -1448,23 +1444,35 @@ class DataSet(object):
         labels_debug[labels == 0.]  = 2
         labels_debug[np.logical_not(labeled)] = 5
 
+        self.view_edge_values(self, seg_id, labels_debug, with_defects)
+
+    def view_edge_values(
+        self,
+        seg_id,
+        edge_values,
+        with_defects=False
+    ):
+        from volumina_viewer import volumina_n_layer
+
+        uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
+
         if with_defects:
-            skip_transition = labels_debug.shape[0] - get_skip_edges(self, seg_id).shape[0]
+            skip_transition = edge_values.shape[0] - get_skip_edges(self, seg_id).shape[0]
             edge_indications = modified_edge_indications(self, seg_id)[:skip_transition]
             # get  uv ids and labels for the skip edges
             uv_skip     = uv_ids[skip_transition:]
-            labels_skip = labels_debug[skip_transition:]
+            labels_skip = edge_values[skip_transition:]
             # get uv ids and labels for the normal edges
             uv_ids      = uv_ids[:skip_transition]
-            labels_debug = labels_debug[:skip_transition]
+            edge_values = edge_values[:skip_transition]
         else:
             edge_indications = self.edge_indications(seg_id)
 
-        assert edge_indications.shape[0] == labels_debug.shape[0], \
-            "%i, %i" % (edge_indications.shape[0], labels_debug.shape[0])
+        assert edge_indications.shape[0] == edge_values.shape[0], \
+            "%i, %i" % (edge_indications.shape[0], edge_values.shape[0])
         # xy - and z - labels
-        labels_xy = labels_debug[edge_indications == 1]
-        labels_z  = labels_debug[edge_indications == 0]
+        labels_xy = edge_values[edge_indications == 1]
+        labels_z  = edge_values[edge_indications == 0]
         uv_xy = uv_ids[edge_indications == 1]
         uv_z  = uv_ids[edge_indications == 0]
 
@@ -1473,7 +1481,13 @@ class DataSet(object):
         edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z)
 
         raw = self.inp(0).astype('float32')
-        gt  = self.gt()
+
+        data = [raw, seg]
+        labels = ['raw', 'seg']
+
+        if self.has_gt:
+            data.append(self.gt())
+            labels.append('groundtruth')
 
         if with_defects:
             skip_ranges = get_skip_ranges(self, seg_id)
@@ -1486,15 +1500,13 @@ class DataSet(object):
                 skip_starts,
                 skip_ranges
             )
-            volumina_n_layer(
-                [raw, seg, gt, edge_vol_z, edge_vol_skip, edge_vol_xy],
-                ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_skip', 'labels_xy']
-            )
+            data.extend([edge_vol_z, edge_vol_skip, edge_vol_xy])
+            labels.extend(['labels_z', 'labels_skip', 'labels_xy'])
         else:
-            volumina_n_layer(
-                [raw, seg, gt, edge_vol_z, edge_vol_z, edge_vol_xy],
-                ['raw', 'seg', 'groundtruth', 'labels_z', 'labels_xy']
-            )
+            data.extend([edge_vol_z, edge_vol_xy])
+            labels.extend(['labels_z', 'labels_xy'])
+
+        volumina_n_layer(data, labels)
 
 
 # cutout from a given Dataset, used for cutouts and tesselations
