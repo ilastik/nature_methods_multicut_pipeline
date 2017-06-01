@@ -5,7 +5,7 @@ from concurrent import futures
 from scipy import interpolate
 
 from ..ExperimentSettings import ExperimentSettings
-#test
+
 # calculate the distance transform for the given segmentation
 def distance_transform(segmentation, anisotropy):
     edge_volume = np.concatenate(
@@ -177,9 +177,9 @@ def features(paths, anisotropy):
 
 
 
-    def compute_path_length(path,aniso_temp=[1,1,1]):
+    def compute_path_length(path):
         # TODO check that this actually agrees
-        path_euclidean_diff =aniso_temp* np.diff(path, axis=0)
+        path_euclidean_diff = np.diff(path, axis=0)
         path_euclidean_diff = np.sqrt(
             np.sum(np.square(path_euclidean_diff), axis=1))
         return np.sum(path_euclidean_diff, axis=0)
@@ -218,7 +218,7 @@ def features(paths, anisotropy):
         for i in xrange(0, size - 2):
             array_dx2[i] = array[i] + array[2 + i] - 2 * array[1 + i]
 
-        print "\n\n array_dx2: ", array_dx2,"\n\n"
+
         return array_dx2
 
     def curvature_berechnen(data):
@@ -240,34 +240,28 @@ def features(paths, anisotropy):
 
 
     aniso_temp = np.array(anisotropy)
-    #
-    # pathslist = []
-    # for i in paths:
-    #     pathslist.append(i)
-    #
-    # for number, data in enumerate(pathslist):
-    #
-    #     data = np.array([(elem1*aniso_temp[0], elem2*aniso_temp[1], elem3*aniso_temp[2]) for elem1, elem2, elem3 in data])
-    #     data = data.transpose()
-    #
-    #     tck, u = interpolate.splprep(data, s=3500, k=3)
-    #
-    #     new = interpolate.splev(np.linspace(0, 1, 100000), tck)
-    #
-    #     data = np.array(new).transpose()
-    #     pathslist[number] = data
-    #
-    #
-    #
-    #
-    # features_computed = np.concatenate([
-    #     np.array([compute_path_length(path) for path in pathslist])[:, None],
-    #     np.array([maximum_ausgeben(path) for path in pathslist])[:, None]],
-    #     axis=1)
-    #
 
-    features_computed = np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:,None]
+    pathslist = []
+    for i in paths:
+        pathslist.append(i)
 
+    for number, data in enumerate(pathslist):
+
+        data = np.array([(elem1*aniso_temp[0], elem2*aniso_temp[1], elem3*aniso_temp[2]) for elem1, elem2, elem3 in data])
+        data = data.transpose()
+
+        tck, u = interpolate.splprep(data, s=3500, k=3)
+
+        new = interpolate.splev(np.linspace(0, 1, 100000), tck)
+
+        data = np.array(new).transpose()
+        pathslist[number] = data
+
+
+    features_computed=np.concatenate([
+        np.array([compute_path_length(path) for path in pathslist])[:,None],
+        np.array([maximum_ausgeben(path) for path in pathslist])[:,None]],
+        axis=1)
 
     return features_computed
 
