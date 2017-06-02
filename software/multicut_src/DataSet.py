@@ -453,9 +453,9 @@ class DataSet(object):
             # TODO change once we allow more general values
             assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
             seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
-            seg = nseg.connectedComponents(seg, ignoreBackground=True)
+            seg = nseg.connectedComponents(seg, ignoreBackground=True).astype('uint32')
         else:
-            seg = nseg.connectedComponents(seg, ignoreBackground=False)
+            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype('uint32')
         return seg
 
     def add_seg(self, seg_path, seg_key):

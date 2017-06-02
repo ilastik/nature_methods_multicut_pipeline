@@ -192,35 +192,36 @@ def lifted_multicut_costs_from_shortest_paths(
 
     lifted_costs = np.zeros(lifted_uv_ids.shape[0], dtype=local_probabilities.dtype)
 
-    # FIXME parallelisation does not work properly
+    # get all sources and targets
+    sources = lifted_uv_ids[:, 0]
+    targets = lifted_uv_ids[:, 1]
+
+    # get the unique start nodes and the corresponding indices
+    # NOTE we assume here that sources is sorted (which luckily is the case for the nifty lifted uv ids)
+    sort_idx = np.arange(len(sources), dtype='uint32')
+    start_nodes, unique_counts = np.unique(sources, return_counts=True)
+    start_idx = np.split(sort_idx, np.cumsum(unique_counts))[:-1]
 
     # run singleSource (u) to multi target (list of v;s connected to u) shortest path
     # in parallel
-
-    sources = lifted_uv_ids[:, 0]
-    start_nodes = np.unique(sources)
-    targets = lifted_uv_ids[:, 1]
     all_shortest_paths = nifty.graph.shortestPathMultiTargetParallel(
         graph,
-        (1. - local_probabilities).tolist(),
+        (1. - local_probabilities),
         start_nodes,
-        [targets[sources == u] for u in start_nodes],
+        [targets[start_idx[ii]] for ii in xrange(len(start_nodes))],
         returnNodes=False,
         numberOfThreads=ExperimentSettings().n_threads
     )
-    assert len(all_shortest_paths) == len(sources)
+    assert len(all_shortest_paths) == len(start_nodes), "%i, %i" % (len(all_shortest_paths), len(start_nodes))
 
     # agglomerate the lifted costs based on the local probabilities
     # along the shortest path
     for ii, u in enumerate(start_nodes):
-        where_u = sources == u
         shortest_paths = all_shortest_paths[ii]
-        lifted_costs[where_u] = np.array(
+        lifted_costs[start_idx[ii]] = np.array(
             [agglomerator(local_probabilities[pp]) for pp in shortest_paths],
             dtype=local_probabilities.dtype
         )
-        print shortest_paths
-        quit()
 
     # TODO probabilities to costs
     p_min = 0.001
@@ -335,6 +336,8 @@ def lifted_multicut_workflow_no_learning(
     # TODO weight lifted vs. local costs properly
     # maybe we should start doing this differently, as
     # the current method might be not very stable numerically
+    local_costs /= local_costs.shape[0]
+    lifted_costs /= lifted_costs.shape[0]
 
     return optimize_lifted(uv_ids, lifted_uv_ids, local_costs, lifted_costs)
 
