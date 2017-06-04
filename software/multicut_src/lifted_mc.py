@@ -504,7 +504,20 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
     rag = ds.rag(seg_id)
-    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
+
+    if ds.has_seg_mask:
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            ds.gt()
+        )
+    else:
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            ds.gt(),
+            True,
+            ds.gt_ignore_value
+        )
+
     labels  = (node_gt[uv_ids[:, 0]] != node_gt[uv_ids[:, 1]])
     return labels
 

@@ -396,11 +396,17 @@ def modified_edge_gt(ds, seg_id):
         return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds.rag(seg_id)
-    node_gt = nrag.gridRagAccumulateLabels(
-        rag,
-        ds.gt(),
-        ignoreBackground=ds.has_seg_mask
-    )
+
+    if ds.has_seg_mask:
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            ds.gt(),
+            ignoreBackground=ds.has_seg_mask,
+            ignoreValue=ds.gt_ignore_value
+        )
+    else:
+        node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
+
     skip_gt = (node_gt[skip_edges[:, 0]] != node_gt[skip_edges[:, 1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
 

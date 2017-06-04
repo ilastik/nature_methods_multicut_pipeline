@@ -124,7 +124,8 @@ def edges_to_volumes_for_skip_edges(
         uv_ids,
         edge_labels,
         skip_starts,
-        skip_ranges):
+        skip_ranges
+):
 
     assert uv_ids.shape[0] == edge_labels.shape[0]
     assert skip_ranges.shape[0] == uv_ids.shape[0]

@@ -34,7 +34,8 @@ def probs_to_energies(
         weighting_scheme,
         weight,
         beta,
-        feat_cache):
+        feat_cache
+):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl

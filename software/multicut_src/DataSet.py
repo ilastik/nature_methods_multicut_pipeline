@@ -9,7 +9,7 @@ import cPickle as pickle
 import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
 
 from tools import cacher_hdf5, cache_name
-from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
+from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane, edges_to_volume
 from tools import edges_to_volumes_for_skip_edges, find_matching_indices
 
 from defect_handling import modified_edge_indications, modified_adjacency
@@ -110,6 +110,9 @@ class DataSet(object):
         self.gt_false_splits = set()
         # gt ids to be ignored for negative training examples
         self.gt_false_merges = set()
+
+        # ignore value in the gt if we have a seg-mask
+        self.gt_ignore_value = 0
 
     def __str__(self):
         return self.ds_name
@@ -492,6 +495,11 @@ class DataSet(object):
         # also messes up defects in cremi...
         # gt = vigra.analysis.labelVolumeWithBackground(gt.astype(np.uint32))
         # gt -= gt.min()
+        if self.has_seg_mask:
+            mask = self.seg_mask()
+            ignore_val = np.unique(gt[mask == 0])
+            assert len(ignore_val) == 1
+            self.gt_ignore_value = ignore_val[0]
 
         return gt.astype('uint32')
 
@@ -556,13 +564,20 @@ class DataSet(object):
         internal_mask_path = os.path.join(self.cache_folder, 'seg_mask.h5')
         if os.path.exists(internal_mask_path):
             return vigra.readHDF5(internal_mask_path, 'data')
+
         else:
             mask = vigra.readHDF5(self.external_seg_mask_path, self.external_seg_mask_key)
             assert all(np.unique(mask) == np.array([0, 1])), str(np.unique(mask))
             if isinstance(self, Cutout):
                 mask = mask[self.bb]
                 assert mask.shape == self.shape, str(mask.shape) + " , " + str(self.shape)
-            vigra.writeHDF5(mask, internal_mask_path, 'data', compression=ExperimentSettings().compression)
+
+            vigra.writeHDF5(
+                mask,
+                internal_mask_path,
+                'data',
+                compression=ExperimentSettings().compression
+            )
             return mask
 
     def add_defect_mask(self, mask_path, mask_key):
@@ -605,7 +620,7 @@ class DataSet(object):
     @cacher_hdf5()
     def masked_nodes(self, seg_id):
 
-        assert seg_id < self.n_segs
+        assert seg_id < self.n_seg
         seg = self.seg(seg_id)
         mask = self.seg_mask()
 
@@ -618,16 +633,16 @@ class DataSet(object):
             # for all nodes that have overlap with the ignore mask,
             # check whether they are exclusively in the ignore mask
             masked_nodes = [
-                n for n in np.unique(seg_z[mask_z == 1])
+                n for n in np.unique(seg_z[mask_z == 0])
                 if len(np.unique(mask_z[seg_z == n])) == 1
             ]
             return masked_nodes
 
         with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
             tasks = [tp.submit(masked_nodes_in_z, z) for z in xrange(seg.shape[0])]
-            masked_nodes = list(itertools.chain([t.result() for t in tasks]))
+            masked_nodes = np.concatenate([t.result() for t in tasks])
 
-        return np.array(masked_nodes, dtype='uint32')
+        return masked_nodes.astype('uint32')
 
     @cacher_hdf5()
     def masked_edges(self, seg_id, with_defects=False):
@@ -1179,11 +1194,17 @@ class DataSet(object):
         assert self.has_gt
         rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(
-            rag,
-            gt,
-            ignoreBackground=self.has_seg_mask
-        )
+
+        if self.has_seg_mask:
+            node_gt = nrag.gridRagAccumulateLabels(
+                rag,
+                gt,
+                ignoreBackground=self.has_seg_mask,
+                ignoreValue=self.gt_ignore_value
+            )
+        else:
+            node_gt = nrag.gridRagAccumulateLabels(rag, gt)
+
         uv_ids = rag.uvIds()
         u_gt = node_gt[uv_ids[:, 0]]
         v_gt = node_gt[uv_ids[:, 1]]
@@ -1219,11 +1240,17 @@ class DataSet(object):
 
         gt = self.gt()
         rag = self.rag(seg_id)
-        node_gt = nrag.gridRagAccumulateLabels(
-            rag,
-            gt,
-            ignoreBackground=self.has_seg_mask
-        )
+
+        if self.has_seg_mask:
+            node_gt = nrag.gridRagAccumulateLabels(
+                rag,
+                gt,
+                ignoreBackground=self.has_seg_mask,
+                ignoreValue=self.gt_ignore_value
+            )
+        else:
+            node_gt = nrag.gridRagAccumulateLabels(rag, gt)
+
         uv_ids = rag.uvIds()
 
         ignore_mask = np.zeros(rag.numberOfEdges, dtype=bool)
@@ -1251,11 +1278,16 @@ class DataSet(object):
 
         rag = self.rag(seg_id)
         gt = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(
-            rag,
-            gt,
-            ignoreBackground=self.has_seg_mask
-        )
+
+        if self.has_seg_mask:
+            node_gt = nrag.gridRagAccumulateLabels(
+                rag,
+                gt,
+                ignoreBackground=self.has_seg_mask,
+                ignoreValue=self.gt_ignore_value
+            )
+        else:
+            node_gt = nrag.gridRagAccumulateLabels(rag, gt)
 
         ignore_mask = np.zeros(uvs_lifted.shape[0], dtype=bool)
         for edge_id in xrange(rag.numberOfEdges):
@@ -1290,6 +1322,18 @@ class DataSet(object):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         rag = self.rag(seg_id)
         assert mc_node.shape[0] == rag.numberOfNodes, str(mc_node.shape[0]) + " , " + str(rag.numberOfNodes)
+
+        # relabel consecutively, starting from 1
+        mc_node, _, _ = vigra.analysis.relabelConsecutive(
+            mc_node,
+            keep_zeros=False,
+            start_label=1
+        )
+        # with a seg mask, we set the masked nodes to 0
+        if self.has_seg_mask:
+            masked_nodes = self.masked_nodes(seg_id)
+            mc_node[masked_nodes] = 0
+
         mc_seg  = nrag.projectScalarNodeDataToPixels(rag, mc_node, ExperimentSettings().n_threads)
         assert mc_seg.shape == self.shape
         return mc_seg
@@ -1459,7 +1503,7 @@ class DataSet(object):
         labels_debug[labels == 0.]  = 2
         labels_debug[np.logical_not(labeled)] = 5
 
-        self.view_edge_values(self, seg_id, labels_debug, with_defects)
+        self.view_edge_values(seg_id, labels_debug, with_defects)
 
     def view_edge_values(
         self,
@@ -1485,15 +1529,32 @@ class DataSet(object):
 
         assert edge_indications.shape[0] == edge_values.shape[0], \
             "%i, %i" % (edge_indications.shape[0], edge_values.shape[0])
-        # xy - and z - labels
-        labels_xy = edge_values[edge_indications == 1]
-        labels_z  = edge_values[edge_indications == 0]
-        uv_xy = uv_ids[edge_indications == 1]
-        uv_z  = uv_ids[edge_indications == 0]
 
         seg = self.seg(seg_id)
-        edge_vol_xy   = edges_to_volume_from_uvs_in_plane(self, seg, uv_xy, labels_xy)
-        edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z)
+
+        if with_defects:
+            uv_xy = uv_ids[edge_indications == 1]
+            labels_xy = edge_values[edge_indications == 1]
+            edge_vol_xy = edges_to_volume_from_uvs_in_plane(self, seg, uv_xy, labels_xy, with_defects)
+        else:
+            rag = self.rag(seg_id)
+            labels_xy = edge_values.copy()
+            labels_xy[edge_indications == 0] = 0
+            edge_vol_xy = edges_to_volume(rag, labels_xy)
+
+        if with_defects:
+            uv_z  = uv_ids[edge_indications == 0]
+            labels_z  = edge_values[edge_indications == 0]
+            edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z, with_defects)
+        else:
+            labels_z = edge_values.copy()
+            labels_z[edge_indications == 1] = 0
+            edge_vol_z_up = edges_to_volume(rag, labels_z, 1)
+            edge_vol_z_dn = edges_to_volume(rag, labels_z, 2)
+            edge_vol_z = np.concatenate(
+                [edge_vol_z_dn[..., None], edge_vol_z_up[..., None]],
+                axis=3
+            )
 
         raw = self.inp(0).astype('float32')
 
@@ -1523,28 +1584,37 @@ class DataSet(object):
 
         volumina_n_layer(data, labels)
 
-        def view_masked_nodes(self, seg_id):
-            seg = self.seg(seg_id)
-            data = [self.inp(0).astype('float32'), seg]
-            labels = ['raw', 'seg']
+    def view_masked_nodes(self, seg_id):
 
-            if self.has_seg_mask:
-                masked_nodes_seg = self.masked_nodes(seg_id)
-                node_vol_seg = np.zeros(self.shape, dtype='uint8')
-                for mn in masked_nodes_seg:
-                    node_vol_seg[seg == mn] = 1
-                data.extend([self.seg_mask(), node_vol_seg])
-                labels.extend(['seg-mask', 'node-seg-mask'])
+        from volumina_viewer import volumina_n_layer
+        from numpy.ma import masked_array
 
-            if self.has_defects:
-                masked_nodes_defects = defects_to_nodes(self, seg_id)
-                node_vol_defects = np.zeros(self.shape, dtype='uint8')
-                for mn in masked_nodes_defects:
-                    node_vol_defects[seg == mn] = 1
-                data.extend([self.defect_mask(), node_vol_defects])
-                labels.extend(['defect-mask', 'node-defect-mask'])
+        seg = self.seg(seg_id)
+        data = [self.inp(0).astype('float32'), seg]
+        labels = ['raw', 'seg']
 
-            volumina_n_layer(data, labels)
+        if self.has_seg_mask:
+            masked_nodes_seg = self.masked_nodes(seg_id)
+            # mask the node values
+            node_vol_mask = masked_array(seg, np.in1d(seg, masked_nodes_seg))
+            node_vol_mask = node_vol_mask.mask
+            node_vol_seg = np.zeros(self.shape, dtype='uint8')
+            node_vol_seg[node_vol_mask] = 1
+
+            data.extend([self.seg_mask(), node_vol_seg])
+            labels.extend(['seg-mask', 'node-seg-mask'])
+
+        masked_nodes_defects = defects_to_nodes(self, seg_id)
+        if self.has_defects:
+            defect_vol_mask = masked_array(seg, np.in1d(seg, masked_nodes_defects))
+            defect_vol_mask = defect_vol_mask.mask
+            node_vol_defects = np.zeros(self.shape, dtype='uint8')
+            node_vol_defects[defect_vol_mask] = 1
+
+            data.extend([self.defect_mask(), node_vol_defects])
+            labels.extend(['defect-mask', 'node-defect-mask'])
+
+        volumina_n_layer(data, labels)
 
 
 # cutout from a given Dataset, used for cutouts and tesselations

@@ -42,16 +42,13 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
         )
     else:
         raise RuntimeError("Something went wrong, sovler " + ExperimentSettings().solver + ", not in valid solver.")
+    assert len(mc_node) == n_var, "%i, %i" % (len(mc_node), n_var)
 
     # get the result mapped to the edges
     ru = mc_node[uv_ids[:, 0]]
     rv = mc_node[uv_ids[:, 1]]
     mc_edges = ru != rv
 
-    # we dont want zero as a segmentation result
-    # because it is the ignore label in many settings
-    mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label=1, keep_zeros=False)
-    assert len(mc_node) == n_var, "%i, %i" % (len(mc_node), n_var)
     return mc_node, mc_edges, mc_energy, t_inf
 
 
