@@ -241,6 +241,8 @@ def topo_feats_z(rag, seg, edge_indications):
     start_coordinates = np.array([np.min(coord[:, 0]) for coord in coordinates.values()], dtype='uint32')
     assert len(start_coordinates) == len(z_edge_ids)
 
+    running_average = np.zeros(n_feats, dtype='float32')
+    total_edge_num_running = 0
     # iterate over the pairs of adjacent slices, map z-edges to
     # a segmentation and compute the corresponding features
     for z in xrange(seg.shape[0] - 1):
@@ -257,17 +259,30 @@ def topo_feats_z(rag, seg, edge_indications):
             coords = coordinates[edge_id][:, 1:]
             edge_seg[(coords[:, 0], coords[:, 1])] = ii
 
-        # build a rag based on the edge segmentation to have the uv-ids
-        # and extract features for the lines between the z-edges
-        edge_rag = nrag.gridRag(edge_seg)
-        edge_uv_ids = edge_rag.uvIds()
-        feats_lines = topo_feats_slice(edge_seg, edge_uv_ids)
+        # FIXME very hacky: very rarely nifty.cgp fails, then we just replace all features
+        # for this slice with the running averge
+        try:
+            # build a rag based on the edge segmentation to have the uv-ids
+            # and extract features for the lines between the z-edges
+            edge_rag = nrag.gridRag(edge_seg)
+            edge_uv_ids = edge_rag.uvIds()
+            feats_lines = topo_feats_slice(edge_seg, edge_uv_ids)
 
-        # map the feats back to the z-edges via averaging over the line feats
-        feats = np.zeros((len(this_edge_ids), feats_lines.shape[1]), dtype='float32')
-        for ii in xrange(len(this_edge_ids)):
-            edge_mask = (edge_uv_ids == ii).any(axis=1)
-            feats[ii, :] = np.mean(feats_lines[edge_mask, :], axis=0)
+            # map the feats back to the z-edges via averaging over the line feats
+            feats = np.zeros((len(this_edge_ids), feats_lines.shape[1]), dtype='float32')
+            for ii in xrange(len(this_edge_ids)):
+                edge_mask = (edge_uv_ids == ii).any(axis=1)
+                feats[ii, :] = np.mean(feats_lines[edge_mask, :], axis=0)
+
+            # update the running average
+            this_edge_num = float(len(this_edge_ids))
+            total_edge_num_running += this_edge_num
+            running_average += (this_edge_num / total_edge_num_running) * np.mean(feats, axis=0)
+
+        except RuntimeError as e:
+            print "WARNING: Nifty cgp failed with error:", e
+            print "Replacing features for this slice with running average"
+            feats = np.concatenate([running_average[None, :] for _ in xrange(len(this_edge_ids))], axis=0)
 
         feats_z[this_edge_ids] = feats
 
