@@ -66,6 +66,76 @@ def is_inp_name(file_name):
         return False
 
 
+# if we have a ignore mask, we need to do some ugly stuff to prevent
+# of the ignore label in the individual slices
+# (otherwise nifty.cgp fails)
+def connected_components_with_ignore_mask(seg):
+
+    seg_new = np.zeros_like(seg, dtype='uint32')
+
+    # connected components in slice z
+    def cc_z(z):
+
+        ignore_mask = seg[z] == ExperimentSettings().ignore_seg_value
+        seg_cc = nseg.connectedComponents(seg[z], ignoreBackground=False)
+        new_ignore_vals = np.unique(seg_cc[ignore_mask])
+
+        # if we have more than one new label at the original ignore label,
+        # the ignore label is disconnected in this slice.
+        # we merge the small disconnected components to an adjacent label in
+        # the segmentation and restore the big connected component of the ignore label
+        if len(new_ignore_vals) > 1:
+
+            rag = nrag.gridRag(seg_cc)
+            label_sizes = [np.sum(seg_cc == l) for l in new_ignore_vals]
+            keep_label = new_ignore_vals[np.argmax(label_sizes)]
+            merge_labels = new_ignore_vals[new_ignore_vals != keep_label]
+            keep_labels = [keep_label]
+
+            # merge the remaining label pixles into some adjacent segment
+            for l in merge_labels:
+                where_l = np.where(seg_cc == l)
+
+                # only discard this segment if it has less than 50 pixels
+                # othewise pray that the disconnected label does not kill ncgp....
+                if where_l[0].size > 50:
+                    keep_labels.append(l)
+                    continue
+
+                # we simply merge to the next adjacent node
+                for adj in rag.nodeAdjacency(l):
+                    merge_to = adj[0]
+                    seg_cc[where_l] = merge_to
+                    break
+
+            # mark the keep labels as ignore
+            for ll in keep_labels:
+                seg_cc[seg_cc == ll] = ExperimentSettings().ignore_seg_value
+
+        # otherwise, we simply set back to the ignore value
+        else:
+            seg_cc[ignore_mask] = ExperimentSettings().ignore_seg_value
+
+        seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True)
+        seg_new[z] = seg_cc
+        return seg_max
+
+    with futures.ThreadPoolExecutor(max_workers=1) as tp:
+    # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
+        tasks = [tp.submit(cc_z, z) for z in xrange(seg.shape[0])]
+        offsets = [t.result() for t in tasks]
+
+    # add offsets to the slices
+    offsets = np.roll(offsets, 1)
+    offsets[0] = 0
+    offsets = np.cumsum(offsets)
+
+    for z in xrange(seg.shape[0]):
+        seg_new[z][seg_new[z] != ExperimentSettings().ignore_seg_value] += offsets[z]
+
+    return seg_new
+
+
 class DataSet(object):
 
     def __init__(self, meta_folder, ds_name):
@@ -453,9 +523,9 @@ class DataSet(object):
             # TODO change once we allow more general values
             assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
             seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
-            seg = nseg.connectedComponents(seg, ignoreBackground=True).astype('uint32')
+            seg = connected_components_with_ignore_mask(seg)
         else:
-            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype('uint32')
+            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype(seg.dtype)
         return seg
 
     def add_seg(self, seg_path, seg_key):

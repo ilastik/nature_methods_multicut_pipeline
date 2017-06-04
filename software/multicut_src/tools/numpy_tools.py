@@ -53,6 +53,25 @@ def find_exclusive_matching_indices(array, value_list):
 # numpy.replace: replcaces the values in array according to dict
 # cf. SO: http://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
 def replace_from_dict(array, dict_like):
-    replace_keys, replace_vals = np.array(list(zip(*sorted(dict_like.items()))))
+    replace_keys, replace_vals = np.array(
+        list(zip(*sorted(dict_like.items()))),
+        dtype=array.dtype
+    )
     indices = np.digitize(array, replace_keys, right=True)
-    return replace_vals[indices].astype(array.dtype)
+    return replace_vals[indices]
+
+
+# relabel a numpy segmentation conseutively
+# -> reimplemantation of the vigra function that sometimes shows odd behaviour
+# ignore value is hardcoded to 0 for now
+def relabel_consecutive(array, start_label=0, keep_zeros=True):
+    uniques = np.unique(array)
+    new_values = np.arange(len(uniques), dtype=array.dtype)
+    if start_label != 0:
+        if keep_zeros:
+            new_values[1:] += start_label
+        else:
+            new_values += start_label
+    replace_dict = {uniques[i]: new_values[i] for i in xrange(len(new_values))}
+    new_max = new_values.max()
+    return replace_from_dict(array, replace_dict), new_max, replace_dict

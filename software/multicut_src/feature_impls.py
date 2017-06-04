@@ -8,17 +8,14 @@ from tools import find_matching_row_indices, replace_from_dict, find_exclusive_m
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.cgp as ncgp
     import nifty.graph.rag as nrag
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.cgp as ncgp
         import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.cgp as ncgp
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
@@ -29,11 +26,21 @@ def topo_feats_slice(seg, uv_ids):
 
     # get the segmentation in this slice and map it
     # to a consecutive labeling starting from 1
-    seg_z, _, mapping = vigra.analysis.relabelConsecutive(seg, start_label=1, keep_zeros=False)
+    seg_z, _, mapping = vigra.analysis.relabelConsecutive(
+        seg,
+        keep_zeros=False,
+        start_label=1
+    )
     reverse_mapping = {new: old for old, new in mapping.iteritems()}
     assert seg_z.min() == 1
 
     tgrid = ncgp.TopologicalGrid2D(seg_z)
+
+    # seg_cc = nseg.connectedComponents(seg_z)
+    # uniques = np.unique(seg)
+    # uniques_cc = np.unique(seg_cc)
+    # print len(uniques), len(uniques_cc)
+    # assert len(uniques) == len(uniques_cc), "%i, %i" % (len(uniques), len(uniques_cc))
 
     # extract the cell geometry
     cell_geometry = tgrid.extractCellsGeometry()
@@ -93,7 +100,6 @@ def topo_feats_slice(seg, uv_ids):
         return_index=True,
         return_counts=True
     )
-    assert len(unique_ids) == n_edges
 
     # get the edges with multiple faces
     edges_w_multiple_faces = unique_ids[face_counts > 1]
@@ -148,13 +154,27 @@ def topo_feats_slice(seg, uv_ids):
         topo_feats[multi_edge] = np.mean(topo_feats_[multi_indices[jj], :], axis=0)
 
     # face count features
-    face_count_feats = np.ones(len(uv_ids), dtype='float32')
+    face_count_feats = np.ones(n_edges, dtype='float32')
     face_count_feats[edges_w_multiple_faces] = face_counts[edges_w_multiple_faces]
 
     feats = np.concatenate(
         [curve_feats, line_dist_feats, geo_feats, topo_feats, face_count_feats[:, None]],
         axis=1
     )
+
+    # this can happen with some weird seg masking...
+    # would be much better to have cgp work with an ignore label...
+    if len(unique_ids) < n_edges:
+        # find the missing edge ids
+        consecutive_edge_ids = np.arange(n_edges, dtype=unique_ids.dtype)
+        missing_ids = consecutive_edge_ids[
+            np.logical_not(np.in1d(consecutive_edge_ids, unique_ids))
+        ]
+        print "Inserting missing edge features for ids:"
+        print missing_ids
+        mean_feats = np.mean(feats, axis=0)
+        feats[missing_ids] = mean_feats
+
     return feats
 
 
@@ -178,6 +198,7 @@ def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
     # iterate over the slices and
     # TODO parallelize
     for z in xrange(seg.shape[0]):
+        print "Slice", z
 
         # get the uv_ids in this slice
         nodes_z = np.where(node_z_coords == z)[0]
@@ -223,6 +244,7 @@ def topo_feats_z(rag, seg, edge_indications):
     # iterate over the pairs of adjacent slices, map z-edges to
     # a segmentation and compute the corresponding features
     for z in xrange(seg.shape[0] - 1):
+        print "Slice", z
 
         # z-edges to segmentation:
         # first find the edges in connecting slice z to z + 1
@@ -256,7 +278,9 @@ def topology_features_impl(rag, seg, edge_indications, edge_lens, node_z_coords)
     # calculate the topo features for xy and z edges
     # for now we use the same number if features here
     # if that should change, we need to pad with zeros
+    print "Computing features for xy-edges..."
     feats_xy = topo_feats_xy(rag, seg, edge_indications, node_z_coords)
+    print "Computing features for z-edges..."
     feats_z  = topo_feats_z(rag, seg, edge_indications)
 
     # merge features
