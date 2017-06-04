@@ -608,7 +608,6 @@ class DataSet(object):
         assert seg_id < self.n_segs
         seg = self.seg(seg_id)
         mask = self.seg_mask()
-        ignore_val = ExperimentSettings().ignore_seg_value
 
         # iterate over the slices and find the nodes that are
         # completely enclosed in the seg_mask
@@ -619,7 +618,7 @@ class DataSet(object):
             # for all nodes that have overlap with the ignore mask,
             # check whether they are exclusively in the ignore mask
             masked_nodes = [
-                n for n in np.unique(seg_z[mask_z == ignore_val])
+                n for n in np.unique(seg_z[mask_z == 1])
                 if len(np.unique(mask_z[seg_z == n])) == 1
             ]
             return masked_nodes

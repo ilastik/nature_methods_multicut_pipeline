@@ -22,11 +22,6 @@ class ExperimentSettings(object):
         self.n_threads   = max(multiprocessing.cpu_count() - 1, 1)
         self.compression = 'gzip'  # compression method
         self.aniso_max   = 20.     # maximal aniso factor, for higher values filters will be calculated in 2d
-        # ignore values, because we don't want to hardcode this
-        # TODO different values for different maskings ?!
-        # for now this has to be zero,
-        # because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
-        self.ignore_seg_value = 0
 
         # parameter fo feature calculation
         # anisotropy factor for the filter calculation

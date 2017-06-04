@@ -62,8 +62,7 @@ def probs_to_energies(
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        uv_ids = ds.uv_ids(seg_id)
-        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_mask = ds.masked_edges(seg_id, False)
         edge_energies[ignore_mask] = 2 * edge_energies.min()
 
     return edge_energies
