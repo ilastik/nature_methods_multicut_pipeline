@@ -164,20 +164,6 @@ def topo_feats_slice(seg, uv_ids):
         axis=1
     )
 
-    # NOTE this should not be necessary any longer with different seg mask
-    # this can happen with some weird seg masking...
-    # would be much better to have cgp work with an ignore label...
-    # if len(unique_ids) < n_edges:
-    #     # find the missing edge ids
-    #     consecutive_edge_ids = np.arange(n_edges, dtype=unique_ids.dtype)
-    #     missing_ids = consecutive_edge_ids[
-    #         np.logical_not(np.in1d(consecutive_edge_ids, unique_ids))
-    #     ]
-    #     print "Inserting missing edge features for ids:"
-    #     print missing_ids
-    #     mean_feats = np.mean(feats, axis=0)
-    #     feats[missing_ids] = mean_feats
-
     return feats
 
 

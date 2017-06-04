@@ -490,6 +490,7 @@ class DataSet(object):
         if isinstance(self, Cutout):
             gt = gt[self.bb]
         assert gt.shape == self.shape, "GT shape " + str(gt.shape) + "does not match " + str(self.shape)
+        gt = gt.astype('uint32')
 
         # FIXME running a label volume might be helpful sometimes, but it can mess up the split and merge ids!
         # also messes up defects in cremi...
@@ -498,10 +499,10 @@ class DataSet(object):
         if self.has_seg_mask:
             mask = self.seg_mask()
             ignore_val = np.unique(gt[mask == 0])
-            assert len(ignore_val) == 1
+            assert len(ignore_val) == 1, str(ignore_val)
             self.gt_ignore_value = ignore_val[0]
 
-        return gt.astype('uint32')
+        return gt
 
     # only single gt for now!
     # add grountruth
@@ -624,25 +625,51 @@ class DataSet(object):
         seg = self.seg(seg_id)
         mask = self.seg_mask()
 
-        # iterate over the slices and find the nodes that are
-        # completely enclosed in the seg_mask
-        def masked_nodes_in_z(z):
-            masked_nodes = []
-            seg_z = seg[z]
-            mask_z = mask[z]
-            # for all nodes that have overlap with the ignore mask,
-            # check whether they are exclusively in the ignore mask
-            masked_nodes = [
-                n for n in np.unique(seg_z[mask_z == 0])
-                if len(np.unique(mask_z[seg_z == n])) == 1
-            ]
-            return masked_nodes
+        # FIXME nifty overlaps don't lift the gil, so we can't parallize
+        # # iterate over the slices and find the nodes that are
+        # # completely enclosed in the seg_mask
+        # def masked_nodes_in_z(z):
+        #     seg_z = seg[z]
+        #     mask_z = mask[z]
 
-        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
-            tasks = [tp.submit(masked_nodes_in_z, z) for z in xrange(seg.shape[0])]
-            masked_nodes = np.concatenate([t.result() for t in tasks])
+        #     overlaps = ngt.Overlap(seg_z.max(), seg_z, mask_z.astype('uint32'))
+        #     # for all nodes that have overlap with the ignore mask,
+        #     # check whether they are exclusively in the ignore mask
+        #     masked_nodes = [
+        #         n for n in np.unique(seg_z[mask_z == 0])
+        #         if len(np.unique(mask_z[seg_z == n])) == 1
+        #     ]
+        #     return masked_nodes
 
-        return masked_nodes.astype('uint32')
+        # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
+        #     tasks = [tp.submit(masked_nodes_in_z, z) for z in xrange(seg.shape[0])]
+        #     masked_nodes = np.concatenate([t.result() for t in tasks])
+
+        # return masked_nodes.astype('uint32')
+
+        masked_nodes = []
+        seg_max = seg.max()
+        overlaps = ngt.Overlap(seg_max, seg, mask.astype('uint32'))
+
+        for n in xrange(seg_max + 1):
+            ovlp_indices, ovlps = overlaps.overlapArraysNormalized(n)
+            ovlp_indices = np.array(ovlp_indices)
+
+            # if the node does not have an ovlp with the mask we can continue
+            if 0 not in ovlp_indices:
+                continue
+
+            # if it has only overlap with the ignore mask, add it to the masked nodes
+            if len(ovlp_indices) == 1:
+                masked_nodes.append(n)
+                continue
+
+            # otherwise only add the node if it has more than 80 % overlap with ignore mask
+            ignore_ovlp = ovlps[ovlp_indices == 0]
+            if ignore_ovlp > 0.8:
+                masked_nodes.append(n)
+
+        return np.array(masked_nodes, dtype='uint32')
 
     @cacher_hdf5()
     def masked_edges(self, seg_id, with_defects=False):
