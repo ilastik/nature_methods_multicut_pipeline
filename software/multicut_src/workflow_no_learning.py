@@ -98,7 +98,7 @@ def costs_from_affinities(
         # I once determined 16 as a good value by grid search (on a different dataset....),
         # this should be determined again!
         weight=16,
-        with_defcts=False,
+        with_defects=False,
         return_probs=False
 ):
 
@@ -150,9 +150,8 @@ def costs_from_affinities(
 
     # if we have a seg mask set edges to the ignore segment to be max repulsive
     if ds.has_seg_mask:
-        uv_ids = ds.uv_ids(seg_id)
         max_repulsive = 2 * costs.min()
-        ignore_ids = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_ids = ds.masked_edges(seg_id, with_defects)
         costs[ignore_ids] = max_repulsive
 
     if return_probs:
@@ -239,11 +238,6 @@ def lifted_multicut_costs_from_shortest_paths(
         assert edge_z_distance.shape[0] == lifted_costs.shape[0], \
             "%s, %s" % (str(edge_z_distance.shape), str(lifted_costs.shape))
         lifted_costs /= (edge_z_distance + 1.)
-
-    # set the edges within the segmask to be maximally repulsive
-    # these should all be removed, check !
-    if ds.has_seg_mask:
-        assert np.sum((lifted_uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
 
     return lifted_costs
 
@@ -347,7 +341,8 @@ def mala_clustering_workflow(
         seg_id,
         inp_ids,
         threshold,
-        use_edge_lens=False
+        use_edge_lens=False,
+        with_defects=False
 ):
     assert len(inp_ids) == 2
     import nifty.graph.agglo as nagglo
@@ -368,7 +363,7 @@ def mala_clustering_workflow(
     graph.insertEdges(uv_ids)
 
     if ds.has_seg_mask:
-        ignore_ids = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
+        ignore_ids = ds.masked_edges(seg_id, with_defects)
         indicators[ignore_ids] = 1.
 
     # policy = nagglo.edgeWeightedClusterPolicy(

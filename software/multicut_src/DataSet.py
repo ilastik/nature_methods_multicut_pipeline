@@ -6,14 +6,15 @@ import h5py
 from concurrent import futures
 import itertools
 import cPickle as pickle
+import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
 
 from tools import cacher_hdf5, cache_name
 from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
-from tools import edges_to_volumes_for_skip_edges
+from tools import edges_to_volumes_for_skip_edges, find_matching_indices
 
 from defect_handling import modified_edge_indications, modified_adjacency
 from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
-from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
+from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts, defects_to_nodes
 
 from ExperimentSettings import ExperimentSettings
 from feature_impls import topology_features_impl
@@ -64,76 +65,6 @@ def is_inp_name(file_name):
         return True
     else:
         return False
-
-
-# if we have a ignore mask, we need to do some ugly stuff to prevent
-# of the ignore label in the individual slices
-# (otherwise nifty.cgp fails)
-def connected_components_with_ignore_mask(seg):
-
-    seg_new = np.zeros_like(seg, dtype='uint32')
-
-    # connected components in slice z
-    def cc_z(z):
-
-        ignore_mask = seg[z] == ExperimentSettings().ignore_seg_value
-        seg_cc = nseg.connectedComponents(seg[z], ignoreBackground=False)
-        new_ignore_vals = np.unique(seg_cc[ignore_mask])
-
-        # if we have more than one new label at the original ignore label,
-        # the ignore label is disconnected in this slice.
-        # we merge the small disconnected components to an adjacent label in
-        # the segmentation and restore the big connected component of the ignore label
-        if len(new_ignore_vals) > 1:
-
-            rag = nrag.gridRag(seg_cc)
-            label_sizes = [np.sum(seg_cc == l) for l in new_ignore_vals]
-            keep_label = new_ignore_vals[np.argmax(label_sizes)]
-            merge_labels = new_ignore_vals[new_ignore_vals != keep_label]
-            keep_labels = [keep_label]
-
-            # merge the remaining label pixles into some adjacent segment
-            for l in merge_labels:
-                where_l = np.where(seg_cc == l)
-
-                # only discard this segment if it has less than 50 pixels
-                # othewise pray that the disconnected label does not kill ncgp....
-                if where_l[0].size > 50:
-                    keep_labels.append(l)
-                    continue
-
-                # we simply merge to the next adjacent node
-                for adj in rag.nodeAdjacency(l):
-                    merge_to = adj[0]
-                    seg_cc[where_l] = merge_to
-                    break
-
-            # mark the keep labels as ignore
-            for ll in keep_labels:
-                seg_cc[seg_cc == ll] = ExperimentSettings().ignore_seg_value
-
-        # otherwise, we simply set back to the ignore value
-        else:
-            seg_cc[ignore_mask] = ExperimentSettings().ignore_seg_value
-
-        seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True)
-        seg_new[z] = seg_cc
-        return seg_max
-
-    with futures.ThreadPoolExecutor(max_workers=1) as tp:
-    # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
-        tasks = [tp.submit(cc_z, z) for z in xrange(seg.shape[0])]
-        offsets = [t.result() for t in tasks]
-
-    # add offsets to the slices
-    offsets = np.roll(offsets, 1)
-    offsets[0] = 0
-    offsets = np.cumsum(offsets)
-
-    for z in xrange(seg.shape[0]):
-        seg_new[z][seg_new[z] != ExperimentSettings().ignore_seg_value] += offsets[z]
-
-    return seg_new
 
 
 class DataSet(object):
@@ -517,15 +448,7 @@ class DataSet(object):
         if isinstance(self, Cutout):
             seg = seg[self.bb]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
-        if self.has_seg_mask:
-            print "Cutting segmentation mask from seg"
-            mask = self.seg_mask()
-            # TODO change once we allow more general values
-            assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
-            seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
-            seg = connected_components_with_ignore_mask(seg)
-        else:
-            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype(seg.dtype)
+        seg = nseg.connectedComponents(seg, ignoreBackground=self.has_seg_mask).astype(seg.dtype)
         return seg
 
     def add_seg(self, seg_path, seg_key):
@@ -676,6 +599,45 @@ class DataSet(object):
             return mask
 
     #
+    # Seg-mask functionality
+    #
+
+    @cacher_hdf5()
+    def masked_nodes(self, seg_id):
+
+        assert seg_id < self.n_segs
+        seg = self.seg(seg_id)
+        mask = self.seg_mask()
+        ignore_val = ExperimentSettings().ignore_seg_value
+
+        # iterate over the slices and find the nodes that are
+        # completely enclosed in the seg_mask
+        def masked_nodes_in_z(z):
+            masked_nodes = []
+            seg_z = seg[z]
+            mask_z = mask[z]
+            # for all nodes that have overlap with the ignore mask,
+            # check whether they are exclusively in the ignore mask
+            masked_nodes = [
+                n for n in np.unique(seg_z[mask_z == ignore_val])
+                if len(np.unique(mask_z[seg_z == n])) == 1
+            ]
+            return masked_nodes
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
+            tasks = [tp.submit(masked_nodes_in_z, z) for z in xrange(seg.shape[0])]
+            masked_nodes = list(itertools.chain([t.result() for t in tasks]))
+
+        return np.array(masked_nodes, dtype='uint32')
+
+    @cacher_hdf5()
+    def masked_edges(self, seg_id, with_defects=False):
+        masked_nodes = self.masked_nodes(seg_id)
+        uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
+        masked_edges = find_matching_indices(uv_ids, masked_nodes)
+        return masked_edges
+
+    #
     # General functionality
     #
 
@@ -749,8 +711,6 @@ class DataSet(object):
                       "laplacianOfGaussian"],
         sigmas=[1.6, 4.2, 8.3]
     ):
-
-        import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print "Calculating filters for input id:", inp_id
@@ -1064,20 +1024,6 @@ class DataSet(object):
         self._region_statistics(seg_id, inp_id)
         region_statistics_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
 
-        # FIXME I think we don't need this hack any longer
-        # because it was only necessary for the too-large lifted nh
-        # (with short-cuts through the ignore label)
-        # # if we have a segmentation mask, we don't calculate features for uv-ids which
-        # # include 0 (== everything outside of the mask)
-        # # otherwise the ram consumption for the lmc can blow up...
-        # if self.has_seg_mask:
-        #     where_uv = (uv_ids != ExperimentSettings().ignore_seg_value).all(axis=1)
-        #     # for lifted edges assert that no ignore segments are in lifted uvs
-        #     if lifted_nh:
-        #         assert np.sum(where_uv) == where_uv.size
-        #     else:
-        #         uv_ids = uv_ids[where_uv]
-
         # compute feature from region statistics
         regStats = vigra.readHDF5(region_statistics_path, 'region_statistics')
         regStatNames = vigra.readHDF5(region_statistics_path, 'region_statistics_names')
@@ -1129,20 +1075,6 @@ class DataSet(object):
 
         assert allFeat.shape[0] == uv_ids.shape[0]
         assert len(feat_names) == allFeat.shape[1], str(len(feat_names)) + " , " + str(allFeat.shape[1])
-
-        # FIXME I think we don't need this hack any longer
-        # if we have excluded the ignore segments before, we need to reintroduce
-        # them now to keep edge numbering consistent
-        # if self.has_seg_mask and not lifted_nh:
-        #     where_ignore = np.logical_not(where_uv)
-        #     n_ignore = np.sum(where_ignore)
-        #     newFeat = np.zeros(
-        #         (allFeat.shape[0] + n_ignore, allFeat.shape[1]),
-        #         dtype='float32'
-        #     )
-        #     newFeat[where_uv] = allFeat
-        #     allFeat = newFeat
-        #     assert allFeat.shape[0] == uv_ids.shape[0] + n_ignore
 
         # save feature names
         save_folder = os.path.join(self.cache_folder, "features")
@@ -1240,6 +1172,7 @@ class DataSet(object):
     # Groundtruth projection
     #
 
+    # TODO label accumulation with ignore val in nifty
     # get the edge labeling from dense groundtruth
     @cacher_hdf5()
     def edge_gt(self, seg_id):
@@ -1247,7 +1180,11 @@ class DataSet(object):
         assert self.has_gt
         rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads ) FIXME pybindings not working
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            gt,
+            ignoreBackground=self.has_seg_mask
+        )
         uv_ids = rag.uvIds()
         u_gt = node_gt[uv_ids[:, 0]]
         v_gt = node_gt[uv_ids[:, 1]]
@@ -1258,6 +1195,7 @@ class DataSet(object):
     # edges with ovlp < negative_threshold are taken as negative training examples
     @cacher_hdf5()
     def edge_gt_fuzzy(self, seg_id, positive_threshold, negative_threshold):
+        assert not self.has_seg_mask, "Not supported for seg-mask"
         assert positive_threshold > 0.5, str(positive_threshold)
         assert negative_threshold < 0.5, str(negative_threshold)
         uv_ids = self.uv_ids(seg_id)
@@ -1282,7 +1220,11 @@ class DataSet(object):
 
         gt = self.gt()
         rag = self.rag(seg_id)
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            gt,
+            ignoreBackground=self.has_seg_mask
+        )
         uv_ids = rag.uvIds()
 
         ignore_mask = np.zeros(rag.numberOfEdges, dtype=bool)
@@ -1310,7 +1252,11 @@ class DataSet(object):
 
         rag = self.rag(seg_id)
         gt = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(
+            rag,
+            gt,
+            ignoreBackground=self.has_seg_mask
+        )
 
         ignore_mask = np.zeros(uvs_lifted.shape[0], dtype=bool)
         for edge_id in xrange(rag.numberOfEdges):
@@ -1335,7 +1281,7 @@ class DataSet(object):
         seg = self.seg(seg_id)
         rag = self.rag(seg_id, seg)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # int(ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
         seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads)
         assert seg_gt.shape == self.shape
         return seg_gt
@@ -1577,6 +1523,29 @@ class DataSet(object):
             labels.extend(['labels_z', 'labels_xy'])
 
         volumina_n_layer(data, labels)
+
+        def view_masked_nodes(self, seg_id):
+            seg = self.seg(seg_id)
+            data = [self.inp(0).astype('float32'), seg]
+            labels = ['raw', 'seg']
+
+            if self.has_seg_mask:
+                masked_nodes_seg = self.masked_nodes(seg_id)
+                node_vol_seg = np.zeros(self.shape, dtype='uint8')
+                for mn in masked_nodes_seg:
+                    node_vol_seg[seg == mn] = 1
+                data.extend([self.seg_mask(), node_vol_seg])
+                labels.extend(['seg-mask', 'node-seg-mask'])
+
+            if self.has_defects:
+                masked_nodes_defects = defects_to_nodes(self, seg_id)
+                node_vol_defects = np.zeros(self.shape, dtype='uint8')
+                for mn in masked_nodes_defects:
+                    node_vol_defects[seg == mn] = 1
+                data.extend([self.defect_mask(), node_vol_defects])
+                labels.extend(['defect-mask', 'node-defect-mask'])
+
+            volumina_n_layer(data, labels)
 
 
 # cutout from a given Dataset, used for cutouts and tesselations

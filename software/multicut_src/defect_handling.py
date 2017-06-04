@@ -56,8 +56,11 @@ def defects_to_nodes(ds, seg_id):
                 completely_defected = True
             else:
                 defect_nodes_z = np.unique(seg_z[where_defect])
-            if ds.has_seg_mask and ExperimentSettings().ignore_seg_value in defect_nodes_z:
-                defect_nodes_z = defect_nodes_z[defect_nodes_z != ExperimentSettings().ignore_seg_value]
+            if ds.has_seg_mask:
+                masked_nodes = ds.masked_nodes(seg_id)
+                keep_indices = np.ones(len(defect_nodes_z), dtype=bool)
+                keep_indices[np.in1d(defect_nodes_z, masked_nodes)] = False
+                defect_nodes_z = defect_nodes_z[keep_indices]
         else:
             defect_nodes_z = []
 
@@ -307,8 +310,9 @@ def modified_adjacency(ds, seg_id):
     if ds.has_seg_mask:
         duplicate_mask = skip_edges[:, 0] != skip_edges[:, 1]
         if not duplicate_mask.all():  # -> we have entries that will be masked out
+            masked_nodes = ds.masked_nodes(seg_id)
             # make sure that all duplicates have ignore segment value
-            assert (skip_edges[np.logical_not(duplicate_mask)] == ExperimentSettings().ignore_seg_value).all()
+            assert np.in1d(skip_edges[np.logical_not(duplicate_mask)], masked_nodes).all()
             print "Removing duplicate skip edges due to ignore segment label"
             skip_edges = skip_edges[duplicate_mask]
             skip_ranges = skip_ranges[duplicate_mask]
@@ -335,8 +339,8 @@ def modified_adjacency(ds, seg_id):
     if matches.size:
         assert ds.has_seg_mask, "There should only be duplicates in skip edges and uvs if we have a seg mask"
         # make sure that all removed edges are ignore edges
-        assert all((skip_edges[matches[:, 1]] == ExperimentSettings().ignore_seg_value).any(axis=1)), \
-            "All duplicate skip edges should connect to a ignore segment"
+        # assert all((skip_edges[matches[:, 1]] == ExperimentSettings().ignore_seg_value).any(axis=1)), \
+        #     "All duplicate skip edges should connect to a ignore segment"
 
         print "Removing %i skip edges that were duplicates of uv ids." % len(matches)
         # get a mask for the duplicates
@@ -392,13 +396,18 @@ def modified_edge_gt(ds, seg_id):
         return modified_edge_gt
     modified_edge_gt = np.delete(modified_edge_gt, delete_edge_ids)
     rag = ds.rag(seg_id)
-    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())  # ExperimentSettings().n_threads)
+    node_gt = nrag.gridRagAccumulateLabels(
+        rag,
+        ds.gt(),
+        ignoreBackground=ds.has_seg_mask
+    )
     skip_gt = (node_gt[skip_edges[:, 0]] != node_gt[skip_edges[:, 1]]).astype('uint8')
     return np.concatenate([modified_edge_gt, skip_gt])
 
 
 @cacher_hdf5()
 def modified_edge_gt_fuzzy(ds, seg_id, positive_threshold, negative_threshold):
+    assert not ds.has_seg_mask, "Not supported for seg mask yet"
     uv_ids = modified_adjacency(ds, seg_id)
     overlaps = ngt.Overlap(
         uv_ids.max(),
@@ -764,7 +773,7 @@ def modified_probs_to_energies(
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_mask = ds.masked_edges(seg_id, True)
         edge_energies[ignore_mask] = max_repulsive
 
     assert not np.isnan(edge_energies).any()

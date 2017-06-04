@@ -93,6 +93,7 @@ def topo_feats_slice(seg, uv_ids):
     edge_ids_local = matching_indices[:, 1]
 
     n_edges = len(uv_ids)
+
     # take care of duplicates resulting from edges made up of multiple faces
     assert len(edge_ids) >= n_edges, "%i, %i" % (len(edge_ids), n_edges)
     unique_ids, unique_idx, face_counts = np.unique(
@@ -100,6 +101,7 @@ def topo_feats_slice(seg, uv_ids):
         return_index=True,
         return_counts=True
     )
+    assert len(unique_ids) == n_edges
 
     # get the edges with multiple faces
     edges_w_multiple_faces = unique_ids[face_counts > 1]
@@ -162,18 +164,19 @@ def topo_feats_slice(seg, uv_ids):
         axis=1
     )
 
+    # NOTE this should not be necessary any longer with different seg mask
     # this can happen with some weird seg masking...
     # would be much better to have cgp work with an ignore label...
-    if len(unique_ids) < n_edges:
-        # find the missing edge ids
-        consecutive_edge_ids = np.arange(n_edges, dtype=unique_ids.dtype)
-        missing_ids = consecutive_edge_ids[
-            np.logical_not(np.in1d(consecutive_edge_ids, unique_ids))
-        ]
-        print "Inserting missing edge features for ids:"
-        print missing_ids
-        mean_feats = np.mean(feats, axis=0)
-        feats[missing_ids] = mean_feats
+    # if len(unique_ids) < n_edges:
+    #     # find the missing edge ids
+    #     consecutive_edge_ids = np.arange(n_edges, dtype=unique_ids.dtype)
+    #     missing_ids = consecutive_edge_ids[
+    #         np.logical_not(np.in1d(consecutive_edge_ids, unique_ids))
+    #     ]
+    #     print "Inserting missing edge features for ids:"
+    #     print missing_ids
+    #     mean_feats = np.mean(feats, axis=0)
+    #     feats[missing_ids] = mean_feats
 
     return feats
 

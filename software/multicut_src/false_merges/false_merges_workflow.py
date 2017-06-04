@@ -21,15 +21,12 @@ from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pa
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.graph.rag as nrag
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
@@ -839,7 +836,7 @@ def project_resolved_objects_to_segmentation(
     rag = ds.rag(seg_id)
     gt  = ds.gt()
     # recover the node labeling from the segmentation
-    mc_labeling = nrag.gridRagAccumulateLabels(rag, gt, n_threads)
+    mc_labeling = nrag.gridRagAccumulateLabels(rag, gt)
 
     # offset for new labels
     new_label_offset = np.max(mc_labeling) + 1

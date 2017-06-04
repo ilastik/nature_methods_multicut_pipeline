@@ -70,10 +70,11 @@ def clusteringFeatures(
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
-        where_uv_local = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis=1)
+        ignore_ids = ds.masked_edges(segId, with_defects)
+        where_uv_local = np.ones(len(uvs_local), dtype=bool)
+        where_uv_local[ignore_ids] = False
         uvs_local      = uvs_local[where_uv_local]
         edgeIndicator  = edgeIndicator[where_uv_local]
-        assert np.sum((extraUV == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
     assert edgeIndicator.shape[0] == uvs_local.shape[0]
 
     originalGraph = vgraph.listGraph(n_nodes)
@@ -203,8 +204,7 @@ def compute_lifted_feature_mala_agglomeration(
 
     # if we have a seg mask set edges to the ignore segment to be max repulsive
     if ds.has_seg_mask:
-        uv_ids = ds.uv_ids(seg_id)
-        ignore_ids = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_ids = ds.masked_edges(seg_id, with_defects)
         indicators[ignore_ids] = 0.
 
     def agglomerate(threshold, use_edge_len):
@@ -264,7 +264,7 @@ def compute_lifted_feature_multicut(
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
-        ignore_seg_mask = (uv_ids_local == ExperimentSettings().ignore_seg_value).any(axis=1)
+        ignore_seg_mask = ds.masked_edges(seg_id, with_defects)
 
     def single_mc(beta, weight):
         # copy the probabilities
@@ -431,8 +431,10 @@ def compute_and_save_lifted_nh(
     # remove the local uv_ids that are connected to a ignore-segment-value
     # this has to be done to prevent large ignore segments from short-cutting lifted edges
     if ds.has_seg_mask:
-        where_uv = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis=1)
-        uvs_local = uvs_local[where_uv]
+        ignore_ids = ds.masked_edges(seg_id, with_defects)
+        where_uv_local = np.ones(len(uvs_local), dtype=bool)
+        where_uv_local[ignore_ids] = False
+        uvs_local = uvs_local[where_uv_local]
 
     original_graph = nifty.graph.UndirectedGraph(n_nodes)
     original_graph.insertEdges(uvs_local)
@@ -502,7 +504,7 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
     rag = ds.rag(seg_id)
-    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())  # ExperimentSettings().n_threads)
+    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
     labels  = (node_gt[uv_ids[:, 0]] != node_gt[uv_ids[:, 1]])
     return labels
 
@@ -538,12 +540,6 @@ def mask_lifted_edges(
     # find all lifted edges that touch a defected node and ignore them
     if with_defects and ds.has_defects:
         labeled[lifted_ignore_ids(ds, seg_id, uv_ids)] = False
-
-    # ignore all edges that are connected to the ignore label (==0) in the seg mask
-    # they should all be removed from the lifted edges -> check
-    if ds.has_seg_mask:
-        ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
-        assert np.sum(ignore_mask) == 0
 
     return labeled
 
@@ -824,10 +820,5 @@ def lifted_probs_to_energies(
     if with_defects and ds.has_defects:
         max_repulsive = 2 * e.min()
         e[lifted_ignore_ids(ds, seg_id, uv_ids)] = max_repulsive
-
-    # set the edges within the segmask to be maximally repulsive
-    # these should all be removed, check !
-    if ds.has_seg_mask:
-        assert np.sum((uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
 
     return e
