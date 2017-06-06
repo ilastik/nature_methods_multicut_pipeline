@@ -229,6 +229,9 @@ def lifted_multicut_workflow(
     edge_energies_lifted /= edge_energies_lifted.shape[0]
     uvs_local = ds_test.uv_ids(seg_id_test)
 
+    #vigra.writeHDF5(edge_energies_local, './costs_local.h5', 'data')
+    #vigra.writeHDF5(edge_energies_lifted, './costs_lifted.h5', 'data')
+
     # warmstart with multicut result
     if warmstart:
         n_var = uvs_local.max() + 1

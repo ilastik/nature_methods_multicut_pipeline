@@ -6,8 +6,6 @@ from multicut_src import load_dataset
 
 import os
 
-
-#
 # Reference values from LCC branch
 #
 

@@ -41,6 +41,11 @@ def regression_test_snemi(cache_folder, data_folder, with_lmc=False):
         gamma = 10000.
         lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
 
+    if with_lmc:
+        gamma = 10000.
+        lmc_seg = run_lmc(ds_train, ds_test, local_feats_list, lifted_feats_list, gamma)
+
+    print "Regression Test SNEMI"
     print "Regression Test MC..."
     # Eval differences with same parameters and according regression thresholds
     # vi-split:   0.0718660622942 -> 0.1
