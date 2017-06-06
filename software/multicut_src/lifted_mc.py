@@ -479,6 +479,8 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
     if max_sample_size:
         sample_size   = min(max_sample_size, uv_long_range.shape[0])
         uv_long_range = np.array(random.sample(uv_long_range, sample_size))
+    else:
+        uv_long_range = np.array([])
 
     return uv_long_range
 

@@ -116,7 +116,6 @@ class RandomForest(object):
 
     def write(self, file_path, key):
         if use_sklearn:
-            # remove '.h5' from the file path and add the key
             if not os.path.exists(file_path):
                 os.mkdir(file_path)
             save_path = os.path.join(file_path, "%s.pkl" % (key))

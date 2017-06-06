@@ -85,10 +85,10 @@ def regression_test(
         print "Vi-Merge:", vi_merge, "(Ref:)", expected_vi_merge
         print "RI:", ri, "(Ref:)", expected_ri
     else:
-        print "Failed with"
-        print "Vi-Split: %s with %f, (Ref:) %f" % ('Passed' if vi_s_pass else 'Failed', vi_split, expected_vi_split)
-        print "Vi-Merge: %s with %f, (Ref:) %f" % ('Passed' if vi_m_pass else 'Failed', vi_merge, expected_vi_merge)
-        print "RI: %s with %f, (Ref:) %f" % ('Passed' if ri_pass else 'Failed', ri, expected_ri)
+        print "FAILED with"
+        print "Vi-Split: %s with %f, (Ref:) %f" % ('Passed' if vi_s_pass else 'FAILED', vi_split, expected_vi_split)
+        print "Vi-Merge: %s with %f, (Ref:) %f" % ('Passed' if vi_m_pass else 'FAILED', vi_merge, expected_vi_merge)
+        print "RI: %s with %f, (Ref:) %f" % ('Passed' if ri_pass else 'FAILED', ri, expected_ri)
 
 
 def clean_up():
