@@ -10,14 +10,15 @@ from lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs
 from defect_handling import modified_adjacency, modified_probs_to_energies
 
 
+# all these ifs look stupid, but we want to have a fixed order
 def _get_feat_str(feature_list):
     feat_str = ""
     if "raw" in feature_list:
         feat_str += "raw"
     if "prob" in feature_list:
         feat_str += "prob"
-    if "affinity" in feature_list:
-        feat_str += "affinity"
+    if "affinities" in feature_list:
+        feat_str += "affinities"
     if "reg" in feature_list:
         feat_str += "reg"
     if "topo" in feature_list:

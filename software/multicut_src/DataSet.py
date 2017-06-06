@@ -9,7 +9,7 @@ import cPickle as pickle
 
 from tools import cacher_hdf5, cache_name
 from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
-from tools import edges_to_volumes_for_skip_edges
+from tools import edges_to_volumes_for_skip_edges, edges_to_volume
 
 from defect_handling import modified_edge_indications, modified_adjacency
 from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
@@ -78,6 +78,8 @@ def connected_components_with_ignore_mask(seg):
 
         ignore_mask = seg[z] == ExperimentSettings().ignore_seg_value
         seg_cc = nseg.connectedComponents(seg[z], ignoreBackground=False)
+        if 0 in seg_cc:
+            seg_cc += 1
         new_ignore_vals = np.unique(seg_cc[ignore_mask])
 
         # if we have more than one new label at the original ignore label,
@@ -85,6 +87,8 @@ def connected_components_with_ignore_mask(seg):
         # we merge the small disconnected components to an adjacent label in
         # the segmentation and restore the big connected component of the ignore label
         if len(new_ignore_vals) > 1:
+
+            print z
 
             rag = nrag.gridRag(seg_cc)
             label_sizes = [np.sum(seg_cc == l) for l in new_ignore_vals]
@@ -105,6 +109,9 @@ def connected_components_with_ignore_mask(seg):
                 # we simply merge to the next adjacent node
                 for adj in rag.nodeAdjacency(l):
                     merge_to = adj[0]
+                    # this should not happen, but just to be sure...
+                    if merge_to in new_ignore_vals:
+                        continue
                     seg_cc[where_l] = merge_to
                     break
 
@@ -114,11 +121,11 @@ def connected_components_with_ignore_mask(seg):
 
         # otherwise, we simply set back to the ignore value
         else:
-            seg_cc[ignore_mask] = ExperimentSettings().ignore_seg_value
+            seg_cc = seg[z]
 
-        seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True)
+        seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True, start_label=1)
         seg_new[z] = seg_cc
-        return seg_max
+        return seg_max + 1
 
     with futures.ThreadPoolExecutor(max_workers=1) as tp:
     # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
@@ -517,15 +524,25 @@ class DataSet(object):
         if isinstance(self, Cutout):
             seg = seg[self.bb]
         assert seg.shape == self.shape, "Seg shape " + str(seg.shape) + "does not match " + str(self.shape)
+
+        # if we have an ignore mask, cut it
         if self.has_seg_mask:
-            print "Cutting segmentation mask from seg"
-            mask = self.seg_mask()
+
             # TODO change once we allow more general values
             assert ExperimentSettings().ignore_seg_value == 0, "Only zero ignore value supported for now"
+
+            # make sure we have no overlaps with the ignore seg value
+            if seg.min() == 0:
+                seg += 1
+
+            print "Cutting segmentation mask from seg"
+            mask = self.seg_mask()
             seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
             seg = connected_components_with_ignore_mask(seg)
+
         else:
             seg = nseg.connectedComponents(seg, ignoreBackground=False).astype(seg.dtype)
+
         return seg
 
     def add_seg(self, seg_path, seg_key):
@@ -1332,10 +1349,9 @@ class DataSet(object):
     def seg_gt(self, seg_id):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
-        seg = self.seg(seg_id)
-        rag = self.rag(seg_id, seg)
+        rag = self.rag(seg_id)
         gt  = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # int(ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
         seg_gt  = nrag.projectScalarNodeDataToPixels(rag, node_gt, ExperimentSettings().n_threads)
         assert seg_gt.shape == self.shape
         return seg_gt
@@ -1516,6 +1532,21 @@ class DataSet(object):
 
         self.view_edge_values(self, seg_id, labels_debug, with_defects)
 
+    def view_masked_edges(
+        self,
+        seg_id,
+        with_defects=False
+    ):
+        from EdgeRF import mask_edges
+
+        uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
+        labels = np.zeros(len(uv_ids), dtype='uint8')
+        labeled = mask_edges(self, seg_id, labels, uv_ids, with_defects)
+        labels[labeled==False] = 1
+
+        self.view_edge_values(seg_id, labels, with_defects)
+
+
     def view_edge_values(
         self,
         seg_id,
@@ -1547,8 +1578,30 @@ class DataSet(object):
         uv_z  = uv_ids[edge_indications == 0]
 
         seg = self.seg(seg_id)
-        edge_vol_xy   = edges_to_volume_from_uvs_in_plane(self, seg, uv_xy, labels_xy)
-        edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z)
+
+        if with_defects:
+            uv_xy = uv_ids[edge_indications == 1]
+            labels_xy = edge_values[edge_indications == 1]
+            edge_vol_xy = edges_to_volume_from_uvs_in_plane(self, seg, uv_xy, labels_xy, with_defects)
+        else:
+            rag = self.rag(seg_id)
+            labels_xy = edge_values.copy()
+            labels_xy[edge_indications == 0] = 0
+            edge_vol_xy = edges_to_volume(rag, labels_xy)
+
+        if with_defects:
+            uv_z  = uv_ids[edge_indications == 0]
+            labels_z  = edge_values[edge_indications == 0]
+            edge_vol_z = edges_to_volume_from_uvs_between_plane(self, seg, uv_z, labels_z, with_defects)
+        else:
+            labels_z = edge_values.copy()
+            labels_z[edge_indications == 1] = 0
+            edge_vol_z_up = edges_to_volume(rag, labels_z, 1)
+            edge_vol_z_dn = edges_to_volume(rag, labels_z, 2)
+            edge_vol_z = np.concatenate(
+                [edge_vol_z_dn[..., None], edge_vol_z_up[..., None]],
+                axis=3
+        )
 
         raw = self.inp(0).astype('float32')
 

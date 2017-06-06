@@ -94,7 +94,7 @@ def topo_feats_slice(seg, uv_ids):
 
     n_edges = len(uv_ids)
     # take care of duplicates resulting from edges made up of multiple faces
-    assert len(edge_ids) >= n_edges, "%i, %i" % (len(edge_ids), n_edges)
+    # assert len(edge_ids) >= n_edges, "%i, %i" % (len(edge_ids), n_edges)
     unique_ids, unique_idx, face_counts = np.unique(
         edge_ids,
         return_index=True,
