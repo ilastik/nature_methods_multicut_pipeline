@@ -121,7 +121,7 @@ def connected_components_with_ignore_mask(seg):
 
         # otherwise, we simply set back to the ignore value
         else:
-            seg_cc = seg[z]
+            seg_cc[ignore_mask] = 0
 
         seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True, start_label=1)
         seg_new[z] = seg_cc
@@ -1543,10 +1543,9 @@ class DataSet(object):
         uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
         labels = np.zeros(len(uv_ids), dtype='uint8')
         labeled = mask_edges(self, seg_id, labels, uv_ids, with_defects)
-        labels[labeled==False] = 1
+        labels[labeled == False] = 1
 
         self.view_edge_values(seg_id, labels, with_defects)
-
 
     def view_edge_values(
         self,
@@ -1602,7 +1601,7 @@ class DataSet(object):
             edge_vol_z = np.concatenate(
                 [edge_vol_z_dn[..., None], edge_vol_z_up[..., None]],
                 axis=3
-        )
+            )
 
         raw = self.inp(0).astype('float32')
 

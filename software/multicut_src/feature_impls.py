@@ -195,6 +195,8 @@ def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
     feats_xy = np.zeros((rag.numberOfEdges, n_feats), dtype='float32')
     uv_ids = rag.uvIds()
 
+    running_average = np.zeros(n_feats, dtype='float32')
+    total_edge_num_running = 0
     # iterate over the slices and
     # TODO parallelize
     for z in xrange(seg.shape[0]):
@@ -205,10 +207,22 @@ def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
         uv_mask = find_exclusive_matching_indices(uv_ids, nodes_z)
         uv_ids_z = uv_ids[uv_mask]
 
-        feats = topo_feats_slice(
-            seg[z],
-            uv_ids_z
-        )
+        try:
+            feats = topo_feats_slice(
+                seg[z],
+                uv_ids_z
+            )
+
+            # update the running average
+            this_edge_num = float(len(uv_ids_z))
+            total_edge_num_running += this_edge_num
+            running_average += (this_edge_num / total_edge_num_running) * np.mean(feats, axis=0)
+
+        except RuntimeError as e:
+            print "WARNING: Nifty cgp failed with error:", e
+            print "Replacing features for this slice with running average"
+            feats = np.concatenate([running_average[None, :] for _ in xrange(len(uv_ids_z))], axis=0)
+
         feats_xy[uv_mask] = feats
 
     return feats_xy
