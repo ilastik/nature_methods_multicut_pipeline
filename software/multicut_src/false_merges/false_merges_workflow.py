@@ -292,7 +292,7 @@ def train_random_forest_for_merges(
 
                 # Calculate the new distance transform and replace it in the dataset inputs
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
-                dt  = distance_transform(seg, [1., 1., ExperimentSettings().anisotropy_factor])
+                dt  = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
 
                 # NOTE IMPORTANT:
                 # We assume that the distance transform always has the last inp_id and
