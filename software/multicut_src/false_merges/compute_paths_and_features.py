@@ -113,17 +113,49 @@ def shortest_paths(
 # convenience function to combine path features
 # TODO code different features with some keys
 # TODO include seg_id
-# TODO include feature selection by list
-def path_feature_aggregator(ds, paths):
+def path_feature_aggregator(
+        ds, paths,
+        feature_list=None,
+        mc_segmentation=None, objs_to_paths=None, edge_probabilities=None  # TODO: Supply these as paths?
+):
+
+    # The actual default values of the feature list
+    if feature_list is None:
+        feature_list = ['path_features', 'lengths', 'multicuts', 'cut_features']
+
     anisotropy_factor = ExperimentSettings().anisotropy_factor
-    return np.concatenate([
-        path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
-        # we assume that the distance transform is added as inp_id 2
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),
-        compute_path_lengths(paths, [anisotropy_factor, 1., 1.])],
-        axis=1
-    )
+
+    feature_space = []
+    for feature in feature_list:
+
+        if feature == 'path_features':
+            feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor))
+            feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor))
+            # we assume that the distance transform is added as inp_id 2
+            feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor))
+
+        if feature == 'lengths':
+            feature_space.append(compute_path_lengths(paths, [anisotropy_factor, 1., 1.]))
+
+        if feature == 'multicuts':
+
+            # Make sure all necessary information is supplied
+            assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
+            assert objs_to_paths is not None, 'Supply an object to path dictionary when using multicut path features!'
+            assert edge_probabilities is not None, 'Supply edge probabilities when using multicut path features!'
+
+            feature_space.append(multicut_path_features(
+                ds,
+                0,  # FIXME: Is this correct?
+                mc_segmentation,
+                objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
+                edge_probabilities
+            ))
+
+        if feature == 'cut_features':
+            pass
+
+    return np.concatenate(feature_space, axis=1)
 
 
 # TODO this could be parallelized over the paths

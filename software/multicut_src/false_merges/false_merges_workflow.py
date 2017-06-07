@@ -302,7 +302,7 @@ def train_random_forest_for_merges(
                 current_ds.clear_filters(current_ds.n_inp - 1)
 
                 # Compute the paths
-                paths, _, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
+                paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                     current_ds,
                     seg,
                     seg_id,
@@ -312,8 +312,18 @@ def train_random_forest_for_merges(
                 )
 
                 if paths.size:
+                    objs_to_paths = paths_to_objs  # TODO: Translate paths_to_objs to objs_to_paths
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-                    features_train.append(path_feature_aggregator(current_ds, paths))
+                    features_train.append(
+                        path_feature_aggregator(
+                            current_ds,
+                            paths,
+                            ExperimentSettings().path_features,
+                            mc_segmentation=seg,
+                            objs_to_paths=objs_to_paths,
+                            edge_probabilities=''
+                        )
+                    )
                     labels_train.append(path_classes)
 
                 else:

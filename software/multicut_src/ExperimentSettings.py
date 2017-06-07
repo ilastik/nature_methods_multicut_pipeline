@@ -88,6 +88,10 @@ class ExperimentSettings(object):
         self.pAndMapIterations = 1000
 
         # parameters for resolving false merges
+        self.path_features = ['path_features',
+                              'lengths',
+                              'multicuts',
+                              'cut_features']
         self.feature_image_filter_names = ["gaussianSmoothing",
                                            "hessianOfGaussianEigenvalues",
                                            "laplacianOfGaussian"]
