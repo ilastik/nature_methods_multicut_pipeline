@@ -113,6 +113,7 @@ def shortest_paths(
 # convenience function to combine path features
 # TODO code different features with some keys
 # TODO include seg_id
+# TODO include feature selection by list
 def path_feature_aggregator(ds, paths):
     anisotropy_factor = ExperimentSettings().anisotropy_factor
     return np.concatenate([
