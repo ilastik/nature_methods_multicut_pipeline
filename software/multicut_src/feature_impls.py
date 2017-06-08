@@ -10,14 +10,17 @@ from tools import find_matching_row_indices, replace_from_dict, find_exclusive_m
 try:
     import nifty.cgp as ncgp
     import nifty.graph.rag as nrag
+    import nifty.segmentation as nseg
 except ImportError:
     try:
         import nifty_with_cplex.cgp as ncgp
         import nifty_with_cplex.graph.rag as nrag
+        import nifty_with_cplex.segmentation as nseg
     except ImportError:
         try:
             import nifty_with_gurobi.cgp as ncgp
             import nifty_with_gurobi.graph.rag as nrag
+            import nifty_with_gurobi.segmentation as nseg
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -273,20 +276,34 @@ def topo_feats_z(rag, seg, edge_indications):
             coords = coordinates[edge_id][:, 1:]
             edge_seg[(coords[:, 0], coords[:, 1])] = ii
 
+        # map to a consecutive segmentation
+        edge_seg_cc = nseg.connectedComponents(edge_seg, ignoreBackground=False)
+        map_to_cc = {e_id: np.unique(edge_seg_cc[edge_seg == e_id]) for e_id in xrange(len(this_edge_ids))}
+
         # FIXME very hacky: very rarely nifty.cgp fails, then we just replace all features
         # for this slice with the running averge
         try:
             # build a rag based on the edge segmentation to have the uv-ids
             # and extract features for the lines between the z-edges
-            edge_rag = nrag.gridRag(edge_seg)
+            edge_rag = nrag.gridRag(edge_seg_cc)
             edge_uv_ids = edge_rag.uvIds()
-            feats_lines = topo_feats_slice(edge_seg, edge_uv_ids)
+            feat_lines = topo_feats_slice(edge_seg_cc, edge_uv_ids)
 
             # map the feats back to the z-edges via averaging over the line feats
-            feats = np.zeros((len(this_edge_ids), feats_lines.shape[1]), dtype='float32')
+            feats = np.zeros((len(this_edge_ids), feat_lines.shape[1]), dtype='float32')
             for ii in xrange(len(this_edge_ids)):
-                edge_mask = (edge_uv_ids == ii).any(axis=1)
-                feats[ii, :] = np.mean(feats_lines[edge_mask, :], axis=0)
+                edge_mask = []
+                for jj in map_to_cc[ii]:
+                    edge_mask.append(
+                        np.where(
+                            (edge_uv_ids == jj).any(axis=1)
+                        )[0]
+                    )
+
+                if not edge_mask:
+                    continue
+                edge_mask = np.concatenate(edge_mask)
+                feats[ii, :] = np.mean(feat_lines[edge_mask, :], axis=0)
 
             # update the running average
             this_edge_num = float(len(this_edge_ids))

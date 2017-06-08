@@ -1,5 +1,6 @@
 import numpy as np
 import vigra
+from concurrent import futures
 
 from ExperimentSettings import ExperimentSettings
 
@@ -112,3 +113,56 @@ def merge_small_segments(mc_seg, min_seg_size):
     # make consecutive, starting from the original min val and make segmentation
     merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min, keep_zeros=False)
     return nrag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
+
+
+def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, invert_hmap=False):
+    hmap = ds.inp(inp_id)
+    assert hmap.shape == mc_segmentation.shape, "%s, %s" % (str(hmap.shape), str(mc_segmentation.shape))
+
+    if invert_hmap:
+        hmap = 1. - hmap
+
+    postprocessed = mc_segmentation.copy()
+    postprocessed = postprocessed.astype('uint32')
+    # need to get rid of 0's, because they correspond to unclaimed territoty
+    if postprocessed.min() == 0:
+        postprocessed += 1
+
+    # find the ids to merge (smaller than size threshold)
+    segment_ids, segment_sizes = np.unique(postprocessed, return_counts=True)
+    merge_ids = segment_ids[segment_sizes < size_threshold]
+
+    print "Merge with according to size threshold %i:" % size_threshold
+    print "Merging %i / %i segments" % (len(merge_ids), len(segment_ids))
+
+    # mask out the merge-ids
+    mask = np.ma.masked_array(postprocessed, mask=np.in1d(postprocessed, merge_ids))
+    mask = mask.mask
+    postprocessed[mask] = 0
+
+    def pp_z(z):
+        ws_z, _ = vigra.analysis.watershedsNew(hmap[z].astype('float32'), seeds=postprocessed[z])
+        postprocessed[z] = ws_z
+
+    with futures.ThreadPoolExecutor(max_workers=8) as tp:
+        tasks = [tp.submit(pp_z, z) for z in xrange(postprocessed.shape[0])]
+        [t.result() for t in tasks]
+
+    postprocessed, _, _ = vigra.analysis.relabelConsecutive(postprocessed, start_label=1, keep_zeros=False)
+    return postprocessed
+
+
+if __name__ == '__main__':
+    from DataSet import load_dataset
+    ds = load_dataset(
+        '/home/constantin/Work/home_hdd/cache/cremi_new/sample_A_test'
+    )
+    seg = vigra.readHDF5(
+        '/home/constantin/Work/home_hdd/results/cremi/affinity_experiments/mc_nolearn/gs/sampleA_top_0_.h5',
+        'volumes/labels/neuron_ids'
+    )
+    seg_pp = postprocess_with_watershed(ds, seg, 1)
+    from volumina_viewer import volumina_n_layer
+    volumina_n_layer(
+        [ds.inp(0).astype('float32'), seg, seg_pp]
+    )
