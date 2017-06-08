@@ -188,13 +188,14 @@ def topo_feats_slice(seg, uv_ids):
 # features: curvature, line distances, geometry, topology
 def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
 
+    # FIXME this apparently has changed in nifty
     # number of features:
     # curvature features -> 33
     # line dist features -> 33
     # geometry features  -> 20
     # topology features  ->  6
     # faces per edge     ->  1
-    n_feats = 93
+    n_feats = 115
     feats_xy = np.zeros((rag.numberOfEdges, n_feats), dtype='float32')
     uv_ids = rag.uvIds()
 
@@ -225,13 +226,14 @@ def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
 # TODO potential extra features: Union, IoU, segmentShape (= edge_area / edge_circumference)
 def topo_feats_z(rag, seg, edge_indications):
 
+    # FIXME apparantly this has changed in nifty
     # number of features:
     # curvature features -> 33
     # line dist features -> 33
     # geometry features  -> 20
     # topology features  ->  6
     # faces per edge     ->  1
-    n_feats = 93
+    n_feats = 115
 
     # get the uv-ids of z-edges
     assert rag.numberOfEdges == len(edge_indications), "%i, %i" % (rag.numberOfEdges, len(edge_indications))
@@ -359,6 +361,6 @@ if __name__ == '__main__':
         feats, _ = topology_features_impl(rag, seg, edge_indications, edge_lens, nodes_z)
         print feats.shape
 
-    # test_topofeats_xy()
+    test_topofeats_xy()
     # test_topofeats_z()
-    topofeats()
+    # topofeats()
