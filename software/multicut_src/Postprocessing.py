@@ -80,7 +80,7 @@ def merge_small_segments(mc_seg, min_seg_size):
 
     print "Merging segments in mc-result with size smaller than", min_seg_size
     _, node_sizes = np.unique(mc_seg, return_counts=True)
-    edge_sizes = nrag.rag.accumulateEdgeMeanAndLength(
+    edge_sizes = nrag.accumulateEdgeMeanAndLength(
         rag,
         np.zeros_like(mc_seg, dtype='float32')
     )[:, 1].astype('uint32')
@@ -108,7 +108,7 @@ def merge_small_segments(mc_seg, min_seg_size):
     # merge the nodes with ufd
     ufd = nifty.ufd.ufd(n_nodes)
     ufd.merge(merge_pairs)
-    merged_nodes = ufd.elmentLabeling()
+    merged_nodes = ufd.elementLabeling()
 
     # make consecutive, starting from the original min val and make segmentation
     merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min, keep_zeros=False)

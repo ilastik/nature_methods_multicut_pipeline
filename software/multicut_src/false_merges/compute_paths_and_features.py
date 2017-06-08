@@ -25,7 +25,7 @@ def distance_transform(segmentation, anisotropy):
     edge_volume = np.concatenate(
         [vigra.analysis.regionImageToEdgeImage(segmentation[z])[None, :]
          for z in xrange(segmentation.shape[0])],
-        axis=2
+        axis=0
     )
     dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
     return dt
