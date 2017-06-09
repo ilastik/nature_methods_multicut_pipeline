@@ -27,7 +27,7 @@ def distance_transform(segmentation, anisotropy):
          for z in xrange(segmentation.shape[0])],
         axis=0
     )
-    dt = vigra.filters.distanceTransform(edge_volume, pixel_pitch=anisotropy, background=True)
+    dt = vigra.filters.distanceTransform(edge_volume.astype('uint32'), pixel_pitch=anisotropy, background=True)
     return dt
 
 
