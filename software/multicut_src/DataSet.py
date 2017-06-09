@@ -90,7 +90,7 @@ def connected_components_with_ignore_mask(seg):
 
             print z
 
-            rag = nrag.gridRag(seg_cc)
+            rag = nrag.gridRag(seg_cc, numberOfThreads=ExperimentSettings().n_threads)
             label_sizes = [np.sum(seg_cc == l) for l in new_ignore_vals]
             keep_label = new_ignore_vals[np.argmax(label_sizes)]
             merge_labels = new_ignore_vals[new_ignore_vals != keep_label]
@@ -127,8 +127,8 @@ def connected_components_with_ignore_mask(seg):
         seg_new[z] = seg_cc
         return seg_max + 1
 
-    with futures.ThreadPoolExecutor(max_workers=1) as tp:
     # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
+    with futures.ThreadPoolExecutor(max_workers=1) as tp:
         tasks = [tp.submit(cc_z, z) for z in xrange(seg.shape[0])]
         offsets = [t.result() for t in tasks]
 
@@ -1026,6 +1026,7 @@ class DataSet(object):
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
 
         # list of the region statistics, that we want to extract
+        # FIXME why don't we use the mean value here ?!
         statistics = ["Count", "Kurtosis",  # "Histogram",
                       "Maximum", "Minimum", "Quantiles",
                       "RegionRadii", "Skewness", "Sum",
@@ -1034,7 +1035,8 @@ class DataSet(object):
         extractor = vigra.analysis.extractRegionFeatures(
             self.inp(inp_id).astype(np.float32),
             self.seg(seg_id).astype(np.uint32),
-            features=statistics)
+            features=statistics
+        )
 
         node_features = np.concatenate(
             [extractor[stat_name][:, None].astype('float32') if extractor[stat_name].ndim == 1
@@ -1370,12 +1372,16 @@ class DataSet(object):
     # Convenience functions for Cutouts
     #
 
-    # make a cutout of the given block shape
-    # need to update the ds in the MetaSet after this!
-    def make_cutout(self, start, stop):
+    # make a cutout between coordinates start, stop
+    # if replace is true, replace the cutout with id replace_id
+    def make_cutout(self, start, stop, replace=False, replace_id=-1):
         assert self.has_raw, "Need at least raw data to make a cutout"
         assert len(start) == 3
         assert len(stop)  == 3
+
+        if replace:
+            assert replace_id >= 0
+            assert self.n_cutouts > replace_id
 
         assert start[0] < stop[0] and start[1] < stop[1] and start[2] < stop[2], \
             "%s, %s" % (str(start), str(stop))
@@ -1385,7 +1391,10 @@ class DataSet(object):
             stop[2] <= self.shape[2], \
             "%s, %s" % (str(self.shape), str(stop))
 
-        cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
+        if replace:
+            cutout_name = self.ds_name + "_cutout_" + str(replace_id)
+        else:
+            cutout_name = self.ds_name + "_cutout_" + str(self.n_cutouts)
 
         # if we are making a cutout of a cutout, we must adjust the parent ds and block offset
         parent_ds     = self.parent_ds.cache_folder if isinstance(self, Cutout) else self.cache_folder
@@ -1438,7 +1447,11 @@ class DataSet(object):
             cutout.add_defect_mask(mask_path, "data")
         cutout.save()
 
-        self.cutouts.append(cutout_name)
+        if replace:
+            self.cutouts[replace_id] = cutout_name
+        else:
+            self.cutouts.append(cutout_name)
+
         self.save()
 
     def get_cutout(self, cutout_id):
@@ -1543,7 +1556,7 @@ class DataSet(object):
         uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)
         labels = np.zeros(len(uv_ids), dtype='uint8')
         labeled = mask_edges(self, seg_id, labels, uv_ids, with_defects)
-        labels[labeled == False] = 1
+        labels[labeled == 0] = 1
 
         self.view_edge_values(seg_id, labels, with_defects)
 
