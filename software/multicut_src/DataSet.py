@@ -732,14 +732,14 @@ class DataSet(object):
 
             # calculate the centers for a 2d slice
             def centers_2d(z):
-                seg_z = seg[:, :, z]
+                seg_z = seg[z, :, :]
                 min_label = seg_z.min()
                 # eccentricity centers expect a consecutive labeling -> we only return the relevant part
                 centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
                 return [cent + (z,) for cent in centers]  # extend by z coordinate
 
             with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
-                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[2])]
+                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[0])]
                 centers = [t.result() for t in tasks]
                 # return flattened list
             centers_list = list(itertools.chain(*centers))
