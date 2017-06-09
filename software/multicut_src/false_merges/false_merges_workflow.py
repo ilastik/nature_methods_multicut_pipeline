@@ -277,7 +277,9 @@ def train_random_forest_for_merges(
             gt = current_ds.gt()
             # add a fake distance transform
             # we need this to safely replace this with the actual distance transforms later
-            current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
+            # FIXME: Check the condition
+            if current_ds.n_inp < 3:
+                current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
             # multiple mc segmentations
@@ -383,7 +385,7 @@ def compute_false_merges(
 
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
-    dt = distance_transform(seg, [1., 1., ExperimentSettings().anisotropy_factor])
+    dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
     ds_test.add_input_from_data(dt)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
