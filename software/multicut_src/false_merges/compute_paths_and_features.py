@@ -313,19 +313,19 @@ def multicut_path_features(
     # find the local edge ids along the path
     def edges_along_path(path, mapping, uvs_local):
         edge_ids = []
-        u = mapping[seg[path[0]]]  # TODO does this work ?
+        u = mapping[seg[tuple(path[0])]]
         for p in path[1:]:
-            v = mapping[seg[p]]  # TODO does this work ?
+            v = mapping[seg[tuple(p)]]
             if u != v:
-                uv = np.array([min(u, v), max(u, v)])
+                uv = np.array([[min(u, v), max(u, v)]])
                 edge_id = find_matching_row_indices(uvs_local, uv)[0, 0]
                 edge_ids.append(edge_id)
             u = v
         return np.array(edge_ids)
 
     # needed for weight transformation
-    weighting_scheme = ExperimentSettings.weighting_scheme
-    weight           = ExperimentSettings.weight
+    weighting_scheme = ExperimentSettings().weighting_scheme
+    weight           = ExperimentSettings().weight
     edge_areas       = ds.topology_features(seg_id, False)[:, 0].astype('uint32')
     edge_indications = ds.edge_indications(seg_id)
 
@@ -357,17 +357,21 @@ def multicut_path_features(
     # TODO more_feats ?!
     betas = np.arange(0.3, 0.75, 0.05)
     n_feats = len(betas)
-    n_paths = np.sum([len(paths) for paths in objs_to_paths])
+    n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
     features = np.zeros((n_paths, n_feats), dtype='float32')
 
     # TODO parallelize
     for obj_id in objs_to_paths:
 
         local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+            ds,
+            seg_id,
             mc_segmentation,
             obj_id,
-            uv_ids
+            uv_ids,
+            uv_ids_lifted=None
         )
+
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
         n_var = uv_local.max() + 1
 
@@ -381,7 +385,13 @@ def multicut_path_features(
             cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
             for path_id, e_ids in path_edge_ids.iteritems():
-                features[path_id, ii] = np.sum(cut_edges[e_ids])
+                # e_ids is zero if the path is very short and doesn't cross superpixel edges
+                # This should happen very rarely
+                if len(e_ids > 0):
+                    features[path_id, ii] = np.sum(cut_edges[e_ids])
+                else:
+                    print 'Warning: Path not crossing superpixel edges detected'
+                    features[path_id, ii] = 0
 
     return features
 

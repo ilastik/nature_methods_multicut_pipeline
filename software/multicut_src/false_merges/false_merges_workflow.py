@@ -243,9 +243,10 @@ def train_random_forest_for_merges(
         trainsets,  # list of datasets with training data
         mc_segs_train,  # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
-        rf_cache_folder=None,
         paths_cache_folder=None
 ):
+
+    rf_cache_folder = ExperimentSettings().rf_cache_folder
 
     if rf_cache_folder is not None:
         if not os.path.exists(rf_cache_folder):
@@ -277,7 +278,9 @@ def train_random_forest_for_merges(
             gt = current_ds.gt()
             # add a fake distance transform
             # we need this to safely replace this with the actual distance transforms later
-            current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
+            # FIXME: Check the condition
+            if current_ds.n_inp < 3:
+                current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
 
             # Initialize correspondence list which makes sure that the same merge is not extracted from
             # multiple mc segmentations
@@ -312,7 +315,33 @@ def train_random_forest_for_merges(
                 )
 
                 if paths.size:
-                    objs_to_paths = paths_to_objs  # TODO: Translate paths_to_objs to objs_to_paths
+
+                    # FIXME put this function elsewhere and rename it
+                    # Maybe this should be integrated into the respective function as it is a very special format
+                    def paths_to_objs_to_objs_to_paths(paths_to_objs, paths):
+
+                        objs_to_paths = {}
+                        for obj_id, obj in enumerate(paths_to_objs):
+
+                            if obj in objs_to_paths.keys():
+                                objs_to_paths[obj][obj_id] = paths[obj_id]
+                            else:
+                                objs_to_paths[obj] = {obj_id: paths[obj_id]}
+
+                        return objs_to_paths
+
+                    objs_to_paths = paths_to_objs_to_objs_to_paths(paths_to_objs, paths)
+
+                    # FIXME also put this elsewhere
+                    # This can be loaded within the feature aggregator
+                    # FIXME consider integrating the feature list into ExperimentSettings
+                    from multicut_src import learn_and_predict_rf_from_gt
+                    edge_probabilities = learn_and_predict_rf_from_gt(
+                        trainsets, current_ds, 0, 0, ['raw', 'prob', 'reg'],
+                        with_defects=False,
+                        use_2rfs=ExperimentSettings().use_2rfs
+                    )
+
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
                     features_train.append(
                         path_feature_aggregator(
@@ -321,7 +350,7 @@ def train_random_forest_for_merges(
                             ExperimentSettings().path_features,
                             mc_segmentation=seg,
                             objs_to_paths=objs_to_paths,
-                            edge_probabilities=''
+                            edge_probabilities=edge_probabilities
                         )
                     )
                     labels_train.append(path_classes)
@@ -356,7 +385,6 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
-        rf_cache_folder=None,
         test_paths_cache_folder=None,
         train_paths_cache_folder=None
 ):
@@ -387,7 +415,6 @@ def compute_false_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
-        rf_cache_folder,
         train_paths_cache_folder
     )
 
