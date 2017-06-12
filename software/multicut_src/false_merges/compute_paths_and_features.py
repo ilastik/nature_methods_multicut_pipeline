@@ -250,9 +250,9 @@ def features(paths, anisotropy):
     #     data = np.array([(elem1*aniso_temp[0], elem2*aniso_temp[1], elem3*aniso_temp[2]) for elem1, elem2, elem3 in data])
     #     data = data.transpose()
     #
-    #     tck, u = interpolate.splprep(data, s=3500, k=3)
+    #    tck, u = interpolate.splprep(data, s=5000,k=3)
     #
-    #     new = interpolate.splev(np.linspace(0, 1, 100000), tck)
+    #    new = interpolate.splev(np.linspace(0, 1, len(data[0])), tck)
     #
     #     data = np.array(new).transpose()
     #     pathslist[number] = data

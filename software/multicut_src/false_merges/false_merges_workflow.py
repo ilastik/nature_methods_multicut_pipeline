@@ -145,6 +145,8 @@ def stage_one(img):
         is_visited_map[point[0], point[1], point[2]] = 0
         nodes = {}
         point = init(volume)
+        if (point == np.array([-1, -1, -1])).all():
+            return is_node_map, is_term_map, is_branch_map, nodes, edges
         is_queued_map[point[0], point[1], point[2]] = 1
         not_queued, not_visited, is_visited_map, are_near = check_box(volume, point, is_queued_map, is_visited_map)
         nodes[current_node] = point
@@ -550,6 +552,9 @@ def cut_off(all_paths_unfinished,paths_to_objs_unfinished,cut_off_array,ratio_tr
     con_len = {}
 
     for label in cut_off_array.keys():
+        #FIXME  in cut_off conc=np.concatenate(con_label[label]).tolist() ValueError: need at least one array to concatenate
+        if len(cut_off_array[label])==0:
+            continue
         con_label[label]=[]
         con_len[label]=[]
         for path in cut_off_array[label]:
@@ -560,6 +565,7 @@ def cut_off(all_paths_unfinished,paths_to_objs_unfinished,cut_off_array,ratio_tr
 
     help_array=[]
     for label in con_label.keys():
+
         conc=np.concatenate(con_label[label]).tolist()
         counter=[0,0]
         for number in np.unique(conc):
@@ -568,7 +574,7 @@ def cut_off(all_paths_unfinished,paths_to_objs_unfinished,cut_off_array,ratio_tr
             if counter[1] < many:
                 counter[0] = number
                 counter[1] = many
-
+        #TODO con label len =0
         for i in xrange(0,len(con_label[label])):
             help_array.extend([counter[0]])
 
@@ -648,10 +654,11 @@ def extract_paths_from_segmentation(
 
         cut_off_array = {}
         len_uniq=len(np.unique(seg))-1
-        for label in np.unique(seg):
-            print "Label ", label, " of ",len_uniq
+        for idx,label in enumerate(np.unique(seg)):
+            print "Number ", idx, " without labels of ",len_uniq-1
             if label == 0:
                 continue
+
 
             # masking volume
             img[seg != label] = 0
@@ -666,9 +673,9 @@ def extract_paths_from_segmentation(
             paths=compute_graph_and_paths(skel_img)
 
             percentage = []
-
-            for path in paths:
-
+            len_path=len(paths)
+            for idx,path in enumerate(paths):
+                print idx ,". path of ",len_path-1
                 #TODO better workaround
                 # workaround till tomorrow
                 workaround_array=[]
