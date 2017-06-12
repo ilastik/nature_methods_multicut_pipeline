@@ -188,7 +188,7 @@ def features(paths, anisotropy):
     def length(array, scale):
         # gibt einen array mit (nummer des pixels i,laenge des vektors von dem pixel i bis zum pixel i+scale) zurueck
 
-
+        # TODO forgot to implement finite difference https://en.wikipedia.org/wiki/Finite_difference
         size = array.shape[0] - 3
         new = np.zeros((size, 2))
 
