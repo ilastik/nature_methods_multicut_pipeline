@@ -243,7 +243,8 @@ def train_random_forest_for_merges(
         trainsets,  # list of datasets with training data
         mc_segs_train,  # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
-        paths_cache_folder=None
+        paths_cache_folder=None,
+        mc_weights=None
 ):
 
     rf_cache_folder = ExperimentSettings().rf_cache_folder
@@ -316,32 +317,6 @@ def train_random_forest_for_merges(
 
                 if paths.size:
 
-                    # FIXME put this function elsewhere and rename it
-                    # Maybe this should be integrated into the respective function as it is a very special format
-                    def paths_to_objs_to_objs_to_paths(paths_to_objs, paths):
-
-                        objs_to_paths = {}
-                        for obj_id, obj in enumerate(paths_to_objs):
-
-                            if obj in objs_to_paths.keys():
-                                objs_to_paths[obj][obj_id] = paths[obj_id]
-                            else:
-                                objs_to_paths[obj] = {obj_id: paths[obj_id]}
-
-                        return objs_to_paths
-
-                    objs_to_paths = paths_to_objs_to_objs_to_paths(paths_to_objs, paths)
-
-                    # FIXME also put this elsewhere
-                    # This can be loaded within the feature aggregator
-                    # FIXME consider integrating the feature list into ExperimentSettings
-                    from multicut_src import learn_and_predict_rf_from_gt
-                    edge_probabilities = learn_and_predict_rf_from_gt(
-                        trainsets, current_ds, 0, 0, ['raw', 'prob', 'reg'],
-                        with_defects=False,
-                        use_2rfs=ExperimentSettings().use_2rfs
-                    )
-
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
                     features_train.append(
                         path_feature_aggregator(
@@ -349,8 +324,9 @@ def train_random_forest_for_merges(
                             paths,
                             ExperimentSettings().path_features,
                             mc_segmentation=seg,
-                            objs_to_paths=objs_to_paths,
-                            edge_probabilities=edge_probabilities
+                            paths_to_objs=paths_to_objs,
+                            train_sets=trainsets,
+                            edge_weights=mc_weights[seg_id]
                         )
                     )
                     labels_train.append(path_classes)
@@ -385,6 +361,8 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
+        mc_weights_test=None,  # the precomputed mc-weights
+        mc_weights_train=None,  # This is a list containing weights for each training set
         test_paths_cache_folder=None,
         train_paths_cache_folder=None
 ):
@@ -415,7 +393,8 @@ def compute_false_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
-        train_paths_cache_folder
+        train_paths_cache_folder,
+        mc_weights=mc_weights_train
     )
 
     # load the segmentation, compute distance transform and add it to the test dataset
@@ -432,7 +411,15 @@ def compute_false_merges(
 
     assert len(paths_test) == len(paths_to_objs_test)
 
-    features_test = path_feature_aggregator(ds_test, paths_test)
+    features_test = path_feature_aggregator(
+        ds_test,
+        paths_test,
+        ExperimentSettings().path_features,
+        mc_segmentation=seg,
+        paths_to_objs=paths_to_objs_test,
+        train_sets=trainsets,
+        edge_weights=mc_weights_test
+    )
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
 
@@ -591,6 +578,7 @@ def combine_paths(
 # resolve each potential false merge individually with lifted edges
 def resolve_merges_with_lifted_edges(
         ds,
+        train_sets,
         seg_id,
         false_paths,  # dict(merge_ids : false_paths)
         path_rf,
@@ -651,6 +639,8 @@ def resolve_merges_with_lifted_edges(
         uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
         lifted_weights = lifted_weights_all[lifted_uv_mask]
 
+        # FIXME somthing goes wrong here, but what? merge_id = 75
+        # FIXME ecc_centers_seg still doesn't have switched dimensions!!! -> Old cache or in computation?
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
             paths_cache_folder,
@@ -678,7 +668,13 @@ def resolve_merges_with_lifted_edges(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj)
+        features = path_feature_aggregator(
+            ds, paths_obj, feature_list=ExperimentSettings().path_features,
+            mc_segmentation=mc_segmentation,
+            paths_to_objs=[merge_id] * len(paths_obj),  # FIXME is this correct?
+            train_sets=train_sets,
+            edge_weights=mc_weights_all
+        )
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO disabled for now

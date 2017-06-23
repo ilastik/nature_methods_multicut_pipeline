@@ -116,8 +116,24 @@ def shortest_paths(
 def path_feature_aggregator(
         ds, paths,
         feature_list=None,
-        mc_segmentation=None, objs_to_paths=None, edge_probabilities=None  # TODO: Supply these as paths?
+        mc_segmentation=None, paths_to_objs=None, train_sets=None,
+        edge_weights=None
 ):
+
+    # FIXME
+    seg_id = 0
+
+    def make_objs_to_paths_dict(paths_to_objs, paths):
+
+        objs_to_paths = {}
+        for obj_id, obj in enumerate(paths_to_objs):
+
+            if obj in objs_to_paths.keys():
+                objs_to_paths[obj][obj_id] = paths[obj_id]
+            else:
+                objs_to_paths[obj] = {obj_id: paths[obj_id]}
+
+        return objs_to_paths
 
     # The actual default values of the feature list
     if feature_list is None:
@@ -126,6 +142,7 @@ def path_feature_aggregator(
     anisotropy_factor = ExperimentSettings().anisotropy_factor
 
     feature_space = []
+
     for feature in feature_list:
 
         if feature == 'path_features':
@@ -141,19 +158,45 @@ def path_feature_aggregator(
 
             # Make sure all necessary information is supplied
             assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
-            assert objs_to_paths is not None, 'Supply an object to path dictionary when using multicut path features!'
-            assert edge_probabilities is not None, 'Supply edge probabilities when using multicut path features!'
+            assert paths_to_objs is not None, 'Supply an object to path dictionary when using multicut path features!'
+            assert train_sets is not None, 'Supply train sets when using multicut path features!'
+
+            # Convert paths_to_objs list to objs_to_paths dictionary
+            objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
+
+            # FIXME consider integrating the feature list into ExperimentSettings
+            from multicut_src import learn_and_predict_rf_from_gt
+            edge_probabilities = learn_and_predict_rf_from_gt(
+                train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
+                with_defects=False,
+                use_2rfs=ExperimentSettings().use_2rfs
+            )
 
             feature_space.append(multicut_path_features(
                 ds,
-                0,  # FIXME: Is this correct?
+                seg_id,
                 mc_segmentation,
                 objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
                 edge_probabilities
             ))
 
         if feature == 'cut_features':
-            pass
+
+            # Make sure all necessary information is supplied
+            assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
+            assert paths_to_objs is not None, 'Supply an object to path dictionary when using multicut path features!'
+            assert edge_weights is not None, 'Supply edge weights when using multicut path features!'
+
+            # Convert paths_to_objs list to objs_to_paths dictionary
+            objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
+
+            feature_space.append(cut_features(
+                ds, seg_id, mc_segmentation, objs_to_paths,
+                edge_weights,  # TODO: Or edge weights?
+                ExperimentSettings().anisotropy_factor,
+                feat_list=['raw', 'prob', 'distance_transform'],
+                cut_method='watershed'
+            ))
 
     return np.concatenate(feature_space, axis=1)
 
@@ -399,7 +442,7 @@ def multicut_path_features(
 def cut_watershed(graph, weights, source, sink):
 
     # TODO I don't know if this is the correct way to do this
-    # make the seeds from source and sing
+    # make the seeds from source and sink
     seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
     seeds[source] = 1
     seeds[sink] = 2
@@ -454,19 +497,19 @@ def cut_features(
         edge_ids = []
         edge_ids_local = []
 
-        u = seg[path[0]]  # TODO does this work ?
-        u_local = mapping[seg[path[0]]]  # TODO does this work ?
+        u = seg[tuple(path[0])]
+        u_local = mapping[seg[tuple(path[0])]]
 
         # find edge-ids along the path
         # if this turns out to be a bottleneck, we can c++ it
         for p in path[1:]:
 
-            v = seg[p]  # TODO does this work ?
-            v_local = mapping[seg[p]]  # TODO does this work ?
+            v = seg[tuple(p)]
+            v_local = mapping[seg[tuple(p)]]
 
             if u != v:
-                uv = np.array([min(u, v), max(u, v)])
-                uv_local = np.array([min(u_local, v_local), max(u_local, v_local)])
+                uv = np.array([[min(u, v), max(u, v)]])
+                uv_local = np.array([[min(u_local, v_local), max(u_local, v_local)]])
 
                 edge_id = find_matching_row_indices(uv_ids, uv)[0, 0]
                 edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0, 0]
@@ -490,16 +533,19 @@ def cut_features(
         edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))
     edge_features = np.concatenate(edge_features, axis=1)
 
-    n_paths = np.sum([len(paths) for paths in objs_to_paths])
+    n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
     features = np.zeros((n_paths, edge_features.shape[1]), dtype='float32')
 
     # TODO parallelize
     for obj_id in objs_to_paths:
 
         local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+            ds,
+            seg_id,
             mc_segmentation,
             obj_id,
-            uv_ids
+            uv_ids,
+            uv_ids_lifted=None
         )
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
@@ -511,24 +557,31 @@ def cut_features(
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
         for path_id, path in objs_to_paths[obj_id].iteritems():
-            edge_ids, edge_ids_local, source, sink = edges_along_path(path, mapping, uv_local)
+            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
 
             # get source and sink
             # == start and end node of the path
-            source = mapping[seg[path[0]]]
-            sink = mapping[seg[path[-1]]]
+            source = mapping[seg[tuple(path[0])]]
+            sink = mapping[seg[tuple(path[-1])]]
 
             # run cut with seeds at path end points
             # returns the cut edges
             local_two_coloring = cutter(graph_local, weights_local, source, sink)
+
             # find the cut edge along the path
             cut_edge = np.where(local_two_coloring == 1)[0]
+            cut_edge_on_path = np.intersect1d(cut_edge, edge_ids_local)
+
             # make sure we only have 1 cut edge
-            assert len(cut_edge) == 1
-            cut_edge = cut_edge[0]
+            # assert cut_edge_on_path.size == 1
+            if cut_edge_on_path.size != 1:
+                print 'Warning: cut_edge_on_path.size = {}'.format(cut_edge_on_path.size)
+            else:
+                print 'cut_edge_on_path.size = 1'
+            cut_edge_on_path = cut_edge_on_path[0]
 
             # cut-edge project back to global edge-indexing and get according features
-            global_edge = edge_ids[edge_ids_local == cut_edge]
-            features[path_id] = edge_features[global_edge]
+            global_edge = edge_ids[edge_ids_local == cut_edge_on_path]
+            features[path_id] = edge_features[global_edge[0], :]
 
     return features
