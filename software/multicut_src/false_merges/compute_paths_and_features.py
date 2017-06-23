@@ -534,7 +534,10 @@ def cut_features(
     edge_features = np.concatenate(edge_features, axis=1)
 
     n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
-    features = np.zeros((n_paths, edge_features.shape[1]), dtype='float32')
+
+    # Initialize features matrix
+    # Factor of three as we use the min, max, and average of the edges at the cutting site
+    features = np.zeros((n_paths, edge_features.shape[1] * 3), dtype='float32')
 
     # TODO parallelize
     for obj_id in objs_to_paths:
@@ -549,6 +552,7 @@ def cut_features(
         )
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
 
+        assert len(local_uv_mask) == len(edge_weights)
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
         graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
@@ -569,19 +573,33 @@ def cut_features(
             local_two_coloring = cutter(graph_local, weights_local, source, sink)
 
             # find the cut edge along the path
-            cut_edge = np.where(local_two_coloring == 1)[0]
-            cut_edge_on_path = np.intersect1d(cut_edge, edge_ids_local)
+            cut_edges = np.where(local_two_coloring == 1)[0]
+            cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
 
-            # make sure we only have 1 cut edge
-            # assert cut_edge_on_path.size == 1
-            if cut_edge_on_path.size != 1:
-                print 'Warning: cut_edge_on_path.size = {}'.format(cut_edge_on_path.size)
-            else:
-                print 'cut_edge_on_path.size = 1'
-            cut_edge_on_path = cut_edge_on_path[0]
+            # TODO: Use average, min, and max
+            # # make sure we only have 1 cut edge
+            # # assert cut_edge_on_path.size == 1
+            # if cut_edges_on_path.size != 1:
+            #     print 'Warning: cut_edges_on_path.size = {}'.format(cut_edges_on_path.size)
+            # else:
+            #     print 'cut_edges_on_path.size = 1'
+            # cut_edges_on_path = cut_edges_on_path[0]
 
-            # cut-edge project back to global edge-indexing and get according features
-            global_edge = edge_ids[edge_ids_local == cut_edge_on_path]
-            features[path_id] = edge_features[global_edge[0], :]
+            # # cut-edge project back to global edge-indexing and get according features
+            # global_edge = edge_ids[edge_ids_local == cut_edges_on_path]
+            # features[path_id] = edge_features[global_edge[0], :]
+
+            new_edge_feats = []
+            for cut_edge in cut_edges_on_path:
+                global_edge = edge_ids[edge_ids_local == cut_edge]
+                new_edge_feats.append(edge_features[global_edge[0], :])
+
+            new_edge_feats = np.array(new_edge_feats)
+
+            features[path_id] = np.concatenate([
+                new_edge_feats.min(axis=0),
+                new_edge_feats.max(axis=0),
+                new_edge_feats.mean(axis=0)
+            ], axis=0)
 
     return features

@@ -291,8 +291,8 @@ def train_random_forest_for_merges(
                 correspondence_list = None
 
             # loop over the different beta segmentations per train set
-            for seg_id, seg_path in enumerate(paths_to_betas):
-                key = keys_to_betas[seg_id]
+            for seg_path_id, seg_path in enumerate(paths_to_betas):
+                key = keys_to_betas[seg_path_id]
 
                 # Calculate the new distance transform and replace it in the dataset inputs
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
@@ -309,7 +309,7 @@ def train_random_forest_for_merges(
                 paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                     current_ds,
                     seg,
-                    seg_id,
+                    seg_path_id,
                     gt,
                     correspondence_list,
                     paths_cache_folder
@@ -326,13 +326,13 @@ def train_random_forest_for_merges(
                             mc_segmentation=seg,
                             paths_to_objs=paths_to_objs,
                             train_sets=trainsets,
-                            edge_weights=mc_weights[seg_id]
+                            edge_weights=mc_weights[ds_id]
                         )
                     )
                     labels_train.append(path_classes)
 
                 else:
-                    print "No paths found for seg_id = {}".format(seg_id)
+                    print "No paths found for seg_id = {}".format(seg_path_id)
                     continue
 
         features_train = np.concatenate(features_train, axis=0)
