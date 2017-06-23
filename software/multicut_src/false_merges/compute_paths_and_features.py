@@ -603,3 +603,130 @@ def cut_features(
             ], axis=0)
 
     return features
+
+
+# features based on most likely cut along path (via graphcut)
+# return edge features of corresponding cut, depending on feature list
+def cut_features_whole_plane(
+        ds,
+        seg_id,
+        mc_segmentation,
+        objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
+        edge_weights,
+        anisotropy_factor,
+        feat_list=['raw', 'prob', 'distance_transform'],
+        cut_method='watershed'
+):
+
+    cutters = {
+        'watershed': cut_watershed,
+        'graphcut': cut_graphcut,
+        'seeded_clustering': cut_seeded_agglomeration
+    }
+    assert feat_list
+    assert cut_method in cutters
+    cutter = cutters[cut_method]
+
+    seg = ds.seg(seg_id)
+    uv_ids = ds.uv_ids(seg_id)
+
+    # find the global and local edge ids along the path, as well as the local
+    # start and ed point of the path
+    def edges_along_path(path, mapping, uvs_local):
+
+        edge_ids = []
+        edge_ids_local = []
+
+        u = seg[tuple(path[0])]
+        u_local = mapping[seg[tuple(path[0])]]
+
+        # find edge-ids along the path
+        # if this turns out to be a bottleneck, we can c++ it
+        for p in path[1:]:
+
+            v = seg[tuple(p)]
+            v_local = mapping[seg[tuple(p)]]
+
+            if u != v:
+                uv = np.array([[min(u, v), max(u, v)]])
+                uv_local = np.array([[min(u_local, v_local), max(u_local, v_local)]])
+
+                edge_id = find_matching_row_indices(uv_ids, uv)[0, 0]
+                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0, 0]
+
+                edge_ids.append(edge_id)
+                edge_ids_local.append(edge_id_local)
+
+            u = v
+            u_local = v_local
+
+        return np.array(edge_ids), np.array(edge_ids_local)
+
+    # get the edge features already calculated for the mc-ppl
+    edge_features = []
+    if 'raw' in feat_list:
+        edge_features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
+    if 'prob' in feat_list:
+        edge_features.append(ds.edge_features(seg_id, 1, anisotropy_factor))
+    if 'distance_transform' in feat_list:
+        # we assume that the dt was already added as additional input
+        edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))
+    edge_features = np.concatenate(edge_features, axis=1)
+
+    n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
+
+    # Initialize features matrix
+    # Factor of three as we use the min, max, and average of the edges at the cutting site
+    features = np.zeros((n_paths, edge_features.shape[1] * 3), dtype='float32')
+
+    # TODO parallelize
+    for obj_id in objs_to_paths:
+
+        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
+            ds,
+            seg_id,
+            mc_segmentation,
+            obj_id,
+            uv_ids,
+            uv_ids_lifted=None
+        )
+        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+
+        assert len(local_uv_mask) == len(edge_weights)
+        # local weights and graph for the cutter
+        weights_local = edge_weights[local_uv_mask]
+        graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
+        graph_local.insertEdges(uv_local)
+
+        # TODO run graphcut or edge based ws for each path, using end points as seeds
+        # determine the cut edge and append to feats
+        for path_id, path in objs_to_paths[obj_id].iteritems():
+            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
+
+            # get source and sink
+            # == start and end node of the path
+            source = mapping[seg[tuple(path[0])]]
+            sink = mapping[seg[tuple(path[-1])]]
+
+            # run cut with seeds at path end points
+            # returns the cut edges
+            local_two_coloring = cutter(graph_local, weights_local, source, sink)
+
+            # find the cut edge along the path
+            cut_edges = np.where(local_two_coloring == 1)[0]
+            # cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
+
+            new_edge_feats = []
+            for cut_edge in cut_edges:
+                global_edge = edge_ids[edge_ids_local == cut_edge]
+                new_edge_feats.append(edge_features[global_edge[0], :])
+
+            new_edge_feats = np.array(new_edge_feats)
+
+            features[path_id] = np.concatenate([
+                new_edge_feats.min(axis=0),
+                new_edge_feats.max(axis=0),
+                new_edge_feats.mean(axis=0)
+            ], axis=0)
+
+    return features
