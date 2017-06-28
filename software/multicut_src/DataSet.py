@@ -541,7 +541,7 @@ class DataSet(object):
             seg = connected_components_with_ignore_mask(seg)
 
         else:
-            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype(seg.dtype)
+            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype('uint32')
 
         return seg
 
