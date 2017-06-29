@@ -25,18 +25,24 @@ except ImportError:
 class RandomForest(object):
 
     def __init__(
-            self,
-            train_data,
-            train_labels,
-            n_trees,
-            n_threads,
-            max_depth=None
+        self,
+        train_data,
+        train_labels,
+        n_trees,
+        n_threads,
+        max_depth=None,
+        class_weight=None  # class weights are only supported for sklearn rf
     ):
 
         if isinstance(train_data, str) and train_data == '__will_deserialize__':
             return
         else:
             assert isinstance(train_data, np.ndarray)
+
+        assert class_weight in (None, 'balanced', 'balanced_subsample')
+        if class_weight is not None and not use_sklearn:
+            print "WARNING: Class weighting has no effect if you are using the vigra random forest."
+        self.class_weight = class_weight
 
         assert train_data.shape[0] == train_labels.shape[0]
         self.n_threads = n_threads
@@ -82,7 +88,8 @@ class RandomForest(object):
             n_estimators=self.n_trees,
             n_jobs=self.n_threads,
             verbose=2 if ExperimentSettings().verbose else 0,
-            max_depth=self.max_depth
+            max_depth=self.max_depth,
+            class_weight=self.class_weight
         )
         self.rf.fit(train_data, train_labels)
 

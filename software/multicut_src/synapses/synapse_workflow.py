@@ -6,6 +6,7 @@ from .. import RandomForest, local_feature_aggregator
 from .. import DataSet, ExperimentSettings
 from .. import edges_to_volume
 from .. import get_ignore_edge_ids
+from hard_example_mining import mine_hard_examples_felzenszwalb
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
@@ -162,6 +163,68 @@ def view_synapse_edge_labels(
     volumina_n_layer(data, labels)
 
 
+# subsample labels to get a balanced trainingset
+def subsample_labels(label):
+
+    where_neg = label == 0
+    where_pos = label == 1
+
+    n_neg = np.sum(where_neg)
+    n_pos = np.sum(where_pos)
+
+    print "Balancing labels starting from %i positive and %i negative labels" % (n_neg, n_pos)
+    assert n_neg > n_pos
+
+    mask = np.zeros_like(label, dtype=bool)
+    mask[where_pos] = True
+
+    sampled_indices = np.random.choice(np.arange(n_neg), n_pos, replace=False)
+    mask[np.where(where_neg)[0][sampled_indices]] = True
+
+    n_keep = np.sum(mask)
+    assert n_keep == 2 * n_pos, "%i, %i" % (n_keep, 2 * n_pos)
+    return mask
+
+
+# wrapper around the hard example mining
+def mine_hard_examples(features, labels):
+
+    # sort the features in positive and negative examples,
+    # remembering the correct indices
+    where_neg = np.where(labels == 0)[0]
+    where_pos = np.where(labels == 1)[0]
+
+    n_neg = len(where_neg)
+    n_pos = len(where_pos)
+    print "Mining hard examples for %i positive and %i negative labels" % (n_neg, n_pos)
+    assert n_neg > n_pos
+
+    # we mine 'n_pos' examples for positives and negatives
+    # NOTE this actually doesn't make sense for the positives, restrict it to mining for negatives
+    # if this becomes performance sensitive
+    neg_choices, pos_choices = mine_hard_examples_felzenszwalb(
+        features[where_neg],
+        features[where_pos],
+        max_samples=n_pos,
+        classifier_opts=dict(n_jobs=ExperimentSettings().n_threads, n_estimators=ExperimentSettings().n_trees)
+    )
+
+    assert len(neg_choices) <= n_pos
+    # assert len(pos_choices) == n_pos, "%i, %i" % (len(pos_choices), n_pos)
+
+    # get the correct mask from the chosen hard examples
+    mask = np.zeros_like(labels, dtype=bool)
+
+    # all positives were chosen, so we don't need to screw around with maskings
+    mask[where_pos] = True
+
+    # mask for the negatives that were chosen
+    # TODO test this !
+    mask[where_neg[neg_choices]] = True
+
+    return mask
+
+
 # learn random forest that predicts synapses for a given edge
 # this can be learned from multiple datasets with corresponding synapse groundtruth
 # this also needs a list of paths and keys for the volumetric synapse groundtruths
@@ -176,8 +239,12 @@ def learn_synapse_rf(
     segmentation_paths,
     segmentation_keys,
     feature_list,
-    with_defects=False
+    with_defects=False,
+    balance_classes=None
 ):
+
+    # make sure that a valid method for balancing classes is picked
+    assert balance_classes in (None, 'sklearn', 'subsample', 'mining')
 
     # we support either training on a single dataset or on a list of datasets
     # if we only have a single one, we need to modify the input here to have lists
@@ -188,7 +255,7 @@ def learn_synapse_rf(
         synapse_gt_paths = [synapse_gt_paths]
         synapse_gt_keys = [synapse_gt_keys]
 
-    assert len(trainsets) == len(synapse_gt_paths)
+    assert len(trainsets) == len(synapse_gt_paths), '%i, %i' % (len(trainsets), len(synapse_gt_paths))
     assert len(trainsets) == len(synapse_gt_keys)
 
     # check if this random forest is already cached
@@ -200,6 +267,7 @@ def learn_synapse_rf(
 
         trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id)
         paramstr = "_".join(feature_list)
+        paramstr += "_" + str(balance_classes)
         rf_folder = os.path.join(cache_folder, "synapserf_%s" % trainstr)
         rf_name = "synapserf_%s_%s" % (trainstr, paramstr)
         if len(rf_name) > 255:
@@ -229,18 +297,39 @@ def learn_synapse_rf(
             view_synapse_edge_labels(
                 ds, seg_id, label, mask, synapse_gt_paths[ii], synapse_gt_keys[ii], synapse_labels_to_nodes
             )
-            quit()
 
-        features.append(
-            local_feature_aggregator(ds, seg_id, feature_list, ExperimentSettings().anisotropy_factor, True)[mask]
-        )
-        labels.append(label[mask])
+        label = label[mask]
+        feats = local_feature_aggregator(
+            ds,
+            seg_id,
+            feature_list,
+            ExperimentSettings().anisotropy_factor,
+            True
+        )[mask]
+
+        if balance_classes == 'subsample':
+            sample_mask = subsample_labels(label)
+            label = label[sample_mask]
+            feats = feats[sample_mask]
+        elif balance_classes == 'mining':
+            sample_mask = mine_hard_examples(feats, label)
+            label = label[sample_mask]
+            feats = feats[sample_mask]
+
+        features.append(feats)
+        labels.append(label)
 
     features = np.concatenate(features)
     labels = np.concatenate(labels)
 
     # learn the random forest
-    rf = RandomForest(features, labels, ExperimentSettings().n_trees, ExperimentSettings().n_threads)
+    rf = RandomForest(
+        features,
+        labels,
+        ExperimentSettings().n_trees,
+        ExperimentSettings().n_threads,
+        class_weight='balanced' if balance_classes == 'sklearn' else None
+    )
 
     # cache the rf if caching is activated
     if ExperimentSettings().rf_cache_folder is not None:
@@ -264,7 +353,8 @@ def predict_synapse_edge_probabilities(
     seg_id_train,
     seg_id_test,
     feature_list,
-    with_defects=False
+    with_defects=False,
+    balance_classes=None
 ):
 
     # get the random forest, features
@@ -277,7 +367,8 @@ def predict_synapse_edge_probabilities(
         segmentation_train_paths,
         segmentation_train_keys,
         feature_list,
-        with_defects
+        with_defects,
+        balance_classes
     )
 
     features = local_feature_aggregator(
