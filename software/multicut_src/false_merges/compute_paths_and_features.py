@@ -7,6 +7,9 @@ from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
 from ..tools import find_matching_row_indices
 
+import logging
+logger = logging.getLogger(__name__)
+
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
@@ -119,6 +122,7 @@ def path_feature_aggregator(
         mc_segmentation=None, paths_to_objs=None, train_sets=None
 ):
 
+
     # FIXME
     seg_id = 0
 
@@ -138,6 +142,8 @@ def path_feature_aggregator(
     if feature_list is None:
         feature_list = ['path_features', 'lengths', 'multicuts', 'cut_features']
 
+    logger.info('Starting path_feature_aggregator with features: {} ...'.format(feature_list))
+
     anisotropy_factor = ExperimentSettings().anisotropy_factor
 
     feature_space = []
@@ -145,15 +151,27 @@ def path_feature_aggregator(
     for feature in feature_list:
 
         if feature == 'path_features':
+
+            logger.debug('Computing path features ...')
+
             feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor))
             feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor))
             # we assume that the distance transform is added as inp_id 2
             feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor))
 
+            logger.debug('... done computing path features!')
+
         if feature == 'lengths':
+
+            logger.debug('Computing path lengths ...')
+
             feature_space.append(compute_path_lengths(paths, [anisotropy_factor, 1., 1.]))
 
+            logger.debug('... done computing path lengths!')
+
         if feature == 'multicuts':
+
+            logger.debug('Computing multicut path features ...')
 
             # Make sure all necessary information is supplied
             assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
@@ -179,7 +197,11 @@ def path_feature_aggregator(
                 edge_probabilities
             ))
 
+            logger.debug('... done computing multicut path features!')
+
         if feature == 'cut_features':
+
+            logger.debug('Computing cut features ...')
 
             # Make sure all necessary information is supplied
             assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
@@ -204,6 +226,10 @@ def path_feature_aggregator(
                 feat_list=['raw', 'prob', 'distance_transform'],
                 cut_method='watershed'
             ))
+
+            logger.debug('... done computing cut features!')
+
+    logger.info('Finished path_feature_aggregator!')
 
     return np.concatenate(feature_space, axis=1)
 
@@ -357,6 +383,12 @@ def multicut_path_features(
         edge_probabilities
 ):
 
+    logger.debug('ds.ds_name = {}'.format(ds.ds_name))
+    logger.debug('seg_id = {}'.format(seg_id))
+    logger.debug('mc_segmentation.shape = {}'.format(mc_segmentation.shape))
+    logger.debug('len(objs_to_paths) = {}'.format(len(objs_to_paths)))
+    logger.debug('len(edge_probabilities = {}'.format(len(edge_probabilities)))
+
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
 
@@ -440,7 +472,9 @@ def multicut_path_features(
                 if len(e_ids > 0):
                     features[path_id, ii] = np.sum(cut_edges[e_ids])
                 else:
-                    print 'Warning: Path not crossing superpixel edges detected'
+                    logger.warning(
+                        'Path not corossing superpixel edges detected for obj_id = {}, beta = {}, path_id = {}'.format(
+                            obj_id, beta, path_id))
                     features[path_id, ii] = 0
 
     return features

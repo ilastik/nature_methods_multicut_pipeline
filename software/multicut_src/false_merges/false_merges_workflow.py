@@ -5,6 +5,8 @@ import os
 # import shutil
 # import itertools
 import h5py
+import logging
+logger = logging.getLogger(__name__)
 
 # relative imports from top level dir
 from ..Postprocessing import remove_small_segments
@@ -138,6 +140,7 @@ def extract_paths_and_labels_from_segmentation(
     """
     params:
     """
+    logger.debug('Extracting paths and labels from segmentation ...')
 
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
@@ -235,6 +238,7 @@ def extract_paths_and_labels_from_segmentation(
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
 
+    logger.debug('... done extracting paths and labels from segmentation!')
     return all_paths, paths_to_objs, path_classes, correspondence_list
 
 
@@ -245,6 +249,8 @@ def train_random_forest_for_merges(
         mc_segs_train_keys,
         paths_cache_folder=None
 ):
+
+    logger.info('Training false merges random forest ...')
 
     rf_cache_folder = ExperimentSettings().rf_cache_folder
 
@@ -259,18 +265,29 @@ def train_random_forest_for_merges(
 
     # check if rf is already cached
     if RandomForest.is_cached(rf_save_path):
-        print "Loading rf from:", rf_save_path
+
+        logger.info("Loading RF from: {}".format(rf_save_path))
         rf = RandomForest.load_from_file(rf_save_path, 'rf', ExperimentSettings().n_threads)
 
     # otherwise do the actual calculations
     else:
+
+        logger.info('RF was not cached and will be computed.')
+
         features_train = []
         labels_train = []
+
+        logger.debug('Looping over training sets:')
 
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
+            logger.debug('----------')
+            logger.debug('ds_id = {}'.format(ds_id))
+
             current_ds = trainsets[ds_id]
+            logger.debug('current_ds.ds_name = {}'.format(current_ds.ds_name))
+
             keys_to_betas = mc_segs_train_keys[ds_id]
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
 
@@ -294,6 +311,7 @@ def train_random_forest_for_merges(
 
             # loop over the different beta segmentations per train set
             for seg_path_id, seg_path in enumerate(paths_to_betas):
+                logger.debug('seg_path_id = {}'.format(seg_path_id))
                 key = keys_to_betas[seg_path_id]
 
                 # Calculate the new distance transform and replace it in the dataset inputs
@@ -352,6 +370,7 @@ def train_random_forest_for_merges(
         if rf_cache_folder is not None:
             rf.write(rf_save_path, 'rf')
 
+    logger.info('... done training false merges random forest!')
     return rf
 
 
@@ -384,6 +403,8 @@ def compute_false_merges(
     :param mc_seg_test: Multicut segmentation on ds_test (usually beta=0.5)
     :return:
     """
+
+    logger.info('Begin of compute_false_merges ...')
 
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
     assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
