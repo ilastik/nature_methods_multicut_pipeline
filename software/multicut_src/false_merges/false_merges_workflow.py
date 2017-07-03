@@ -243,8 +243,7 @@ def train_random_forest_for_merges(
         trainsets,  # list of datasets with training data
         mc_segs_train,  # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
-        paths_cache_folder=None,
-        mc_weights=None
+        paths_cache_folder=None
 ):
 
     rf_cache_folder = ExperimentSettings().rf_cache_folder
@@ -274,6 +273,9 @@ def train_random_forest_for_merges(
             current_ds = trainsets[ds_id]
             keys_to_betas = mc_segs_train_keys[ds_id]
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
+
+            # For training of the training data split the trainsets again
+            current_trainsets = np.delete(trainsets, ds_id, axis=0).tolist()
 
             # Load ground truth
             gt = current_ds.gt()
@@ -325,8 +327,7 @@ def train_random_forest_for_merges(
                             ExperimentSettings().path_features,
                             mc_segmentation=seg,
                             paths_to_objs=paths_to_objs,
-                            train_sets=trainsets,
-                            edge_weights=mc_weights[ds_id]
+                            train_sets=current_trainsets
                         )
                     )
                     labels_train.append(path_classes)
@@ -361,8 +362,6 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
-        mc_weights_test=None,  # the precomputed mc-weights
-        mc_weights_train=None,  # This is a list containing weights for each training set
         test_paths_cache_folder=None,
         train_paths_cache_folder=None
 ):
@@ -388,14 +387,12 @@ def compute_false_merges(
 
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
     assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
-    assert len(mc_weights_train) == len(mc_segs_train), "we must have the same number of weight vectors as trainsets"
 
     rf = train_random_forest_for_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
-        train_paths_cache_folder,
-        mc_weights=mc_weights_train
+        train_paths_cache_folder
     )
 
     # load the segmentation, compute distance transform and add it to the test dataset
@@ -418,8 +415,7 @@ def compute_false_merges(
         ExperimentSettings().path_features,
         mc_segmentation=seg,
         paths_to_objs=paths_to_objs_test,
-        train_sets=trainsets,
-        edge_weights=mc_weights_test
+        train_sets=trainsets
     )
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)

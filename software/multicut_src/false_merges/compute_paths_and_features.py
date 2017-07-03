@@ -116,8 +116,7 @@ def shortest_paths(
 def path_feature_aggregator(
         ds, paths,
         feature_list=None,
-        mc_segmentation=None, paths_to_objs=None, train_sets=None,
-        edge_weights=None
+        mc_segmentation=None, paths_to_objs=None, train_sets=None
 ):
 
     # FIXME
@@ -185,14 +184,22 @@ def path_feature_aggregator(
             # Make sure all necessary information is supplied
             assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
             assert paths_to_objs is not None, 'Supply an object to path dictionary when using multicut path features!'
-            assert edge_weights is not None, 'Supply edge weights when using multicut path features!'
+            assert train_sets is not None, 'Supply train sets when using multicut path features!'
 
             # Convert paths_to_objs list to objs_to_paths dictionary
             objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
 
+            # FIXME consider integrating the feature list into ExperimentSettings
+            from multicut_src import learn_and_predict_rf_from_gt
+            edge_probabilities = learn_and_predict_rf_from_gt(
+                train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
+                with_defects=False,
+                use_2rfs=ExperimentSettings().use_2rfs
+            )
+
             feature_space.append(cut_features(
                 ds, seg_id, mc_segmentation, objs_to_paths,
-                edge_weights,  # TODO: Or edge weights?
+                edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
                 feat_list=['raw', 'prob', 'distance_transform'],
                 cut_method='watershed'
@@ -472,7 +479,7 @@ def cut_features(
         seg_id,
         mc_segmentation,
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-        edge_weights,
+        edge_probabilities,
         anisotropy_factor,
         feat_list=['raw', 'prob', 'distance_transform'],
         cut_method='watershed'
@@ -486,6 +493,11 @@ def cut_features(
     assert feat_list
     assert cut_method in cutters
     cutter = cutters[cut_method]
+
+    p_min = 0.001
+    p_max = 1. - p_min
+    edge_weights = (p_max - p_min) * edge_probabilities + p_min
+    edge_weights = np.log((1 - edge_weights) / edge_weights)
 
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
@@ -572,35 +584,52 @@ def cut_features(
             # returns the cut edges
             local_two_coloring = cutter(graph_local, weights_local, source, sink)
 
-            # find the cut edge along the path
-            cut_edges = np.where(local_two_coloring == 1)[0]
-            cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
+            # FIXME: This should always be the case, still it happened -> nvestigate!
+            # FIXME: Remove this condition once the bug is found and fixed
+            # Apparently this happens when a path is very short and starts and ends in the same superpixel
+            # TODO: Possible solutions:
+            #   1. Generally remove small paths (beware of anisotropy)
+            #   2. Keep the condition below
+            #   3. Make sure small paths are not computed in the first place
+            #       a) Merge close border contacts if they belong to the same object
+            #       b) Do not compute a path if it would start and end in the same superpixel
+            if not local_two_coloring.max():
 
-            # TODO: Use average, min, and max
-            # # make sure we only have 1 cut edge
-            # # assert cut_edge_on_path.size == 1
-            # if cut_edges_on_path.size != 1:
-            #     print 'Warning: cut_edges_on_path.size = {}'.format(cut_edges_on_path.size)
-            # else:
-            #     print 'cut_edges_on_path.size = 1'
-            # cut_edges_on_path = cut_edges_on_path[0]
+                # Probably boundary intersection point calculation failed yielding a path starting
+                # and ending in [40, 0, 0] -> corner of the image
+                print 'Warning: Local two coloring failed due to unknown bug.'
 
-            # # cut-edge project back to global edge-indexing and get according features
-            # global_edge = edge_ids[edge_ids_local == cut_edges_on_path]
-            # features[path_id] = edge_features[global_edge[0], :]
+            else:
 
-            new_edge_feats = []
-            for cut_edge in cut_edges_on_path:
-                global_edge = edge_ids[edge_ids_local == cut_edge]
-                new_edge_feats.append(edge_features[global_edge[0], :])
+                # find the cut edge along the path
+                cut_edges = np.where(local_two_coloring == 1)[0]
+                cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
 
-            new_edge_feats = np.array(new_edge_feats)
+                # TODO: Use average, min, and max
+                # # make sure we only have 1 cut edge
+                # # assert cut_edge_on_path.size == 1
+                # if cut_edges_on_path.size != 1:
+                #     print 'Warning: cut_edges_on_path.size = {}'.format(cut_edges_on_path.size)
+                # else:
+                #     print 'cut_edges_on_path.size = 1'
+                # cut_edges_on_path = cut_edges_on_path[0]
 
-            features[path_id] = np.concatenate([
-                new_edge_feats.min(axis=0),
-                new_edge_feats.max(axis=0),
-                new_edge_feats.mean(axis=0)
-            ], axis=0)
+                # # cut-edge project back to global edge-indexing and get according features
+                # global_edge = edge_ids[edge_ids_local == cut_edges_on_path]
+                # features[path_id] = edge_features[global_edge[0], :]
+
+                new_edge_feats = []
+                for cut_edge in cut_edges_on_path:
+                    global_edge = edge_ids[edge_ids_local == cut_edge]
+                    new_edge_feats.append(edge_features[global_edge[0], :])
+
+                new_edge_feats = np.array(new_edge_feats)
+
+                features[path_id] = np.concatenate([
+                    new_edge_feats.min(axis=0),
+                    new_edge_feats.max(axis=0),
+                    new_edge_feats.mean(axis=0)
+                ], axis=0)
 
     return features
 

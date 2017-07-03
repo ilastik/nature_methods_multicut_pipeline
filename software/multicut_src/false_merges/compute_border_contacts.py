@@ -505,11 +505,12 @@ def compute_path_end_pairs_and_labels(
     correspondence_list.extend(gt_labels)
     correspondence_list = np.array(correspondence_list)
     # Only keep unique pairs
-    b = np.ascontiguousarray(correspondence_list).view(
-        np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
-    uniques = np.unique(b)
-    correspondence_list = uniques.view(correspondence_list.dtype)
-    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0] / 2, 2))
+    if correspondence_list.size:
+        b = np.ascontiguousarray(correspondence_list).view(
+            np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
+        uniques = np.unique(b)
+        correspondence_list = uniques.view(correspondence_list.dtype)
+        correspondence_list = correspondence_list.reshape((correspondence_list.shape[0] / 2, 2))
 
     return np.array(pairs), np.array(labels), np.array(classes), np.array(gt_labels), correspondence_list.tolist()
 
