@@ -88,7 +88,7 @@ def shortest_paths(
     def single_path(pair, instance=None):
         source = pair[0]
         target = pair[1]
-        print 'Calculating path from {} to {}'.format(source, target)
+        logger.info('Calculating path from {} to {}'.format(source, target))
         if instance is None:
             instance = graphs.ShortestPathPathDijkstra(gridgr)
 

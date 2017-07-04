@@ -222,7 +222,7 @@ def extract_paths_and_labels_from_segmentation(
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
             try:
-                print 'Saving paths in {}'.format(paths_save_file)
+                logger.info('Saving paths in {}'.format(paths_save_file))
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data=all_paths_save, dtype=dt)

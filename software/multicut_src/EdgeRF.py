@@ -20,6 +20,8 @@ except ImportError:
     use_sklearn = False
     print "Using vigra random forest 3"
 
+import logging
+logger = logging.getLogger(__name__)
 
 # wrapper for sklearn / random forest
 class RandomForest(object):
@@ -577,8 +579,10 @@ def learn_and_predict_rf_from_gt(
 
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
-            print "Loading prediction from:"
-            print pred_path
+            # print "Loading prediction from:"
+            # print pred_path
+            logger.info('Loading prediction from:')
+            logger.info(pred_path)
             return vigra.readHDF5(pred_path, 'data')
 
     # get the random forest(s)
@@ -627,11 +631,13 @@ def learn_and_predict_rf_from_gt(
         pmem_test[edge_indications == 1] = pmem_xy
         pmem_test[edge_indications == 0] = pmem_z
     else:
-        print "Start predicting random forest"
+        # print "Start predicting random forest"
+        logger.info('Start predicting random forest')
         pmem_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
 
     if with_defects and ds_test.has_defects:
-        print "Start predicting defect random forest"
+        # print "Start predicting random forest"
+        logger.info('Start predicting random forest')
         pmem_skip = rf_defects.predict_probabilities(features_test_skip.astype('float32'))[:, 1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
 
