@@ -92,6 +92,7 @@ class ExperimentSettings(object):
                               'lengths',
                               'multicuts',
                               'cut_features']
+        self.use_probs_map_for_cut_features = False
         self.feature_image_filter_names = ["gaussianSmoothing",
                                            "hessianOfGaussianEigenvalues",
                                            "laplacianOfGaussian"]

@@ -119,7 +119,8 @@ def shortest_paths(
 def path_feature_aggregator(
         ds, paths,
         feature_list=None,
-        mc_segmentation=None, paths_to_objs=None, train_sets=None
+        mc_segmentation=None, paths_to_objs=None, train_sets=None,
+        path_to_edge_features = None
 ):
 
 
@@ -176,18 +177,24 @@ def path_feature_aggregator(
             # Make sure all necessary information is supplied
             assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
             assert paths_to_objs is not None, 'Supply an object to path dictionary when using multicut path features!'
-            assert train_sets is not None, 'Supply train sets when using multicut path features!'
 
             # Convert paths_to_objs list to objs_to_paths dictionary
             objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
 
-            # FIXME consider integrating the feature list into ExperimentSettings
-            from multicut_src import learn_and_predict_rf_from_gt
-            edge_probabilities = learn_and_predict_rf_from_gt(
-                train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
-                with_defects=False,
-                use_2rfs=ExperimentSettings().use_2rfs
-            )
+            if not ExperimentSettings().use_probs_map_for_cut_features:
+                assert train_sets is not None, 'Supply train sets when using multicut path features!'
+                # FIXME consider integrating the feature list into ExperimentSettings
+                from multicut_src import learn_and_predict_rf_from_gt
+                edge_probabilities = learn_and_predict_rf_from_gt(
+                    train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
+                    with_defects=False,
+                    use_2rfs=ExperimentSettings().use_2rfs
+                )
+
+            else:
+                # TODO: Load edge features and take first channel (see notes)
+                assert path_to_edge_features is not None, 'Supply a path to edge features when using multicut path features!'
+                edge_probabilities = vigra.readHDF5(path_to_edge_features, 'data')[:, 0]
 
             feature_space.append(multicut_path_features(
                 ds,
@@ -204,20 +211,26 @@ def path_feature_aggregator(
             logger.debug('Computing cut features ...')
 
             # Make sure all necessary information is supplied
-            assert mc_segmentation is not None, 'Supply a multicut segmentation when using multicut path features!'
-            assert paths_to_objs is not None, 'Supply an object to path dictionary when using multicut path features!'
-            assert train_sets is not None, 'Supply train sets when using multicut path features!'
+            assert mc_segmentation is not None, 'Supply a multicut segmentation when using cut features!'
+            assert paths_to_objs is not None, 'Supply an object to path dictionary when using cut features!'
 
             # Convert paths_to_objs list to objs_to_paths dictionary
             objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
 
-            # FIXME consider integrating the feature list into ExperimentSettings
-            from multicut_src import learn_and_predict_rf_from_gt
-            edge_probabilities = learn_and_predict_rf_from_gt(
-                train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
-                with_defects=False,
-                use_2rfs=ExperimentSettings().use_2rfs
-            )
+            if not ExperimentSettings().use_probs_map_for_cut_features:
+                assert train_sets is not None, 'Supply train sets when using cut features!'
+                # FIXME consider integrating the feature list into ExperimentSettings
+                from multicut_src import learn_and_predict_rf_from_gt
+                edge_probabilities = learn_and_predict_rf_from_gt(
+                    train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
+                    with_defects=False,
+                    use_2rfs=ExperimentSettings().use_2rfs
+                )
+
+            else:
+                # TODO: Load edge features and take first channel (see notes)
+                assert path_to_edge_features is not None, 'Supply a path to edge features when using cut features!'
+                edge_probabilities = vigra.readHDF5(path_to_edge_features, 'data')[:, 0]
 
             feature_space.append(cut_features(
                 ds, seg_id, mc_segmentation, objs_to_paths,
@@ -372,9 +385,6 @@ def path_features_from_feature_images(
     return out
 
 
-# features based on multicut in the object
-# we calculate the multicut (TODO also include lifted) for each
-# object and for different betas, project to the path edges and count the number of splits
 def multicut_path_features(
         ds,
         seg_id,
@@ -389,27 +399,19 @@ def multicut_path_features(
     logger.debug('len(objs_to_paths) = {}'.format(len(objs_to_paths)))
     logger.debug('len(edge_probabilities = {}'.format(len(edge_probabilities)))
 
-    seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
-
-    # find the local edge ids along the path
-    def edges_along_path(path, mapping, uvs_local):
-        edge_ids = []
-        u = mapping[seg[tuple(path[0])]]
-        for p in path[1:]:
-            v = mapping[seg[tuple(p)]]
-            if u != v:
-                uv = np.array([[min(u, v), max(u, v)]])
-                edge_id = find_matching_row_indices(uvs_local, uv)[0, 0]
-                edge_ids.append(edge_id)
-            u = v
-        return np.array(edge_ids)
 
     # needed for weight transformation
     weighting_scheme = ExperimentSettings().weighting_scheme
     weight           = ExperimentSettings().weight
     edge_areas       = ds.topology_features(seg_id, False)[:, 0].astype('uint32')
     edge_indications = ds.edge_indications(seg_id)
+
+    # TODO more_feats ?!
+    betas = np.arange(0.3, 0.75, 0.05)
+    n_feats = len(betas)
+    n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
+    features = np.zeros((n_paths, n_feats), dtype='float32')
 
     # transform edge-probabilities to weights
     def to_weights(edge_mask, beta):
@@ -436,47 +438,158 @@ def multicut_path_features(
 
         return weights
 
-    # TODO more_feats ?!
-    betas = np.arange(0.3, 0.75, 0.05)
-    n_feats = len(betas)
-    n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
-    features = np.zeros((n_paths, n_feats), dtype='float32')
+    # 1. ---------------------------
+    logger.debug('multicut_path_features, step 1 #####################')
 
-    # TODO parallelize
-    for obj_id in objs_to_paths:
+    seg = ds.seg(seg_id)
+    mappings = {}
+    local_uv_masks = {}
+    n_vars = {}
+    uv_locals = {}
 
-        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
-            ds,
-            seg_id,
-            mc_segmentation,
-            obj_id,
-            uv_ids,
-            uv_ids_lifted=None
+    def make_local_uv(seg, uv_ids, obj_id):
+
+        mask = mc_segmentation == obj_id
+
+        seg_ids = np.unique(seg[mask])
+
+        # map the extracted seg_ids to consecutive labels
+        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
+            seg_ids,
+            start_label=0,
+            keep_zeros=False
         )
+
+        # mapping = old to new,
+        # reverse = new to old
+        # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+
+        # mask the local uv ids in this object
+        local_uv_mask = np.in1d(uv_ids, seg_ids)
+        local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
 
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
         n_var = uv_local.max() + 1
 
-        path_edge_ids = {}
-        for path_id, path in objs_to_paths[obj_id].iteritems():
-            path_edge_ids[path_id] = edges_along_path(path, mapping, uv_local)
+        return local_uv_mask, mapping, uv_local, n_var
 
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+            local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = make_local_uv(seg, uv_ids,
+                                                                                                        obj_id)
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                tasks[obj_id] = executor.submit(make_local_uv, seg, uv_ids, obj_id)
+            for obj_id in objs_to_paths:
+                local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = tasks[obj_id].result()
+
+    # 2. ---------------------------
+    logger.debug('multicut_path_features, step 2 #####################')
+
+    path_edge_ids_s = {}
+
+    # find the local edge ids along the path
+    def edges_along_path(seg, path, mapping, uvs_local):
+        edge_ids = []
+        u = mapping[seg[tuple(path[0])]]
+        for p in path[1:]:
+            v = mapping[seg[tuple(p)]]
+            if u != v:
+                uv = np.array([[min(u, v), max(u, v)]])
+                edge_id = find_matching_row_indices(uvs_local, uv)[0, 0]
+                edge_ids.append(edge_id)
+            u = v
+        return np.array(edge_ids)
+
+    def get_path_edge_ids(seg, objs_to_path, mapping, uv_local):
+
+        path_edge_ids = {}
+
+        for path_id, path in objs_to_path.iteritems():
+            path_edge_ids[path_id] = edges_along_path(seg, path, mapping, uv_local)
+
+        return path_edge_ids
+
+    # FIXME get_path_edge_ids doesn't parallelize
+    # if ExperimentSettings().n_threads == 1:
+    if True:
+
+        for obj_id in objs_to_paths:
+            # logger.debug('    obj_id = {}'.format(obj_id))
+            path_edge_ids_s[obj_id] = get_path_edge_ids(seg, objs_to_paths[obj_id], mappings[obj_id], uv_locals[obj_id])
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                tasks[obj_id] = executor.submit(get_path_edge_ids, seg, objs_to_paths[obj_id], mappings[obj_id], uv_locals[obj_id])
+            for obj_id in objs_to_paths:
+                path_edge_ids_s[obj_id] = tasks[obj_id].result()
+
+    # 3. ---------------------------
+
+    logger.debug('multicut_path_features, step 3 #####################')
+    cut_edges_s_s = {}
+
+    def get_cut_edges(betas, local_uv_mask, n_var, uv_local):
+
+        cut_edges_s = {}
+
+        # logger.debug('---> for ii, beta in enumerate(betas): ...')
         for ii, beta in enumerate(betas):
+            # logger.debug('------> ii = {}'.format(ii))
             weights = to_weights(local_uv_mask, beta)
             node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
             cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
-            for path_id, e_ids in path_edge_ids.iteritems():
+            cut_edges_s[ii] = cut_edges
+
+        return cut_edges_s
+
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+            cut_edges_s_s[obj_id] = get_cut_edges(betas, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id])
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                tasks[obj_id] = executor.submit(get_cut_edges, betas, local_uv_masks[obj_id], n_vars[obj_id],
+                                                uv_locals[obj_id])
+            for obj_id in objs_to_paths:
+                cut_edges_s_s[obj_id] = tasks[obj_id].result()
+
+    # 4. ---------------------------
+
+    logger.debug('multicut_path_features, step 4 #####################')
+    for obj_id in objs_to_paths:
+        # logger.debug('    obj_id = {}'.format(obj_id))
+
+        # logger.debug('---> for ii, beta in enumerate(betas): ...')
+        for ii, beta in enumerate(betas):
+
+            # logger.debug('------> for path_id, i_ids in path_edge_ids.iteritems(): ...')
+            for path_id, e_ids in path_edge_ids_s[obj_id].iteritems():
+                # logger.debug('---------> path_id = {}'.format(path_id))
                 # e_ids is zero if the path is very short and doesn't cross superpixel edges
                 # This should happen very rarely
-                if len(e_ids > 0):
-                    features[path_id, ii] = np.sum(cut_edges[e_ids])
+                if len(e_ids) > 0:
+                    features[path_id, ii] = np.sum(cut_edges_s_s[obj_id][ii][e_ids])
                 else:
-                    logger.warning(
-                        'Path not corossing superpixel edges detected for obj_id = {}, beta = {}, path_id = {}'.format(
-                            obj_id, beta, path_id))
+                    # logger.warning(
+                    #     'Path not crossing superpixel edges detected for obj_id = {}, beta = {}, path_id = {}'.format(
+                    #         obj_id, beta, path_id))
                     features[path_id, ii] = 0
 
+    logger.debug('End of multicut_path_features')
     return features
 
 
@@ -586,7 +699,9 @@ def cut_features(
     features = np.zeros((n_paths, edge_features.shape[1] * 3), dtype='float32')
 
     # TODO parallelize
+    logger.debug('for obj_id in objs_to_paths: ...')
     for obj_id in objs_to_paths:
+        logger.debug('---> obj_id = {}'.format(obj_id))
 
         local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
             ds,
@@ -604,9 +719,11 @@ def cut_features(
         graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
         graph_local.insertEdges(uv_local)
 
+        logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
         for path_id, path in objs_to_paths[obj_id].iteritems():
+            logger.debug('------> path_id = {}'.format(path_id))
             edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
 
             # get source and sink
@@ -631,7 +748,7 @@ def cut_features(
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
-                print 'Warning: Local two coloring failed due to unknown bug.'
+                logger.warning('Local two coloring failed due to unknown bug.')
 
             else:
 

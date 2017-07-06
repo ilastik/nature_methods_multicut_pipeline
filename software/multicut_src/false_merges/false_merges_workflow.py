@@ -337,6 +337,15 @@ def train_random_forest_for_merges(
 
                 if paths.size:
 
+                    path_to_edge_features = None
+                    if ExperimentSettings().use_probs_map_for_cut_features:
+
+                        # FIXME replace this by the acutal cached function call
+                        # Add for test set (current_ds)
+                        path_to_edge_features = os.path.join(
+                            current_ds.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+                        )
+
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
                     features_train.append(
                         path_feature_aggregator(
@@ -345,7 +354,8 @@ def train_random_forest_for_merges(
                             ExperimentSettings().path_features,
                             mc_segmentation=seg,
                             paths_to_objs=paths_to_objs,
-                            train_sets=current_trainsets
+                            train_sets=current_trainsets,
+                            path_to_edge_features=path_to_edge_features
                         )
                     )
                     labels_train.append(path_classes)
@@ -430,13 +440,22 @@ def compute_false_merges(
 
     assert len(paths_test) == len(paths_to_objs_test)
 
+    path_to_edge_features = None
+    if ExperimentSettings().use_probs_map_for_cut_features:
+        # FIXME replace this by the acutal cached function call
+        # Add for test set (current_ds)
+        path_to_edge_features = os.path.join(
+            ds_test.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+        )
+
     features_test = path_feature_aggregator(
         ds_test,
         paths_test,
         ExperimentSettings().path_features,
         mc_segmentation=seg,
         paths_to_objs=paths_to_objs_test,
-        train_sets=trainsets
+        train_sets=trainsets,
+        path_to_edge_features=path_to_edge_features
     )
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
