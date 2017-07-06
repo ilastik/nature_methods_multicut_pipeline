@@ -5,7 +5,7 @@ from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
-from ..tools import find_matching_row_indices
+from ..tools import find_matching_row_indices, find_matching_row_indices_fast
 
 import logging
 logger = logging.getLogger(__name__)
@@ -385,6 +385,33 @@ def path_features_from_feature_images(
     return out
 
 
+def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
+
+    mask = mc_segmentation == obj_id
+
+    seg_ids = np.unique(seg[mask])
+
+    # map the extracted seg_ids to consecutive labels
+    seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
+        seg_ids,
+        start_label=0,
+        keep_zeros=False
+    )
+
+    # mapping = old to new,
+    # reverse = new to old
+    # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+
+    # mask the local uv ids in this object
+    local_uv_mask = np.in1d(uv_ids, seg_ids)
+    local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
+
+    uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+    n_var = uv_local.max() + 1
+
+    return local_uv_mask, mapping, uv_local, n_var
+
+
 def multicut_path_features(
         ds,
         seg_id,
@@ -447,44 +474,19 @@ def multicut_path_features(
     n_vars = {}
     uv_locals = {}
 
-    def make_local_uv(seg, uv_ids, obj_id):
-
-        mask = mc_segmentation == obj_id
-
-        seg_ids = np.unique(seg[mask])
-
-        # map the extracted seg_ids to consecutive labels
-        seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
-            seg_ids,
-            start_label=0,
-            keep_zeros=False
-        )
-
-        # mapping = old to new,
-        # reverse = new to old
-        # reverse_mapping = {val: key for key, val in mapping.iteritems()}
-
-        # mask the local uv ids in this object
-        local_uv_mask = np.in1d(uv_ids, seg_ids)
-        local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
-
-        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
-        n_var = uv_local.max() + 1
-
-        return local_uv_mask, mapping, uv_local, n_var
-
     if ExperimentSettings().n_threads == 1:
 
         for obj_id in objs_to_paths:
-            local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = make_local_uv(seg, uv_ids,
-                                                                                                        obj_id)
+            local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = make_local_uv(
+                seg, mc_segmentation, uv_ids, obj_id
+            )
 
     else:
 
         with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
             tasks = {}
             for obj_id in objs_to_paths:
-                tasks[obj_id] = executor.submit(make_local_uv, seg, uv_ids, obj_id)
+                tasks[obj_id] = executor.submit(make_local_uv, seg, mc_segmentation, uv_ids, obj_id)
             for obj_id in objs_to_paths:
                 local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = tasks[obj_id].result()
 
@@ -501,7 +503,8 @@ def multicut_path_features(
             v = mapping[seg[tuple(p)]]
             if u != v:
                 uv = np.array([[min(u, v), max(u, v)]])
-                edge_id = find_matching_row_indices(uvs_local, uv)[0, 0]
+                # FIXME Replace by faster version
+                edge_id = find_matching_row_indices_fast(uvs_local, uv)[0]
                 edge_ids.append(edge_id)
             u = v
         return np.array(edge_ids)
@@ -533,7 +536,6 @@ def multicut_path_features(
                 path_edge_ids_s[obj_id] = tasks[obj_id].result()
 
     # 3. ---------------------------
-
     logger.debug('multicut_path_features, step 3 #####################')
     cut_edges_s_s = {}
 
@@ -568,8 +570,8 @@ def multicut_path_features(
                 cut_edges_s_s[obj_id] = tasks[obj_id].result()
 
     # 4. ---------------------------
-
     logger.debug('multicut_path_features, step 4 #####################')
+
     for obj_id in objs_to_paths:
         # logger.debug('    obj_id = {}'.format(obj_id))
 
@@ -631,6 +633,7 @@ def cut_features(
         feat_list=['raw', 'prob', 'distance_transform'],
         cut_method='watershed'
 ):
+    logger.debug('Start cut features')
 
     cutters = {
         'watershed': cut_watershed,
@@ -649,37 +652,39 @@ def cut_features(
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
 
+
     # find the global and local edge ids along the path, as well as the local
     # start and ed point of the path
     def edges_along_path(path, mapping, uvs_local):
 
-        edge_ids = []
-        edge_ids_local = []
+        us_p = np.array([seg[tuple(p)] for p in path[:-1]])
+        us_p_local = np.array([mapping[seg[tuple(p)]] for p in path[:-1]])
 
-        u = seg[tuple(path[0])]
-        u_local = mapping[seg[tuple(path[0])]]
+        vs_p = np.array([seg[tuple(p)] for p in path[1:]])
+        vs_p_local = np.array([mapping[seg[tuple(p)]] for p in path[1:]])
 
-        # find edge-ids along the path
-        # if this turns out to be a bottleneck, we can c++ it
-        for p in path[1:]:
+        # Positions where vs and us differ
+        diff_mask = (vs_p - us_p).astype('bool')
 
-            v = seg[tuple(p)]
-            v_local = mapping[seg[tuple(p)]]
+        # Mask the us, vs, us_local, and vs_local
+        us_p = us_p[diff_mask]
+        vs_p = vs_p[diff_mask]
+        us_p_local = us_p_local[diff_mask]
+        vs_p_local = vs_p_local[diff_mask]
 
-            if u != v:
-                uv = np.array([[min(u, v), max(u, v)]])
-                uv_local = np.array([[min(u_local, v_local), max(u_local, v_local)]])
+        # Make sure the u is always smaller than the v
+        uvs_p = np.sort(np.concatenate((us_p[:, None], vs_p[:, None]), axis=1), axis=1)
+        uvs_p_local = np.sort(np.concatenate((us_p_local[:, None], vs_p_local[:, None]), axis=1), axis=1)
 
-                edge_id = find_matching_row_indices(uv_ids, uv)[0, 0]
-                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0, 0]
+        if uvs_p.any():
+            edge_ids = find_matching_row_indices_fast(uv_ids, uvs_p)
+            edge_ids_local = find_matching_row_indices_fast(uvs_local, uvs_p_local)
+        else:
+            edge_ids = np.array([])
+            edge_ids_local = np.array([])
 
-                edge_ids.append(edge_id)
-                edge_ids_local.append(edge_id_local)
+        return edge_ids, edge_ids_local
 
-            u = v
-            u_local = v_local
-
-        return np.array(edge_ids), np.array(edge_ids_local)
 
     # get the edge features already calculated for the mc-ppl
     edge_features = []
@@ -698,33 +703,67 @@ def cut_features(
     # Factor of three as we use the min, max, and average of the edges at the cutting site
     features = np.zeros((n_paths, edge_features.shape[1] * 3), dtype='float32')
 
-    # TODO parallelize
-    logger.debug('for obj_id in objs_to_paths: ...')
-    for obj_id in objs_to_paths:
-        logger.debug('---> obj_id = {}'.format(obj_id))
+    logger.debug('Starting loops in cut features')
 
-        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
-            ds,
-            seg_id,
-            mc_segmentation,
-            obj_id,
-            uv_ids,
-            uv_ids_lifted=None
-        )
-        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+    # 1. ---------------------------
+    logger.debug('cut_features, step 1 #####################')
 
+    mappings = {}
+    local_uv_masks = {}
+    n_vars = {}
+    uv_locals = {}
+
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+
+            local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = make_local_uv(
+                seg, mc_segmentation, uv_ids, obj_id
+            )
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                tasks[obj_id] = executor.submit(make_local_uv, seg, mc_segmentation, uv_ids, obj_id)
+            for obj_id in objs_to_paths:
+                local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = tasks[obj_id].result()
+
+    # 2. ---------------------------
+    logger.debug('cut_features, step 2 #####################')
+
+    weights_locals = {}
+    graph_locals = {}
+
+    def get_local_graph(edge_weights, local_uv_mask, n_var, uv_local):
         assert len(local_uv_mask) == len(edge_weights)
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
-        graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
+        graph_local = nifty.graph.UndirectedGraph(n_var)
         graph_local.insertEdges(uv_local)
 
-        logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
+        return weights_local, graph_local
+
+    for obj_id in objs_to_paths:
+        weights_locals[obj_id], graph_locals[obj_id] = get_local_graph(
+            edge_weights, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id]
+        )
+
+    # 3. ---------------------------
+    logger.debug('cut_features, step 3 #####################')
+
+    # FIXME No speedup by parallelization achievable
+
+    local_two_colorings = {}
+
+    def get_local_two_coloring(objs_to_path, mapping, graph_local, weights_local):
+
+        # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
-        for path_id, path in objs_to_paths[obj_id].iteritems():
-            logger.debug('------> path_id = {}'.format(path_id))
-            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
+        for path_id, path in objs_to_path.iteritems():
+            # logger.debug('------> path_id = {}'.format(path_id))
 
             # get source and sink
             # == start and end node of the path
@@ -734,6 +773,60 @@ def cut_features(
             # run cut with seeds at path end points
             # returns the cut edges
             local_two_coloring = cutter(graph_local, weights_local, source, sink)
+
+            return local_two_coloring
+
+    for obj_id in objs_to_paths:
+        local_two_colorings[obj_id] = get_local_two_coloring(
+            objs_to_paths[obj_id], mappings[obj_id], graph_locals[obj_id], weights_locals[obj_id]
+        )
+
+    # 4. ---------------------------
+    logger.debug('cut_features, step 4 #####################')
+
+    # FIXME This is still the bottleneck, but pretty much ok
+    # Parallelization speeds up a little bit
+
+    edge_ids_s = {}
+    edge_ids_locals = {}
+
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+            for path_id, path in objs_to_paths[obj_id].iteritems():
+                edge_ids_s[(obj_id, path_id)], edge_ids_locals[(obj_id, path_id)] = edges_along_path(
+                    path, mappings[obj_id], uv_locals[obj_id]
+                )
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                for path_id, path in objs_to_paths[obj_id].iteritems():
+                    tasks[(obj_id, path_id)] = executor.submit(
+                        edges_along_path,
+                        path, mappings[obj_id], uv_locals[obj_id]
+                    )
+            for idx, task in tasks.iteritems():
+                edge_ids_s[idx], edge_ids_locals[idx] = task.result()
+
+    # 5. ---------------------------
+    logger.debug('cut_features, step 5 #####################')
+
+    new_edge_feats_s_s = {}
+
+    def get_edge_feats(objs_to_path, local_two_coloring, edge_ids_s, edge_ids_locals):
+        new_edge_feats_s = {}
+
+        # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
+        # TODO run graphcut or edge based ws for each path, using end points as seeds
+        # determine the cut edge and append to feats
+        for path_id, path in objs_to_path.iteritems():
+            # logger.debug('------> path_id = {}'.format(path_id))
+
+            edge_ids = edge_ids_s[(obj_id, path_id)]
+            edge_ids_local = edge_ids_locals[(obj_id, path_id)]
 
             # FIXME: This should always be the case, still it happened -> nvestigate!
             # FIXME: Remove this condition once the bug is found and fixed
@@ -774,13 +867,28 @@ def cut_features(
                     global_edge = edge_ids[edge_ids_local == cut_edge]
                     new_edge_feats.append(edge_features[global_edge[0], :])
 
-                new_edge_feats = np.array(new_edge_feats)
+                new_edge_feats_s[path_id] = np.array(new_edge_feats)
 
+        return new_edge_feats_s
+
+    for obj_id in objs_to_paths:
+        new_edge_feats_s_s[obj_id] = get_edge_feats(
+            objs_to_paths[obj_id], local_two_colorings[obj_id], edge_ids_s, edge_ids_locals
+        )
+
+    # n. ---------------------------
+    logger.debug('cut features, step n #####################')
+    for obj_id, new_edge_feats_s in new_edge_feats_s_s.iteritems():
+        for path_id, new_edge_feats in new_edge_feats_s.iteritems():
+
+            if new_edge_feats.any():
                 features[path_id] = np.concatenate([
                     new_edge_feats.min(axis=0),
                     new_edge_feats.max(axis=0),
                     new_edge_feats.mean(axis=0)
                 ], axis=0)
+
+    logger.debug('End of cut features')
 
     return features
 
