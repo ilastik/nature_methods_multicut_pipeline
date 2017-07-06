@@ -34,6 +34,19 @@ def find_matching_row_indices(x, y):
     return np.array(indices)
 
 
+# this returns a 1d array with the all the indices where a row of y matches a row in x
+def find_matching_row_indices_fast(x, y):
+    # In difference to find_matching_row_indices this finds just the positions in x but is significantly faster
+
+    # This turns any array into 1D array
+    x_bit = np.ascontiguousarray(x).view(
+        np.dtype((np.void, x.dtype.itemsize * x.shape[1])))
+    y_bit = np.ascontiguousarray(y).view(
+        np.dtype((np.void, y.dtype.itemsize * y.shape[1])))
+
+    return np.nonzero(np.in1d(x_bit, y_bit))[0]
+
+
 # return the indices of the array which have at least one value from value list
 def find_matching_indices(array, value_list):
     assert isinstance(array, np.ndarray)
