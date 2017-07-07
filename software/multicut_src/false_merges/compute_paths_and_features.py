@@ -4,7 +4,7 @@ import numpy as np
 from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
-from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
+from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges, multicut_fusionmoves
 from ..tools import find_matching_row_indices, find_matching_row_indices_fast
 
 import logging
@@ -545,18 +545,26 @@ def multicut_path_features(
 
         # logger.debug('---> for ii, beta in enumerate(betas): ...')
         for ii, beta in enumerate(betas):
+
+            # logger.debug('beta = {}'.format(beta))
+
             # logger.debug('------> ii = {}'.format(ii))
             weights = to_weights(local_uv_mask, beta)
-            node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
+            # FIXME This takes forever for some objects
+            # node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
+            # FIXME Use this instead?
+            node_labels, _, _ = multicut_fusionmoves(n_var, uv_local, weights, n_threads=ExperimentSettings().n_threads)
             cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
             cut_edges_s[ii] = cut_edges
 
         return cut_edges_s
 
-    if ExperimentSettings().n_threads == 1:
+    # if ExperimentSettings().n_threads == 1:
+    if True:
 
         for obj_id in objs_to_paths:
+            # logger.debug('---- obj_id = {}'.format(obj_id))
             cut_edges_s_s[obj_id] = get_cut_edges(betas, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id])
 
     else:
