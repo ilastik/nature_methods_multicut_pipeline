@@ -553,7 +553,13 @@ def multicut_path_features(
             # FIXME This takes forever for some objects
             # node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
             # FIXME Use this instead?
-            node_labels, _, _ = multicut_fusionmoves(n_var, uv_local, weights, n_threads=ExperimentSettings().n_threads)
+            node_labels, _, _ = multicut_fusionmoves(
+                n_var,
+                uv_local,
+                weights,
+                n_threads=ExperimentSettings().n_threads,
+                solver_backend='kl'
+            )
             cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
             cut_edges_s[ii] = cut_edges

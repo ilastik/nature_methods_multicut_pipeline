@@ -194,7 +194,8 @@ def multicut_fusionmoves(
         uv_ids,
         edge_energies,
         n_threads=0,
-        return_obj=False
+        return_obj=False,
+        solver_backend='ilp'
 ):
 
     obj = nifty_objective(n_var, uv_ids, edge_energies)
@@ -204,15 +205,20 @@ def multicut_fusionmoves(
     # greedy = obj.greedyAdditiveFactory()
     kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart=True)
 
-    ilp_fac = obj.multicutIlpFactory(
-        ilpSolver=ilp_bkend,
-        addThreeCyclesConstraints=True,
-        addOnlyViolatedThreeCyclesConstraints=True
-    )
+    if solver_backend == 'ilp':
+        backend_factory = obj.multicutIlpFactory(
+            ilpSolver=ilp_bkend,
+            addThreeCyclesConstraints=True,
+            addOnlyViolatedThreeCyclesConstraints=True
+        )
+    elif solver_backend == 'kl':
+        backend_factory = kl_factory
+    else:
+        raise RuntimeError("Invalid bakend factory string: %s" % solver_backend)
 
     fm_factory = obj.fusionMoveBasedFactory(
         verbose=1,
-        fusionMove=obj.fusionMoveSettings(mcFactory=ilp_fac),
+        fusionMove=obj.fusionMoveSettings(mcFactory=backend_factory),
         proposalGen=obj.watershedProposals(sigma=10, seedFraction=ExperimentSettings().seed_fraction),
         numberOfIterations=ExperimentSettings().num_it,
         numberOfParallelProposals=2 * n_threads,
