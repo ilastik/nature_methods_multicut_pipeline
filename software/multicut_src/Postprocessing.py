@@ -152,6 +152,20 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
     return postprocessed
 
 
+# merge segments that are full enclosed (== have only a single neighboring segment)
+def merge_fully_enclosed(mc_segmentation, n_threads=-1):
+    rag = nrag.gridRag(mc_segmentation, numberOfThreads=n_threads)
+    ufd = nifty.ufd.ufd(rag.numberOfNodes)
+
+    for node_id in xrange(rag.numberOfNodes):
+        adjacent_nodes = rag.nodeAdjacency(node_id)
+        if len(adjacent_nodes) == 1:
+            ufd.merge(node_id, adjacent_nodes[0])
+
+    new_node_labels = ufd.elementLabeling()
+    return nrag.projectScalarNodeDataToPixels(rag, new_node_labels, numberOfThreads=n_threads)
+
+
 if __name__ == '__main__':
     from DataSet import load_dataset
     ds = load_dataset(
