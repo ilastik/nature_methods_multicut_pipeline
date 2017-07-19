@@ -614,7 +614,7 @@ def learn_and_predict_rf_from_gt(
         else:
             assert len(rfs) == 1
 
-    # get the training features
+    # get the test features
     features_test  = feature_aggregator(ds_test, seg_id_test)
 
     if with_defects and ds_test.has_defects:
