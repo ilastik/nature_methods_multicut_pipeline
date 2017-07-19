@@ -539,7 +539,7 @@ def multicut_path_features(
     logger.debug('multicut_path_features, step 3 #####################')
     cut_edges_s_s = {}
 
-    def get_cut_edges(betas, local_uv_mask, n_var, uv_local):
+    def get_cut_edges(betas, local_uv_mask, n_var, uv_local, mapping):
 
         cut_edges_s = {}
 
@@ -564,6 +564,18 @@ def multicut_path_features(
 
             cut_edges_s[ii] = cut_edges
 
+            # # TODO: For debug purposes:
+            # # TODO: Restore the segmentation and save it as volume
+            # # Make global list of node labels initialized to zero
+            # node_labels_global = np.zeros((uv_ids.max() + 1,))
+            # # Set the values of the local nodes to the respective label
+            # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+            # for node_label_id, node_label in enumerate(node_labels):
+            #     node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
+            # split_obj_im = ds.project_mc_result(0, node_labels_global)
+            # save_filepath = '/export/home/jhennies/debug/{}_{}_{}.h5'.format(ds.ds_name, obj_id, beta)
+            # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
+
         return cut_edges_s
 
     # if ExperimentSettings().n_threads == 1:
@@ -571,7 +583,7 @@ def multicut_path_features(
 
         for obj_id in objs_to_paths:
             # logger.debug('---- obj_id = {}'.format(obj_id))
-            cut_edges_s_s[obj_id] = get_cut_edges(betas, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id])
+            cut_edges_s_s[obj_id] = get_cut_edges(betas, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id], mappings[obj_id])
 
     else:
 
@@ -579,7 +591,7 @@ def multicut_path_features(
             tasks = {}
             for obj_id in objs_to_paths:
                 tasks[obj_id] = executor.submit(get_cut_edges, betas, local_uv_masks[obj_id], n_vars[obj_id],
-                                                uv_locals[obj_id])
+                                                uv_locals[obj_id], mappings[obj_id])
             for obj_id in objs_to_paths:
                 cut_edges_s_s[obj_id] = tasks[obj_id].result()
 
@@ -624,7 +636,7 @@ def cut_watershed(graph, weights, source, sink):
 
     uvs = graph.uvIds()
     # return the edge labels (cut or not cut for each edge)
-    return node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]]
+    return node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]], node_labeling
 
 
 def cut_graphcut(graph, weights, source, sink):
@@ -769,13 +781,16 @@ def cut_features(
 
     # FIXME No speedup by parallelization achievable
 
-    local_two_colorings = {}
+    local_two_colorings_s = {}
+    node_labelings_s = {}
 
     def get_local_two_coloring(objs_to_path, mapping, graph_local, weights_local):
 
         # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
+        local_two_colorings = {}
+        node_labelings = {}
         for path_id, path in objs_to_path.iteritems():
             # logger.debug('------> path_id = {}'.format(path_id))
 
@@ -786,14 +801,29 @@ def cut_features(
 
             # run cut with seeds at path end points
             # returns the cut edges
-            local_two_coloring = cutter(graph_local, weights_local, source, sink)
+            local_two_colorings[path_id], node_labelings[path_id] = cutter(graph_local, weights_local, source, sink)
 
-            return local_two_coloring
+        return local_two_colorings, node_labelings
 
     for obj_id in objs_to_paths:
-        local_two_colorings[obj_id] = get_local_two_coloring(
+        local_two_colorings_s[obj_id], node_labelings_s[obj_id] = get_local_two_coloring(
             objs_to_paths[obj_id], mappings[obj_id], graph_locals[obj_id], weights_locals[obj_id]
         )
+
+    # for obj_id in objs_to_paths:
+    #     for path_id, path in objs_to_paths[obj_id].iteritems():
+    #         # TODO: For debug purposes:
+    #         # TODO: Restore the segmentation and save it as volume
+    #         # Make global list of node labels initialized to zero
+    #         node_labels_global = np.zeros((uv_ids.max() + 1,))
+    #         # Set the values of the local nodes to the respective label
+    #         reverse_mapping = {val: key for key, val in mappings[obj_id].iteritems()}
+    #         node_labels = node_labelings_s[obj_id][path_id].astype('uint32')
+    #         for node_label_id, node_label in enumerate(node_labels):
+    #             node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
+    #         split_obj_im = ds.project_mc_result(0, node_labels_global)
+    #         save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
+    #         vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
     # 4. ---------------------------
     logger.debug('cut_features, step 4 #####################')
@@ -830,7 +860,7 @@ def cut_features(
 
     new_edge_feats_s_s = {}
 
-    def get_edge_feats(objs_to_path, local_two_coloring, edge_ids_s, edge_ids_locals):
+    def get_edge_feats(objs_to_path, local_two_colorings, edge_ids_s, edge_ids_locals):
         new_edge_feats_s = {}
 
         # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
@@ -838,6 +868,8 @@ def cut_features(
         # determine the cut edge and append to feats
         for path_id, path in objs_to_path.iteritems():
             # logger.debug('------> path_id = {}'.format(path_id))
+
+            local_two_coloring = local_two_colorings[path_id]
 
             edge_ids = edge_ids_s[(obj_id, path_id)]
             edge_ids_local = edge_ids_locals[(obj_id, path_id)]
@@ -887,7 +919,7 @@ def cut_features(
 
     for obj_id in objs_to_paths:
         new_edge_feats_s_s[obj_id] = get_edge_feats(
-            objs_to_paths[obj_id], local_two_colorings[obj_id], edge_ids_s, edge_ids_locals
+            objs_to_paths[obj_id], local_two_colorings_s[obj_id], edge_ids_s, edge_ids_locals
         )
 
     # n. ---------------------------

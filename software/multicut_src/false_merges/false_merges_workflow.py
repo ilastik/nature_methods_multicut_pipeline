@@ -282,6 +282,10 @@ def train_random_forest_for_merges(
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
+            # # FIXME delete this!
+            # if ds_id == 0:
+            #     continue
+
             logger.debug('----------')
             logger.debug('ds_id = {}'.format(ds_id))
 
