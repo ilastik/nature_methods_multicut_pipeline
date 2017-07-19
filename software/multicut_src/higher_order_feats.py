@@ -291,5 +291,15 @@ def learn_and_predict_higher_order_rf(
     return junction_probs
 
 
-def junction_predictions_to_costs():
-    pass
+# TODO fancy weighting
+def junction_predictions_to_costs(junction_probs, beta=.5):
+
+    # scale the probabilities
+    # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
+    p_min = 0.001
+    p_max = 1. - p_min
+
+    junction_probs = (p_max - p_min) * junction_probs + p_min
+
+    junction_energies = np.log((1. - junction_probs) / junction_probs) + np.log((1. - beta) / beta)
+    return junction_energies
