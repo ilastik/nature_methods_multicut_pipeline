@@ -10,17 +10,17 @@ from tools import replace_from_dict, cacher_hdf5
 try:
     import nifty.cgp as ncgp
     import nifty.graph.rag as nrag
-    import nifty.segmentation as nseg
+    # import nifty.segmentation as nseg
 except ImportError:
     try:
         import nifty_with_cplex.cgp as ncgp
         import nifty_with_cplex.graph.rag as nrag
-        import nifty_with_cplex.segmentation as nseg
+        # import nifty_with_cplex.segmentation as nseg
     except ImportError:
         try:
             import nifty_with_gurobi.cgp as ncgp
             import nifty_with_gurobi.graph.rag as nrag
-            import nifty_with_gurobi.segmentation as nseg
+            # import nifty_with_gurobi.segmentation as nseg
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -41,7 +41,6 @@ def _get_cgp(seg, rag):
     return tgrid, reverse_mapping
 
 
-# TODO write wrapper for whole dataset and cache this!
 def get_junctions(seg, graph):
 
     tgrid, reverse_mapping = _get_cgp(seg, graph)
@@ -51,7 +50,6 @@ def get_junctions(seg, graph):
 
     # junctions (0-cells) to faces (1-cells)
     junctions_to_faces = np.array(cell_bounds[0])
-    n_junctions= len(junctions_to_faces)
 
     # check if we have actual 4 junctions, which are not supported yet
     have_4_junction = junctions_to_faces[:, -1] != 0
@@ -90,22 +88,20 @@ def get_junctions(seg, graph):
     junctions_to_edges = np.sort(junctions_to_edges, axis=1)
 
     # return the number of junctions and the mapping of junctions to faces
-    return n_junctions, junctions_to_edges
+    return junctions_to_edges
 
 
-# TODO cache
-# TODO use this in feature functions and ground-truth too!!!
 @cacher_hdf5()
 def get_xy_junctions(ds, seg_id, with_defects=False):
     seg = ds.seg(seg_id)
     if with_defects:
-        assert False, "Not implemented" # TODO
+        assert False, "Not implemented"  # TODO
     else:
         graph = ds.rag(seg_id)
 
     junctions_to_edges = []
     for z in xrange(seg.shape[0]):
-        _, z_junctions = get_junctions(seg[z], graph)
+        z_junctions = get_junctions(seg[z], graph)
         junctions_to_edges.append(z_junctions)
 
     return np.concatenate(junctions_to_edges)
@@ -144,36 +140,20 @@ def junction_feats_from_edge_feats(
     with_defects=False
 ):
 
-    seg = ds.seg(seg_id)
-
-    if with_defects:
-        assert False  # TODO load proper defect graph
-    else:
-        graph = ds.rag(seg_id)
-
     edge_feats = local_feature_aggregator_with_defects(ds, seg_id, feature_list, anisotropy_factor, use_2d) \
         if with_defects else local_feature_aggregator(ds, seg_id, feature_list, anisotropy_factor, use_2d)
 
-    junction_feats = []
-    # iterate over the slices to get the feature mapping for in-slice junctions to edges
-    for z in xrange(seg.shape[0]):
+    xy_junctions = get_xy_junctions(ds, seg_id, with_defects)
 
-        # TODO skip defect slices if we have defects
+    junction_feats = np.concatenate(
+        [edge_feats[xy_junctions[:, i]] for i in range(xy_junctions.shape[1])],
+        axis=1
+    )
+    assert len(xy_junctions) == len(junction_feats)
+    assert junction_feats.shape[1] == 3 * edge_feats.shape[1]
 
-        print "XY - Features for slice %i / %i" % (z, seg.shape[0])
+    # TODO z junction feats ?
 
-        n_junctions_z, junctions_to_edges = get_junctions(seg[z], graph)
-
-        # TODO how do we concatenate the features in a non-arbitrary fashion?
-        junction_feats.append(
-            np.concatenate(
-                [edge_feats[junctions_to_edges[:,i]] for i in range(junctions_to_edges.shape[1])], axis=1
-            )
-        )
-
-    # TODO for z edges
-
-    junction_feats = np.concatenate(junction_feats, axis=0)
     return junction_feats
 
 
@@ -184,54 +164,40 @@ def junction_feats_from_edge_feats(
 
 # junction labels from groundtruth
 def junction_groundtruth(ds, seg_id, with_defects=False):
-    seg = ds.seg(seg_id)
     rag = ds.rag(seg_id)
     gt = ds.gt()
 
     uv_ids = rag.uvIds()
     node_gt = nrag.gridRagAccumulateLabels(rag, gt)
 
-    if with_defects:
-        assert False  # TODO load proper defect graph
-    else:
-        graph = rag
+    xy_junctions = get_xy_junctions(ds, seg_id, with_defects)
 
-    junction_gt = []
-    # iterate over the slices to get the groundtruth for in-slice junctions to edges
-    for z in xrange(seg.shape[0]):
+    # find the states for all three edges involved in a junction
+    edge_states = np.array([
+        node_gt[uv_ids[xy_junctions[:, i]][:, 0]] !=
+        node_gt[uv_ids[xy_junctions[:, i]][:, 1]] for i in range(xy_junctions.shape[1])
+    ]).transpose()
+    assert edge_states.shape == xy_junctions.shape, "%s, %s" % (str(edge_states.shape), str(xy_junctions.shape))
 
-        # TODO if we have defects skip defect slices
+    # make sure we have no illegal combinations
+    assert (np.sum(edge_states, axis=1) != 1).all()
 
-        print "XY - GT for slice %i / %i" % (z, seg.shape[0])
+    # find the correct groundtruth
+    junction_gt = np.zeros(len(edge_states), dtype='uint8')
+    has_state = np.zeros(len(edge_states), dtype='uint8')
 
-        n_junctions_z, junctions_to_edges = get_junctions(seg[z], graph)
+    # combination (0,0,0) -> 0, (0,1,1) -> 1, (1,0,1) -> 2, (1,1,0) -> 3, (1,1,1) -> 4
+    valid_states = [(0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0), (1, 1, 1)]
 
-        # find the states for all three edges involved in a junction
-        edge_states = np.array(
-            [node_gt[uv_ids[junctions_to_edges[:, i]][:, 0]]
-            != node_gt[uv_ids[junctions_to_edges[:, i]][:, 1]] for i in range(junctions_to_edges.shape[1])]
-        ).transpose()
-        assert edge_states.shape == junctions_to_edges.shape, "%s, %s" % (str(edge_states.shape), str(junctions_to_edges.shape))
+    for i, state in enumerate(valid_states):
+        where_state = np.where((edge_states == state).all(axis=1))
+        junction_gt[where_state] = i
+        has_state[where_state] += 1
+    assert (has_state == 1).all()
 
-        # make sure we have no illegal combinations
-        assert (np.sum(edge_states, axis=1) != 1).all()
+    # TODO z junction gt ?
 
-        # find the correct groundtruth
-        this_gt = np.zeros(len(edge_states), dtype='uint8')
-        has_state = np.zeros(len(edge_states), dtype='uint8')
-
-        # combination (0,0,0) gets mapped to 0, (0,1,1) -> 1, (1,0,1) -> 2, (1,1,0) -> 3, (1,1,1) -> 4
-        valid_states = [(0,0,0), (0,1,1), (1,0,1), (1,1,0), (1,1,1)]
-
-        for i, state in enumerate(valid_states):
-            where_state = np.where((edge_states == state).all(axis=1))
-            this_gt[where_state] = i
-            has_state[where_state] += 1
-
-        assert (has_state == 1).all()
-        junction_gt.append(this_gt)
-
-    return np.concatenate(junction_gt)
+    return junction_gt
 
 
 # TODO split in function for xy - and z once necessary
