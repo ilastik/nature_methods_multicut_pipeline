@@ -613,7 +613,7 @@ def cut_off(all_paths_unfinished,paths_to_objs_unfinished,
            np.array(path_classes)
 
 
-def extract_paths_from_segmentation(
+def extract_paths_from_segmentation_alex(
         ds,
         seg_path,
         key,
@@ -726,7 +726,7 @@ def extract_paths_from_segmentation(
 
 
 
-def extract_paths_and_labels_from_segmentation(
+def extract_paths_and_labels_from_segmentation_alex(
         ds,
         seg,
         seg_id,
