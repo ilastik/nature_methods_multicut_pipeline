@@ -152,6 +152,30 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
     return postprocessed
 
 
+# TODO FIXME this does not do any special boundary treatment yet
+# might be a good idea to include this (i.e. not merge segments at the boundary)
+# merge segments that are full enclosed (== have only a single neighboring segment)
+def merge_fully_enclosed(mc_segmentation, merge_at_boundary=True):
+
+    if not merge_at_boundary:
+        raise NotImplementedError("Sorry, not implemented.")
+
+    rag = nrag.gridRag(mc_segmentation, numberOfThreads=ExperimentSettings().n_threads)
+    ufd = nifty.ufd.ufd(rag.numberOfNodes)
+
+    for node_id in xrange(rag.numberOfNodes):
+
+        adjacency = [adj for adj in rag.nodeAdjacency(node_id)]
+
+        if len(adjacency) == 1:
+            ufd.merge(node_id, adjacency[0][0])
+
+    new_node_labels = ufd.elementLabeling()
+    return nrag.projectScalarNodeDataToPixels(
+        rag, new_node_labels, numberOfThreads=ExperimentSettings().n_threads
+    )
+
+
 if __name__ == '__main__':
     from DataSet import load_dataset
     ds = load_dataset(
