@@ -4,7 +4,7 @@ from functools import partial
 
 from ExperimentSettings import ExperimentSettings
 from EdgeRF import RandomForest, local_feature_aggregator, local_feature_aggregator_with_defects
-from tools import replace_from_dict
+from tools import replace_from_dict, cacher_hdf5
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
@@ -91,6 +91,24 @@ def get_junctions(seg, graph):
 
     # return the number of junctions and the mapping of junctions to faces
     return n_junctions, junctions_to_edges
+
+
+# TODO cache
+# TODO use this in feature functions and ground-truth too!!!
+@cacher_hdf5()
+def get_xy_junctions(ds, seg_id, with_defects=False):
+    seg = ds.seg(seg_id)
+    if with_defects:
+        assert False, "Not implemented" # TODO
+    else:
+        graph = ds.rag(seg_id)
+
+    junctions_to_edges = []
+    for z in xrange(seg.shape[0]):
+        _, z_junctions = get_junctions(seg[z], graph)
+        junctions_to_edges.append(z_junctions)
+
+    return np.concatenate(junctions_to_edges)
 
 
 # TODO include dedicated junction feats
@@ -301,5 +319,5 @@ def junction_predictions_to_costs(junction_probs, beta=.5):
 
     junction_probs = (p_max - p_min) * junction_probs + p_min
 
-    junction_energies = np.log((1. - junction_probs) / junction_probs) + np.log((1. - beta) / beta)
-    return junction_energies
+    junction_costs = np.log((1. - junction_probs) / junction_probs) + np.log((1. - beta) / beta)
+    return junction_costs
