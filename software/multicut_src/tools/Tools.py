@@ -3,9 +3,24 @@ import os
 import numpy as np
 
 from functools import wraps
-from itertools import combinations, product
 
 from multicut_src.ExperimentSettings import ExperimentSettings
+
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+    import nifty.graph.rag as nrag
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
+    except ImportError:
+        try:
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
@@ -39,16 +54,16 @@ def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
 
 # TODO check for arguments too long for caching
 # cache result as hdf5
-def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArrays=False):
+def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=False, compress=False):
     assert folder in ("dset_folder", "feature_folder")
     _folder = folder
     _cache_edgefeats = cache_edgefeats
+
     def actualDecorator(function):
         @wraps(function)
         # for now, we dont support keyword arguments!
         def wrapper(*args):
             fname = str(function.__name__)
-            self = args[0]
             filepath = cache_name(fname, _folder, ignoreNumpyArrays, _cache_edgefeats, *args)
             fkey  = "data"
             if not os.path.isfile(filepath):
@@ -56,8 +71,12 @@ def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArra
                 print args[1:]
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
-                vigra.writeHDF5(_res, filepath, fkey)
-                #vigra.writeHDF5(_res, filepath, fkey, compression = ExperimentSettings().compression) # compressing does not make much sense for most of the files we cache
+                if compress:
+                    vigra.writeHDF5(_res, filepath, fkey, compression='gzip')
+                else:
+                    vigra.writeHDF5(_res, filepath, fkey)
+                # compressing does not make much sense for most of the files we cache
+                # vigra.writeHDF5(_res, filepath, fkey, compression = ExperimentSettings().compression)
             else:
                 _res = vigra.readHDF5(filepath, fkey)
             return _res
@@ -65,56 +84,40 @@ def cacher_hdf5(folder = "dset_folder", cache_edgefeats = False, ignoreNumpyArra
     return actualDecorator
 
 
+# FIXME this is deprecated, use nrag.ragCoordinates.edgesToVolume
 # for visualizing edges
-def edges_to_volume(rag, edges, ignore_z = False):
+def edges_to_volume(rag, edges, edge_direction=0):
 
-    assert rag.edgeNum == edges.shape[0], str(rag.edgeNum) + " , " + str(edges.shape[0])
+    assert rag.numberOfEdges == edges.shape[0], str(rag.numberOfEdges) + " , " + str(edges.shape[0])
 
-    print rag.baseGraph.shape
-    volume = np.zeros(rag.baseGraph.shape, dtype = np.uint32)
-
-    for edge_id in rag.edgeIds():
-        # don't write the ignore label!
-        if edges[edge_id] == 0:
-            continue
-        edge_coords = rag.edgeCoordinates(edge_id)
-        if ignore_z:
-            if edge_coords[0,2] - int(edge_coords[0,2]) != 0:
-                continue
-
-        edge_coords_up = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                np.ceil(edge_coords[:,1]).astype(np.uint32),
-                np.ceil(edge_coords[:,2]).astype(np.uint32) )
-        edge_coords_dn = ( np.ceil(edge_coords[:,0]).astype(np.uint32),
-                np.ceil(edge_coords[:,1]).astype(np.uint32),
-                np.ceil(edge_coords[:,2]).astype(np.uint32) )
-
-        volume[edge_coords_dn] = edges[edge_id]
-        volume[edge_coords_up] = edges[edge_id]
-
-    return volume
+    rag_coords = nrag.ragCoordinates(rag, numberOfThreads=ExperimentSettings().n_threads)
+    return rag_coords.edgesToVolume(
+        edges,
+        edgeDirection=edge_direction,
+        numberOfThreads=ExperimentSettings().n_threads
+    )
 
 
 # for visualizing in plane edges
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
 def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_in_plane
     print "Computing edge volume from uv ids in plane"
-    return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels)
+    return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
 # for visualizing between edges
-@cacher_hdf5(ignoreNumpyArrays=True)
-def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels, look_dn):
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
+def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
     print "Computing edge volume from uv ids between planes"
-    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels, look_dn)
+    return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
 # for visualizing skip edges
-@cacher_hdf5(ignoreNumpyArrays=True)
+@cacher_hdf5(ignoreNumpyArrays=True, compress=True)
 def edges_to_volumes_for_skip_edges(
         ds,
         seg,
@@ -130,11 +133,11 @@ def edges_to_volumes_for_skip_edges(
 
     from cython_tools import fast_edge_volume_for_skip_edges_slice
     print "Computing edge volume for skip edges"
-    volume = np.zeros(seg.shape, dtype = edge_labels.dtype)
+    volume = np.zeros(seg.shape, dtype=edge_labels.dtype)
 
     # find all the slices with defect starts
     lower_slices  = np.unique(skip_starts)
-    skip_masks_to_lower = {z : skip_starts == z for z in lower_slices}
+    skip_masks_to_lower = {z: skip_starts == z for z in lower_slices}
 
     # iterate over the slice pairs with skip edges and get the label volumes from cython
     for lower in lower_slices:
@@ -150,33 +153,25 @@ def edges_to_volumes_for_skip_edges(
         for i, upper in enumerate(targets):
             print "to", upper
 
-            seg_dn = seg[:,:,lower]
-            seg_up = seg[:,:,upper]
+            seg_dn = seg[lower]
+            seg_up = seg[upper]
+            print seg_dn.shape
+            print seg_up.shape
+            assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
 
             # get the mask for skip edges connecting to this upper slice
             mask_upper = ranges_lower == unique_ranges[i]
-            uvs_to_upper = np.sort(uvs_lower[mask_upper], axis = 1)
+            uvs_to_upper = np.sort(uvs_lower[mask_upper], axis=1)
             assert uvs_to_upper.shape[1] == 2
             labels_upper = labels_lower[mask_upper]
 
-            # for debugging
-            #uniques_up = np.unique(seg_up)
-            #uniques_dn = np.unique(seg_dn)
-            #unique_uvs = np.unique(uvs_to_upper)
-            ## this should more or less add up (except for bg value)
-            #matches_dn = np.intersect1d(uniques_up, unique_uvs).size
-            #matches_up = np.intersect1d(uniques_dn, unique_uvs).size
-            #print "Matches_up", matches_up, '/', unique_uvs.size
-            #print "Matches_dn", matches_dn, '/', unique_uvs.size
-            #print "Combined:", matches_up + matches_dn, '/', unique_uvs.size
-            #assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
-
             vol_dn, vol_up = fast_edge_volume_for_skip_edges_slice(
-                    seg_dn,
-                    seg_up,
-                    uvs_to_upper,
-                    labels_upper)
-            volume[:,:,lower] = vol_dn
-            volume[:,:,upper] = vol_up
+                seg_dn,
+                seg_up,
+                uvs_to_upper,
+                labels_upper.astype('uint8')
+            )
+            volume[lower] = vol_dn
+            volume[upper] = vol_up
 
     return volume

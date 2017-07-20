@@ -1,20 +1,36 @@
 # script for multicut on anisotropic data, isbi style
 
+# if build from source and not a conda pkg, we assume that we have cplex
+try:
+    import nifty
+except ImportError:
+    try:
+        import nifty_with_cplex as nifty # conda version build with cplex
+    except ImportError:
+        try:
+            import nifty_wit_gurobi as nifty # conda version build with gurobi
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
+
 import sys
-# TODO FIXME maybe we need something similar for nifty_with_cplex
-#try to import opengm, it will fail if cplex is not installed
-#try:
-#    from opengm.inference import IntersectionBased
-#except ImportError:
-#    print "##########################################################################"
-#    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-#    print "##########################################################################"
-#    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-#    print "##########################################################################"
-#    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-#    print "#########               see README.txt for details                 #######"
-#    print "##########################################################################"
-#    sys.exit(1)
+has_cplex  = nifty.Configuration.WITH_CPLEX
+has_gurobi = nifty.Configuration.WITH_GUROBI
+#try to import nifty mc solver, it will fail if cplex is not installed
+if has_gurobi and not has_cplex:
+    print "##########################################################################"
+    print "################ You are using gurobi instead of cplex ###################"
+    print "###################### Inference may be slower ###########################"
+    print "##########################################################################"
+elif not has_cplex and not has_gurobi:
+    print "##########################################################################"
+    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
+    print "##########################################################################"
+    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
+    print "##########################################################################"
+    print "######### don't have cplex? apply for an academic license at IBM!  #######"
+    print "#########               see README.txt for details                 #######"
+    print "##########################################################################"
+    sys.exit(1)
 
 import argparse
 import os
@@ -54,22 +70,14 @@ def process_command_line():
     return args
 
 
-# tif slices to volume
-def slices_to_vol(path):
-    files = os.listdir(path)
-    vol = vigra.readVolume( os.path.join(path, files[0]) )
-    vol = vol.squeeze()
-    vol = vol.view(np.ndarray)
-    return vol
-
 
 # tif volume to volume
 def vol_to_vol(path):
     vol = vigra.readVolume( path + ".tif" )
     vol = vol.squeeze()
     vol = vol.view(np.ndarray)
-    #print vol.shape
-    #print type(vol)
+    # need to transpose to c-order due to nifty
+    vol = vol.transpose( (2,1,0) )
     return vol
 
 
@@ -92,16 +100,16 @@ def wsdt(prob_map):
 
     segmentation = np.zeros_like(prob_map, dtype = np.uint32)
     offset = 0
-    for z in xrange(prob_map.shape[2]):
-        wsdt, _ = wsDtSegmentation(prob_map[:,:,z], threshold,
+    for z in xrange(prob_map.shape[0]):
+        wsdt, _ = wsDtSegmentation(prob_map[z], threshold,
                 minMemSize, minSegSize,
                 sigMinima, sigWeights, groupSeeds)
 
         if not 0 in wsdt:
             wsdt -= 1
 
-        segmentation[:,:,z] = wsdt
-        segmentation[:,:,z] += offset
+        segmentation[z] = wsdt
+        segmentation[z] += offset
         offset = np.max(segmentation) + 1
 
     return segmentation
@@ -216,7 +224,7 @@ def main():
     ExperimentSettings().weighting_scheme = "z"
     ExperimentSettings().solver = "multicut_fusionmoves"
 
-    local_feats_list  = ("raw", "prob", "reg", "topo")
+    local_feats_list  = ("raw", "prob", "reg")
     lifted_feats_list = ("mc", "cluster", "reg")
 
     seg_id = 0
@@ -246,12 +254,12 @@ def main():
     mc_seg = ds_test.project_mc_result(seg_id, mc_node)
 
     print "Saving Segmentation Result to", save_path_seg
-    vigra.impex.writeVolume(mc_seg, save_path_seg, '')
+    vigra.impex.writeVolume(mc_seg.transpose( (2,1,0) ), save_path_seg, '')
 
     # need to bring results back to the isbi challenge format...
-    edge_vol = edges_to_volume(ds_test._rag(seg_id), mc_edges)
+    edge_vol = edges_to_volume(ds_test.rag(seg_id), mc_edges, True)
     print "Saving Edge Labeling Result to", save_path_edge
-    vigra.impex.writeVolume(edge_vol, save_path_edge, '', dtype = np.uint8 )
+    vigra.impex.writeVolume(edge_vol.transpose( (2,1,0) ), save_path_edge, '', dtype = np.uint8 )
 
 if __name__ == '__main__':
     main()

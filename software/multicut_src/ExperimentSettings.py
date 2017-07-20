@@ -1,10 +1,12 @@
 # singleton type
 class Singleton(type):
     _instances = {}
+
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
+
 
 # singleton class, holding all experiment parameters
 class ExperimentSettings(object):
@@ -17,12 +19,14 @@ class ExperimentSettings(object):
         self.rf_cache_folder = None
         # number of threads for all things in parallel, set to max - 1
         import multiprocessing
-        self.n_threads   = max( multiprocessing.cpu_count() - 1, 1)
-        self.compression = 'gzip' # compression method
-        self.aniso_max   = 20.    # maximal aniso factor, for higher values filters will be calculated in 2d
+        self.n_threads   = max(multiprocessing.cpu_count() - 1, 1)
+        self.compression = 'gzip'  # compression method
+        self.aniso_max   = 20.     # maximal aniso factor, for higher values filters will be calculated in 2d
         # ignore values, because we don't want to hardcode this
         # TODO different values for different maskings ?!
-        self.ignore_seg_value = 0 # for now this has to be zero, because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
+        # for now this has to be zero,
+        # because this is the only value that vigra.relabelConsecutive conserves (but I can use my own impl of relabel)
+        self.ignore_seg_value = 0
 
         # parameter fo feature calculation
         # anisotropy factor for the filter calculation
@@ -62,18 +66,18 @@ class ExperimentSettings(object):
         self.weight = 16.
         # beta for the normal (local) multicut
         self.beta_local   = 0.5
-        # beta for the lifteed multicut
-        self.beta_global   = 0.5
+        # beta for the lifted multicut
+        self.beta_lifted  = 0.5
 
         # mc fusion settings
-        self.seed_fraction = 0.001 # seed fraction for fusion moves
-        self.num_it      = 3000    # total number of iterations for fusion moves
-        self.num_it_stop = 20      # number of iterations without changes after which fusion moves stop
+        self.seed_fraction = 0.001  # seed fraction for fusion moves
+        self.num_it      = 3000     # total number of iterations for fusion moves
+        self.num_it_stop = 20       # number of iterations without changes after which fusion moves stop
 
         # lifted mc fusion settings
-        self.sigma_lifted = 1. # sigma for the watershed proposals
-        self.seed_fraction_lifted = 0.1 # seed fraction for the watershed proposals
-        self.seed_strategy_lifted = 'SEED_FROM_LOCAL' # seed strategy
+        self.sigma_lifted = 10.  # sigma for the watershed proposals
+        self.seed_fraction_lifted = 0.1  # seed fraction for the watershed proposals
+        self.seed_strategy_lifted = 'SEED_FROM_LOCAL'  # seed strategy
 
         # parameters for lifted multicut
         # locacl training slices
@@ -85,8 +89,8 @@ class ExperimentSettings(object):
 
         # parameters for resolving false merges
         self.feature_image_filter_names = ["gaussianSmoothing",
-                                      "hessianOfGaussianEigenvalues",
-                                      "laplacianOfGaussian"]
+                                           "hessianOfGaussianEigenvalues",
+                                           "laplacianOfGaussian"]
         self.feature_image_sigmas = [1.6, 4.2, 8.3]
         self.feature_stats = ["Mean", "Variance", "Sum", "Maximum", "Minimum", "Kurtosis", "Skewness"]
         self.paths_penalty_power = 10

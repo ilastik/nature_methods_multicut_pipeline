@@ -2,15 +2,20 @@ import numpy as np
 import vigra
 from concurrent import futures
 
+from ExperimentSettings import ExperimentSettings
+
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:
     import nifty
+    import nifty.graph.rag as nrag
 except ImportError:
     try:
-        import nifty_with_cplex as nifty # conda version build with cplex
+        import nifty_with_cplex as nifty  # conda version build with cplex
+        import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
-            import nifty_wit_gurobi as nifty # conda version build with gurobi
+            import nifty_with_gurobi as nifty  # conda version build with gurobi
+            import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -19,18 +24,21 @@ from tools import replace_from_dict
 
 # TODO 10,000 seems to be a pretty large default value !
 # TODO rethink the relabeling here, in which cases do we want it, can it hurt?
-def remove_small_segments(segmentation,
-        size_thresh = 10000,
-        relabel = True,
-        return_sizes = False):
+def remove_small_segments(
+    segmentation,
+    size_thresh=10000,
+    relabel=True,
+    return_sizes=False
+):
 
     # Make sure all objects have their individual label
     # NOTE this is very dangerous for sample C (black slices in groundtruth)
     if relabel:
         segmentation = vigra.analysis.labelMultiArrayWithBackground(
             segmentation.astype('uint32'),
-            background_value = 0,
-            neighborhood = 'indirect')
+            background_value=0,
+            neighborhood='indirect'
+        )
 
     # Get the unique values of the segmentation including counts
     uniq, counts = np.unique(segmentation, return_counts=True)
@@ -44,10 +52,10 @@ def remove_small_segments(segmentation,
     # I think this is the fastest (single threaded way) to do this
     # If we really need to parallelize this, we need to rethink a little, but for now, this should be totally fine!
     if relabel:
-        large_objs_to_consecutive = {obj_id : i+1 for i, obj_id in enumerate(large_objs)}
-        obj_dict = {obj_id : 0 if obj_id in small_objs else large_objs_to_consecutive[obj_id] for obj_id in uniq}
+        large_objs_to_consecutive = {obj_id: i + 1 for i, obj_id in enumerate(large_objs)}
+        obj_dict = {obj_id: 0 if obj_id in small_objs else large_objs_to_consecutive[obj_id] for obj_id in uniq}
     else:
-        obj_dict = {obj_id : 0 if obj_id in small_objs else obj_id for obj_id in uniq}
+        obj_dict = {obj_id: 0 if obj_id in small_objs else obj_id for obj_id in uniq}
     segmentation = replace_from_dict(segmentation, obj_dict)
 
     if return_sizes:
@@ -57,53 +65,140 @@ def remove_small_segments(segmentation,
 
 
 # merge segments that are smaller than min_seg_size
-# TODO more efficiently ?!
 # TODO test this properly!
 def merge_small_segments(mc_seg, min_seg_size):
-    seg_rag = vigra.graphs.regionAdjacencyGraph(
-            vigra.graphs.gridGraph(mc_seg.shape[0:3]),
-            mc_seg.astype(np.uint32) )
 
-    # zero should be reserved for the ignore label!
-    assert 0 not in mc_seg
+    # take care of segmentations that don't start at zero
+    seg_min = mc_seg.min()
+    if seg_min > 0:
+        mc_seg -= seg_min
 
-    n_nodes = seg_rag.nodeNum
+    n_threads = ExperimentSettings().n_threads
+    rag = nrag.gridRag(mc_seg, n_threads)
+    n_nodes = rag.numberOfNodes
+    assert n_nodes == mc_seg.max() + 1, "%i, %i" % (n_nodes, mc_seg.max() + 1)
 
-    assert n_nodes == mc_seg.max(), str(n_nodes) + " , " + str(mc_seg.max())
     print "Merging segments in mc-result with size smaller than", min_seg_size
+    _, node_sizes = np.unique(mc_seg, return_counts=True)
+    edge_sizes = nrag.accumulateEdgeMeanAndLength(
+        rag,
+        np.zeros_like(mc_seg, dtype='float32')
+    )[:, 1].astype('uint32')
+    assert len(node_sizes) == n_nodes
 
-    seg_sizes = np.bincount(mc_seg.ravel())
+    # find nodes that shall be merged
+    merge_nodes = np.where(node_sizes < min_seg_size)[0]
 
-    segs_merge = np.zeros(n_nodes+1, dtype = bool)
-    segs_merge[seg_sizes <= min_seg_size] = True
-    print "Merging", np.sum(segs_merge), "segments"
+    # iterate over the merge nodes and merge with adjacent
+    # node with biggest overlap
+    merge_pairs = []
+    for u in merge_nodes:
+        merge_n_id    = -1
+        max_edge_size = 0
+        for adj in rag.nodeAdjacency(u):
+            v, edge_id = adj[0], adj[1]
+            edge_size = edge_sizes[edge_id]
+            if edge_size > max_edge_size:
+                max_edge_size = edge_size
+                merge_n_id = v
+        assert merge_n_id != -1
+        merge_pairs.append([u, merge_n_id])
+    merge_pairs = np.array(merge_pairs)
 
-    merge_nodes = []
-    for node in seg_rag.nodeIter():
-        n_id = node.id
-        # if the node id is not zero and it is marked in segs_merge, we merge it
-        if n_id != 0 and segs_merge[n_id]:
-            # need to find the adjacent node with largest edge
-            max_edge_size = 0
-            merge_node_id = -1
-            for adj_node in seg_rag.neighbourNodeIter(node):
-                edge = seg_rag.findEdge(node,adj_node)
-                edge_size = len( seg_rag.edgeCoordinates(edge) )
-                if edge_size > max_edge_size:
-                    max_edge_size = edge_size
-                    merge_node_id = adj_node.id
-            assert merge_node_id != -1
-            merge_nodes.append( (n_id, merge_node_id) )
+    # merge the nodes with ufd
+    ufd = nifty.ufd.ufd(n_nodes)
+    ufd.merge(merge_pairs)
+    merged_nodes = ufd.elementLabeling()
 
-    # merge the nodes with udf
-    ufd = nifty.ufd.ufd( n_nodes + 1 )
-    for merge_pair in merge_nodes:
-        ufd.merge(merge_pair[0], merge_pair[1])
+    # make consecutive, starting from the original min val and make segmentation
+    merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min, keep_zeros=False)
+    return nrag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
 
-    # get new to old as merge result
-    merged_nodes = ufd.elmentLabeling()
 
-    # merge the new nodes
-    merged_seg = seg_rag.projectLabelsToBaseGraph(merged_nodes)
-    merged_seg = vigra.analysis.labelVolume(merged_seg)
-    return merged_seg
+def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, invert_hmap=False):
+    hmap = ds.inp(inp_id)
+    assert hmap.shape == mc_segmentation.shape, "%s, %s" % (str(hmap.shape), str(mc_segmentation.shape))
+
+    if invert_hmap:
+        hmap = 1. - hmap
+
+    postprocessed = mc_segmentation.copy()
+    postprocessed = postprocessed.astype('uint32')
+    # need to get rid of 0's, because they correspond to unclaimed territoty
+    if postprocessed.min() == 0:
+        postprocessed += 1
+
+    # find the ids to merge (smaller than size threshold)
+    segment_ids, segment_sizes = np.unique(postprocessed, return_counts=True)
+    merge_ids = segment_ids[segment_sizes < size_threshold]
+
+    print "Merge with according to size threshold %i:" % size_threshold
+    print "Merging %i / %i segments" % (len(merge_ids), len(segment_ids))
+
+    # mask out the merge-ids
+    mask = np.ma.masked_array(postprocessed, mask=np.in1d(postprocessed, merge_ids))
+    mask = mask.mask
+    postprocessed[mask] = 0
+
+    def pp_z(z):
+        ws_z, _ = vigra.analysis.watershedsNew(hmap[z].astype('float32'), seeds=postprocessed[z])
+        postprocessed[z] = ws_z
+
+    with futures.ThreadPoolExecutor(max_workers=8) as tp:
+        tasks = [tp.submit(pp_z, z) for z in xrange(postprocessed.shape[0])]
+        [t.result() for t in tasks]
+
+    postprocessed, _, _ = vigra.analysis.relabelConsecutive(postprocessed, start_label=1, keep_zeros=False)
+    return postprocessed
+
+
+# TODO FIXME this does not do any special boundary treatment yet
+# might be a good idea to include this (i.e. not merge segments at the boundary)
+# merge segments that are full enclosed (== have only a single neighboring segment)
+def merge_fully_enclosed(mc_segmentation, merge_at_boundary=True):
+
+    rag = nrag.gridRag(mc_segmentation, numberOfThreads=ExperimentSettings().n_threads)
+    ufd = nifty.ufd.ufd(rag.numberOfNodes)
+
+    for node_id in xrange(rag.numberOfNodes):
+
+        adjacency = [adj for adj in rag.nodeAdjacency(node_id)]
+        if len(adjacency) == 1:
+
+            # if we are not merging boundary segments, we need to check now if the current segment
+            # is at the volume boundary
+            if not merge_at_boundary:
+
+                # get coordinates of this segment
+                where_seg = np.where(mc_segmentation == node_id)
+                at_boundary = False
+                for d in xrange(mc_segmentation.ndim):
+                    coords_d = where_seg[d]
+                    # check if we are at the boundary in current dimension
+                    if 0 in coords_d or seg.shape[d] - 1 in coords_d:
+                        at_boundary = True
+                if at_boundary:
+                    continue
+
+            ufd.merge(node_id, adjacency[0][0])
+
+    new_node_labels = ufd.elementLabeling()
+    return nrag.projectScalarNodeDataToPixels(
+        rag, new_node_labels, numberOfThreads=ExperimentSettings().n_threads
+    )
+
+
+if __name__ == '__main__':
+    from DataSet import load_dataset
+    ds = load_dataset(
+        '/home/constantin/Work/home_hdd/cache/cremi_new/sample_A_test'
+    )
+    seg = vigra.readHDF5(
+        '/home/constantin/Work/home_hdd/results/cremi/affinity_experiments/mc_nolearn/gs/sampleA_top_0_.h5',
+        'volumes/labels/neuron_ids'
+    )
+    seg_pp = postprocess_with_watershed(ds, seg, 1)
+    from volumina_viewer import volumina_n_layer
+    volumina_n_layer(
+        [ds.inp(0).astype('float32'), seg, seg_pp]
+    )

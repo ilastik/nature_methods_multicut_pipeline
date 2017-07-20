@@ -29,6 +29,9 @@ requirements:
         - futures
         - fastfilters >=0.2.4.post3
         - boost 1.60.0 # this is just a hack to have the correct boost version for skeletopyze
+        - scipy
+        - scikit-image
+        - scikit-learn >=0.18.2
 
 test:
     imports:

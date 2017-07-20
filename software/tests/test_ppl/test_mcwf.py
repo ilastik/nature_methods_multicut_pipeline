@@ -29,4 +29,4 @@ def test_mcwf_aniso(solver):
 
 
 if __name__ == '__main__':
-    test_mcwf_aniso('multicut_fusionmoves')
+    test_mcwf_aniso('multicut_exact')

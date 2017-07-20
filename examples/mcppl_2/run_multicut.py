@@ -1,14 +1,15 @@
 import vigra
 import os
+import argparse
 
-from init_exp import meta_folder
-
-from multicut_src import multicut_workflow, multicut_workflow_with_defect_correction
+from multicut_src import multicut_workflow  # , multicut_workflow_with_defect_correction
 from multicut_src import ExperimentSettings, load_dataset
 
-def run_mc(ds_train_name, ds_test_name, save_path):
 
-    assert os.path.exists(os.path.split(save_path)[0]), "Please choose an existing folder to save your results"
+def run_mc(cache_folder, ds_train_name, ds_test_name):
+
+    # path to save the segmentation result
+    save_path = os.path.join(cache_folder, 'mc_segmentation.h5')
 
     # if you have added multiple segmentations, you can choose on which one to run
     # experiments with the seg_id
@@ -17,31 +18,34 @@ def run_mc(ds_train_name, ds_test_name, save_path):
     # these strings encode the features that are used for the local features
     feature_list = ['raw', 'prob', 'reg']
 
-    ds_train = load_dataset(meta_folder, ds_train_name)
-    ds_test  = load_dataset(meta_folder, ds_test_name)
+    ds_train = load_dataset(cache_folder, ds_train_name)
+    ds_test  = load_dataset(cache_folder, ds_test_name)
 
     # use this for running the mc without defected slices
     mc_nodes, _, _, _ = multicut_workflow(
-            ds_train, ds_test,
-            seg_id, seg_id,
-            feature_list)
+        ds_train, ds_test,
+        seg_id, seg_id,
+        feature_list
+    )
 
     # use this for running the mc with defected slices
-    #mc_nodes, _, _, _ = multicut_workflow_with_defect_correction(
-    #        ds_train, ds_test,
-    #        seg_id, seg_id,
-    #        feature_list)
+    # mc_nodes, _, _, _ = multicut_workflow_with_defect_correction(
+    #         ds_train, ds_test,
+    #         seg_id, seg_id,
+    #         feature_list)
 
     segmentation = ds_test.project_mc_result(seg_id, mc_nodes)
-    vigra.writeHDF5(segmentation, save_path, 'data', compression = 'gzip')
+    vigra.writeHDF5(segmentation, save_path, 'data', compression='gzip')
 
 
-if __name__ == '__main__':
+def run_experiment(cache_folder):
 
     # this object stores different  experiment settings
-    ExperimentSettings().set_rfcache(os.path.join(meta_folder, "rf_cache"))
+    ExperimentSettings().rf_cache_folder = os.path.join(cache_folder, "rf_cache")
 
-    # set to 1. for isotropic data, to the actual degree for mildly anisotropic data or to > 20. to compute filters in 2d
+    # set to 1. for isotropic data,
+    # to the actual degree for mildly anisotropic data
+    # or to > 20. to compute filters in 2d
     ExperimentSettings().anisotropy_factor = 25.
 
     # set to true for segmentations with flat superpixels
@@ -53,6 +57,10 @@ if __name__ == '__main__':
     # number of trees used in the random forest
     ExperimentSettings().n_trees = 200
 
+    # use 2 different random forests for xy-and z edges
+    # only makes sense for anisotropic data with flat superpixels
+    ExperimentSettings().use_2rfs = True
+
     # solver used for the multicut
     ExperimentSettings().solver  = "multicut_fusionmoves"
     ExperimentSettings().verbose = True
@@ -63,6 +71,18 @@ if __name__ == '__main__':
     # 'all' for isotropic data with 3d superpixel
     ExperimentSettings().weighting_scheme = "z"
 
-    # path to save the segmentation result, order has to already exist
-    save_path = '/path/to/mc_result.h5'
-    run_mc('my_train', 'my_test', save_path)
+    run_mc(cache_folder, 'my_train', 'my_test')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('cache_folder')
+    args = parser.parse_args()
+    cache_folder = args.cache_folder
+    assert os.path.exists(cache_folder), cache_folder
+    return cache_folder
+
+
+if __name__ == '__main__':
+    cache_folder = parse_args()
+    run_experiment(cache_folder)
