@@ -245,6 +245,7 @@ def learn_and_predict_higher_order_rf(
     ds_test,
     seg_id_train,
     seg_id_test,
+    edge_feat_list,
     with_defects=False
 ):
 
@@ -258,7 +259,7 @@ def learn_and_predict_higher_order_rf(
     feature_aggregator = partial(
         higher_order_feature_aggregator,
         higher_order_feat_list=('edge_feats',),
-        edge_feat_list=('raw',),  # TODO
+        edge_feat_list=edge_feat_list,
         anisotropy_factor=ExperimentSettings().anisotropy_factor,
         use_2d=ExperimentSettings().use_2d,
         with_defects=with_defects
