@@ -359,7 +359,7 @@ def train_random_forest_for_merges(
                             mc_segmentation=seg,
                             paths_to_objs=paths_to_objs,
                             train_sets=current_trainsets,
-                            path_to_edge_features=path_to_edge_features
+                            path_to_edge_features=path_to_edge_features,
                         )
                     )
                     labels_train.append(path_classes)
@@ -372,6 +372,11 @@ def train_random_forest_for_merges(
         labels_train = np.concatenate(labels_train, axis=0)
         assert features_train.shape[0] == labels_train.shape[0]
         features_train = np.nan_to_num(features_train).astype('float32')
+
+        lbls, counts = np.unique(labels_train, return_counts=True)
+
+        logger.info('Class labels: {}'.format(lbls))
+        logger.info('Counts:       {}'.format(counts))
 
         rf = RandomForest(
             features_train,

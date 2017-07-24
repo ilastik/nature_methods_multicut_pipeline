@@ -2,10 +2,13 @@ import vigra
 import vigra.graphs as graphs
 import numpy as np
 from concurrent import futures
+import os
 
 from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges, multicut_fusionmoves
 from ..tools import find_matching_row_indices, find_matching_row_indices_fast
+
+from ..tools import cacher_hdf5, cache_name
 
 import logging
 logger = logging.getLogger(__name__)
@@ -236,8 +239,8 @@ def path_feature_aggregator(
                 ds, seg_id, mc_segmentation, objs_to_paths,
                 edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
-                feat_list=['raw', 'prob', 'distance_transform'],
-                cut_method='watershed'
+                ['raw', 'prob', 'distance_transform'],
+                'watershed'
             ))
 
             logger.debug('... done computing cut features!')
@@ -276,6 +279,7 @@ def compute_path_lengths(paths, anisotropy):
 
 
 # don't cache for now
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
 def path_features_from_feature_images(
         ds,
         inp_id,
@@ -411,7 +415,27 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
 
     return local_uv_mask, mapping, uv_local, n_var
 
+    # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+    # save_im = np.zeros(mc_segmentation.shape)
+    # for item in seg_ids:
+    #     # save_im[seg == reverse_mapping[item]] = 1
+    #     save_im[seg == item] = 1
+    #
+    # node_labels = seg_ids_local
+    # obj_id=6
+    # # Make global list of node labels initialized to zero
+    # node_labels_global = np.zeros((uv_ids.max() + 1,))
+    # # Set the values of the local nodes to the respective label
+    # reverse_mapping = {val: key for key, val in mapping.iteritems()}
+    # for node_label_id, node_label in enumerate(node_labels):
+    #     node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
+    # split_obj_im = ds.project_mc_result(0, node_labels_global)
+    # save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
+    # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
+
+
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
 def multicut_path_features(
         ds,
         seg_id,
@@ -649,6 +673,7 @@ def cut_seeded_agglomeration(graph, weights, source, sink):
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
 def cut_features(
         ds,
         seg_id,
@@ -656,9 +681,15 @@ def cut_features(
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
         edge_probabilities,
         anisotropy_factor,
-        feat_list=['raw', 'prob', 'distance_transform'],
-        cut_method='watershed'
+        feat_list,
+        cut_method
 ):
+
+    if feat_list is None:
+        feat_list = ['raw', 'prob', 'distance_transform']
+    if cut_method is None:
+        cut_method = 'watershed'
+
     logger.debug('Start cut features')
 
     cutters = {
@@ -733,6 +764,7 @@ def cut_features(
 
     # 1. ---------------------------
     logger.debug('cut_features, step 1 #####################')
+    logger.debug('    Generating local uvs...')
 
     mappings = {}
     local_uv_masks = {}
@@ -758,6 +790,7 @@ def cut_features(
 
     # 2. ---------------------------
     logger.debug('cut_features, step 2 #####################')
+    logger.debug('    Calculating local graph...')
 
     weights_locals = {}
     graph_locals = {}
@@ -778,6 +811,7 @@ def cut_features(
 
     # 3. ---------------------------
     logger.debug('cut_features, step 3 #####################')
+    logger.debug('   Computing local two-coloring...')
 
     # FIXME No speedup by parallelization achievable
 
@@ -810,23 +844,27 @@ def cut_features(
             objs_to_paths[obj_id], mappings[obj_id], graph_locals[obj_id], weights_locals[obj_id]
         )
 
+    # # TODO: For debug purposes:
+    # # TODO: Restore the segmentation and save it as volume
     # for obj_id in objs_to_paths:
     #     for path_id, path in objs_to_paths[obj_id].iteritems():
-    #         # TODO: For debug purposes:
-    #         # TODO: Restore the segmentation and save it as volume
-    #         # Make global list of node labels initialized to zero
-    #         node_labels_global = np.zeros((uv_ids.max() + 1,))
-    #         # Set the values of the local nodes to the respective label
-    #         reverse_mapping = {val: key for key, val in mappings[obj_id].iteritems()}
-    #         node_labels = node_labelings_s[obj_id][path_id].astype('uint32')
-    #         for node_label_id, node_label in enumerate(node_labels):
-    #             node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
-    #         split_obj_im = ds.project_mc_result(0, node_labels_global)
-    #         save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
-    #         vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
+    #
+    #         if not local_two_colorings_s[obj_id][path_id].max():
+    #
+    #             # Make global list of node labels initialized to zero
+    #             node_labels_global = np.zeros((uv_ids.max() + 1,))
+    #             # Set the values of the local nodes to the respective label
+    #             reverse_mapping = {val: key for key, val in mappings[obj_id].iteritems()}
+    #             node_labels = node_labelings_s[obj_id][path_id].astype('uint32')
+    #             for node_label_id, node_label in enumerate(node_labels):
+    #                 node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
+    #             split_obj_im = ds.project_mc_result(0, node_labels_global)
+    #             save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
+    #             vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
     # 4. ---------------------------
     logger.debug('cut_features, step 4 #####################')
+    logger.debug('    Compute the edges along the paths...')
 
     # FIXME This is still the bottleneck, but pretty much ok
     # Parallelization speeds up a little bit
@@ -857,6 +895,7 @@ def cut_features(
 
     # 5. ---------------------------
     logger.debug('cut_features, step 5 #####################')
+    logger.debug('    Compute edge features...')
 
     new_edge_feats_s_s = {}
 
@@ -887,7 +926,7 @@ def cut_features(
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
-                logger.warning('Local two coloring failed due to unknown bug.')
+                logger.warning('Local two coloring failed.')
 
             else:
 
@@ -922,8 +961,9 @@ def cut_features(
             objs_to_paths[obj_id], local_two_colorings_s[obj_id], edge_ids_s, edge_ids_locals
         )
 
-    # n. ---------------------------
-    logger.debug('cut features, step n #####################')
+    # 6. ---------------------------
+    logger.debug('cut features, step 6 #####################')
+    logger.debug('    Concatenating features...')
     for obj_id, new_edge_feats_s in new_edge_feats_s_s.iteritems():
         for path_id, new_edge_feats in new_edge_feats_s.iteritems():
 

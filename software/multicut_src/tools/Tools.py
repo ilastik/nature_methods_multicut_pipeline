@@ -22,6 +22,8 @@ except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
+import hashlib
+
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
     arg_id = 1
@@ -32,13 +34,19 @@ def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
             if arg >= ExperimentSettings().aniso_max:
                 arg = ExperimentSettings().aniso_max
         if isinstance(arg, np.ndarray) and not ignoreNp:
-            fname += "_" + str(arg)
+            # fname += "_" + str(arg)
+            fname += "_" + str(hash(arg.tostring()))
         elif isinstance(arg, np.ndarray):
             pass
         # need to make tuples and lists cacheable
         elif isinstance(arg, list) or isinstance(arg, tuple):
             for elem in arg:
                 fname += "_" + str(elem) + "_"
+        elif isinstance(arg, dict):
+
+            a_sorted_list = [(key, arg[key]) for key in sorted(arg.keys())]
+            fname += "_" + hashlib.sha1(str(a_sorted_list)).hexdigest()
+
         else:
             fname += "_" + str(arg)
         arg_id += 1
@@ -67,8 +75,7 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
             filepath = cache_name(fname, _folder, ignoreNumpyArrays, _cache_edgefeats, *args)
             fkey  = "data"
             if not os.path.isfile(filepath):
-                print "Computing: ", function.__name__, "with args:"
-                print args[1:]
+                print "Computing: ", function.__name__
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
                 if compress:
