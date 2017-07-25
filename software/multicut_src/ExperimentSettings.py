@@ -99,3 +99,6 @@ class ExperimentSettings(object):
         self.max_sample_size = 20
         self.paths_penalty_power = 10
         self.lifted_path_weights_factor = 1.
+
+        # settings for junction features
+        self.use_junction_permutations = True

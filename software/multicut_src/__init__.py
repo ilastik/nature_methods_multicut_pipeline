@@ -26,4 +26,4 @@ from workflow_no_learning import multicut_workflow_no_learning, costs_from_affin
 from synapses import predict_synapse_edge_probabilities, edgemask_from_segmentation, synapse_edge_labels, synapse_node_labels
 
 from higher_order_feats import junction_feats_from_edge_feats, junction_groundtruth, learn_and_predict_higher_order_rf
-from higher_order_feats import junction_predictions_to_costs, get_xy_junctions
+from higher_order_feats import junction_predictions_to_costs, get_xy_junctions, project_junction_probs_to_edges
