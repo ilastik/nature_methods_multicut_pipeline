@@ -438,7 +438,7 @@ def project_junction_probs_to_edges(ds, seg_id, junction_probs):
             edge_probs[edges[active_edges]] += probs[s_id]
 
     # normalize the projected edge probabilities
-    edge_count *= 3 # each edge has 3 probabilities for state 1 per junction
+    edge_count *= 3  # each edge has 3 probabilities for state 1 per junction
     edge_probs[edges_with_junctions] /= edge_count
 
     # make sure that edges without junctions (z-edges) have no prob.

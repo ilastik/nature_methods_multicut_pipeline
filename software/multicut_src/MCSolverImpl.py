@@ -28,13 +28,14 @@ except ImportError:
 # the last argument is only for caching correctly with different feature combinations
 @cacher_hdf5(ignoreNumpyArrays=True)
 def probs_to_energies(
-        ds,
-        edge_probs,
-        seg_id,
-        weighting_scheme,
-        weight,
-        beta,
-        feat_cache):
+    ds,
+    edge_probs,
+    seg_id,
+    weighting_scheme,
+    weight,
+    beta,
+    feat_cache
+):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
