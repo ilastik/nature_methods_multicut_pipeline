@@ -27,3 +27,4 @@ from synapses import predict_synapse_edge_probabilities, edgemask_from_segmentat
 
 from higher_order_feats import junction_feats_from_edge_feats, junction_groundtruth, learn_and_predict_higher_order_rf
 from higher_order_feats import junction_predictions_to_costs, get_xy_junctions, project_junction_probs_to_edges
+from higher_order_workflows import higher_order_workflow, higher_order_problem

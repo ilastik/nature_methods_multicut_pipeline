@@ -278,18 +278,29 @@ def learn_higher_order_rf(
     # iterate over the datasets in our traninsets
     for ds in trainsets:
 
+        print "Features and gt for %s" % ds.ds_name
         assert ds.has_gt
+        print "Features..."
         features = feature_aggregator(ds, seg_id)
+        print "... done"
+        print "Labels..."
         labels = junction_groundtruth(ds, seg_id, with_defects)
+        print "... done"
         assert len(features) == len(labels)
 
         # TODO mask once implemented
         features_train.append(features)
         labels_train.append(labels)
 
+    print "Concatening feats..."
     features_train = np.concatenate(features_train, axis=0)
-    labels_train = np.concatenate(labels_train, axis=0)
+    print "...done"
 
+    print "Concatening labels..."
+    labels_train = np.concatenate(labels_train, axis=0)
+    print "...done"
+
+    print "rf should start now"
     rf = RandomForest(
         features_train,
         labels_train,
@@ -356,7 +367,9 @@ def learn_and_predict_higher_order_rf(
     rf = learn_higher_order_rf(trainsets, seg_id_train, feature_aggregator, trainstr, paramstr, with_defects)
 
     # get the test features
+    print "Features test..."
     features_test  = feature_aggregator(ds_test, seg_id_test)
+    print "... done"
 
     # predict
     junction_probs = rf.predict_probabilities(features_test)
