@@ -124,7 +124,15 @@ def higher_order_feature_aggregator(
     junction_feats = []
     if 'edge_feats' in higher_order_feat_list:
         junction_feats.append(
-            junction_feats_from_edge_feats(ds, seg_id, edge_feat_list, anisotropy_factor, use_2d)
+            junction_feats_from_edge_feats(
+                ds,
+                seg_id,
+                edge_feat_list,
+                anisotropy_factor,
+                use_2d,
+                ExperimentSettings().use_junction_permutations,
+                with_defects
+            )
         )
 
     return np.concatenate(junction_feats, axis=1)
@@ -150,12 +158,14 @@ def make_permuted_features(feat_list):
 
 
 # map edge features to junctions
+@cacher_hdf5()
 def junction_feats_from_edge_feats(
     ds,
     seg_id,
     feature_list,
     anisotropy_factor,
     use_2d,
+    use_junction_permutations,
     with_defects=False
 ):
 
@@ -165,7 +175,7 @@ def junction_feats_from_edge_feats(
     xy_junctions = get_xy_junctions(ds, seg_id, with_defects)
 
     # get the features for all junction permutations
-    if ExperimentSettings().use_junction_permutations:
+    if use_junction_permutations:
         permutation_feats = []
         for perm in permutations([0, 1, 2]):
             feat_list = [
@@ -278,29 +288,19 @@ def learn_higher_order_rf(
     # iterate over the datasets in our traninsets
     for ds in trainsets:
 
-        print "Features and gt for %s" % ds.ds_name
         assert ds.has_gt
-        print "Features..."
         features = feature_aggregator(ds, seg_id)
-        print "... done"
-        print "Labels..."
         labels = junction_groundtruth(ds, seg_id, with_defects)
-        print "... done"
         assert len(features) == len(labels)
 
         # TODO mask once implemented
         features_train.append(features)
         labels_train.append(labels)
 
-    print "Concatening feats..."
     features_train = np.concatenate(features_train, axis=0)
-    print "...done"
 
-    print "Concatening labels..."
     labels_train = np.concatenate(labels_train, axis=0)
-    print "...done"
 
-    print "rf should start now"
     rf = RandomForest(
         features_train,
         labels_train,
@@ -339,18 +339,10 @@ def learn_and_predict_higher_order_rf(
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id_train)
 
-    feature_aggregator = partial(
-        higher_order_feature_aggregator,
-        higher_order_feat_list=higher_order_feat_list,
-        edge_feat_list=edge_feat_list,
-        anisotropy_factor=ExperimentSettings().anisotropy_factor,
-        use_2d=ExperimentSettings().use_2d,
-        with_defects=with_defects
-    )
-
     # we cache this in the ds_test cache folder
     # if caching random forests is activated (== rf_cache_folder is not None)
-    if ExperimentSettings().rf_cache_folder is not None:  # cache-folder exists => look if we already have a prediction
+    cache_folder = ExperimentSettings().rf_cache_folder
+    if cache_folder is not None:  # cache-folder exists => look if we already have a prediction
 
         pred_name = "junction_prediction_" + "_".join([trainstr, teststr, paramstr]) + ".h5"
         if len(pred_name) >= 256:
@@ -362,6 +354,15 @@ def learn_and_predict_higher_order_rf(
             print "Loading prediction from:"
             print pred_path
             return vigra.readHDF5(pred_path, 'data')
+
+    feature_aggregator = partial(
+        higher_order_feature_aggregator,
+        higher_order_feat_list=higher_order_feat_list,
+        edge_feat_list=edge_feat_list,
+        anisotropy_factor=ExperimentSettings().anisotropy_factor,
+        use_2d=ExperimentSettings().use_2d,
+        with_defects=with_defects
+    )
 
     # learn the rf
     rf = learn_higher_order_rf(trainsets, seg_id_train, feature_aggregator, trainstr, paramstr, with_defects)
@@ -378,7 +379,8 @@ def learn_and_predict_higher_order_rf(
     if ExperimentSettings().use_junction_permutations:
         junction_probs = permutations_to_junction_probs(junction_probs)
 
-    # TODO cache
+    if cache_folder is not None:
+        vigra.writeHDF5(junction_probs, pred_path, 'data')
 
     return junction_probs
 
@@ -444,19 +446,25 @@ def project_junction_probs_to_edges(ds, seg_id, junction_probs):
     edge_probs = np.zeros(n_edges, dtype='float32')
 
     for j_id, probs in enumerate(junction_probs):
+
         edges = junctions_to_edges[j_id]
         # write probabilities to the edges according to the states of this junction
         for s_id in range(1, len(states)):
-            active_edges = np.array(states[s_id]) == 1
-            edge_probs[edges[active_edges]] += probs[s_id]
-
-    # normalize the projected edge probabilities
-    edge_count *= 3  # each edge has 3 probabilities for state 1 per junction
-    edge_probs[edges_with_junctions] /= edge_count
+            active_edges = edges[np.array(states[s_id]) == 1]
+            edge_probs[active_edges] += probs[s_id]
 
     # make sure that edges without junctions (z-edges) have no prob.
-    no_junction_edges = np.ones(n_edges, dtype=bool)
-    no_junction_edges[edges_with_junctions] = False
-    assert (edge_probs[no_junction_edges] == 0).all()
+    edges_without_junctions = np.ones(n_edges, dtype=bool)
+    edges_without_junctions[edges_with_junctions] = False
+    assert (edge_probs[edges_without_junctions] == 0).all()
+
+    # normalize the projected edge probabilities
+    assert (edge_count > 0).all(), "\n%i / \n%i" % (np.sum(edge_count > 0), len(edges_with_junctions))
+
+    edge_probs[edges_with_junctions] /= edge_count
+
+    # FIXME this should not happen
+    edge_probs = np.clip(edge_probs, 0., 1.)
+    assert (edge_probs <= 1.).all(), "\n%i / \n%i" % (np.sum(edge_probs <= 1), len(edge_probs))
 
     return edge_probs

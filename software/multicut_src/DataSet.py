@@ -1226,10 +1226,12 @@ class DataSet(object):
         rag = self.rag(seg_id)
 
         # length / area of the edge
+        # TODO use accumulateEdgeMeanAndLength instead
         topo_feats = nrag.accumulateMeanAndLength(
             rag,
             np.zeros(self.shape, dtype='float32')  # fake data
         )[0][:, 1:]
+        assert len(topo_feats) == rag.numberOfEdges
         topo_feat_names = ["TopologyFeatures_EdgeLengths"]
 
         # extra feats for z-edges in 2,5 d

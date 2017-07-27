@@ -26,19 +26,19 @@ def _get_feat_str(feature_list):
     return feat_str
 
 
-def run_mc_solver(n_var, uv_ids, edge_energies):
+def run_mc_solver(n_var, uv_ids, edge_costs):
 
     # solve the multicut witht the given solver
     if ExperimentSettings().solver == "multicut_exact":
-        mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_energies)
+        mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_costs)
     elif ExperimentSettings().solver == "multicut_fusionmoves":
-        mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var, uv_ids, edge_energies, ExperimentSettings().n_threads)
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var, uv_ids, edge_costs, ExperimentSettings().n_threads)
     elif ExperimentSettings().solver == "multicut_message_passing":
         print "WARNING: message passing multicut is experimental and not supported in conda version yet"
         mc_node, mc_energy, t_inf = multicut_message_passing(
             n_var,
             uv_ids,
-            edge_energies,
+            edge_costs,
             ExperimentSettings().n_threads
         )
     else:

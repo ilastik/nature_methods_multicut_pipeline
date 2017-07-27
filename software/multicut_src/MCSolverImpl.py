@@ -21,11 +21,26 @@ except ImportError:
 
 
 ###
-# Functions for edgeprobabilities to edge energies
+# Functions for edgeprobabilities to edge costs
 ###
 
-# calculate the energies for the multicut from membrane probabilities
+
+# helper function to transfrom probabilities to costs, without performing any weighting
+def to_costs(probabilities, beta=.5):
+
+    # scale the probabilities
+    # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
+    p_min = 0.001
+    p_max = 1. - p_min
+    probabilities = (p_max - p_min) * probabilities + p_min
+
+    # probabilities to costs, second term is boundary bias
+    return np.log((1. - probabilities) / probabilities) + np.log((1. - beta) / beta)
+
+
+# calculate the costs for the multicut from membrane probabilities
 # the last argument is only for caching correctly with different feature combinations
+# TODO rename -> probs_to_costs
 @cacher_hdf5(ignoreNumpyArrays=True)
 def probs_to_energies(
     ds,
@@ -37,14 +52,7 @@ def probs_to_energies(
     feat_cache
 ):
 
-    # scale the probabilities
-    # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
-    p_min = 0.001
-    p_max = 1. - p_min
-    edge_probs = (p_max - p_min) * edge_probs + p_min
-
-    # probabilities to energies, second term is boundary bias
-    edge_energies = np.log((1. - edge_probs) / edge_probs) + np.log((1. - beta) / beta)
+    edge_costs = to_costs(edge_probs, beta)
 
     if weighting_scheme in ("z", "xyz", "all"):
         edge_areas       = ds.topology_features(seg_id, False)[:, 0].astype('uint32')
@@ -53,47 +61,47 @@ def probs_to_energies(
     # weight edges
     if weighting_scheme == "z":
         print "Weighting Z edges"
-        edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, weight)
+        edge_costs = weight_z_edges(edge_costs, edge_areas, edge_indications, weight)
     elif weighting_scheme == "xyz":
         print "Weighting xyz edges"
-        edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight)
+        edge_costs = weight_xyz_edges(edge_costs, edge_areas, edge_indications, weight)
     elif weighting_scheme == "all":
         print "Weighting all edges"
-        edge_energies = weight_all_edges(edge_energies, edge_areas, weight)
+        edge_costs = weight_all_edges(edge_costs, edge_areas, weight)
 
     # set the edges within the segmask to be maximally repulsive
     if ds.has_seg_mask:
         uv_ids = ds.uv_ids(seg_id)
         ignore_mask = (uv_ids == ExperimentSettings().ignore_seg_value).any(axis=1)
-        edge_energies[ignore_mask] = 2 * edge_energies.min()
+        edge_costs[ignore_mask] = 2 * edge_costs.min()
 
-    return edge_energies
+    return edge_costs
 
 
 # weight z edges with their area
-def weight_z_edges(edge_energies, edge_areas, edge_indications, weight):
-    assert edge_areas.shape[0] == edge_energies.shape[0], "%s, %s" % (str(edge_areas.shape), str(edge_energies.shape))
-    assert edge_indications.shape[0] == edge_energies.shape[0]
+def weight_z_edges(edge_costs, edge_areas, edge_indications, weight):
+    assert edge_areas.shape[0] == edge_costs.shape[0], "%s, %s" % (str(edge_areas.shape), str(edge_costs.shape))
+    assert edge_indications.shape[0] == edge_costs.shape[0]
 
-    energies_return = np.zeros_like(edge_energies)
+    costs_return = np.zeros_like(edge_costs)
     # z - edges are indicated with 0 !
     area_z_max = float(np.max(edge_areas[edge_indications == 0]))
 
     # we only weight the z edges !
     w = weight * edge_areas[edge_indications == 0] / area_z_max
-    energies_return[edge_indications == 0] = np.multiply(w, edge_energies[edge_indications == 0])
-    energies_return[edge_indications == 1] = edge_energies[edge_indications == 1]
+    costs_return[edge_indications == 0] = np.multiply(w, edge_costs[edge_indications == 0])
+    costs_return[edge_indications == 1] = edge_costs[edge_indications == 1]
 
-    return energies_return
+    return costs_return
 
 
 # weight z edges with their area and xy edges with their length
 # this is (probably) better than treating xy and z edges the same
-def weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight):
-    assert edge_areas.shape[0] == edge_energies.shape[0]
-    assert edge_indications.shape[0] == edge_energies.shape[0]
+def weight_xyz_edges(edge_costs, edge_areas, edge_indications, weight):
+    assert edge_areas.shape[0] == edge_costs.shape[0]
+    assert edge_indications.shape[0] == edge_costs.shape[0]
 
-    energies_return = np.zeros_like(edge_energies)
+    costs_return = np.zeros_like(edge_costs)
 
     # z - edges are indicated with 0 !
     area_z_max = float(np.max(edge_areas[edge_indications == 0]))
@@ -101,46 +109,46 @@ def weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight):
 
     # weight the z edges !
     w_z = weight * edge_areas[edge_indications == 0] / area_z_max
-    energies_return[edge_indications == 0] = np.multiply(w_z, edge_energies[edge_indications == 0])
+    costs_return[edge_indications == 0] = np.multiply(w_z, edge_costs[edge_indications == 0])
 
     w_xy = weight * edge_areas[edge_indications == 1] / len_xy_max
-    energies_return[edge_indications == 1] = np.multiply(w_xy, edge_energies[edge_indications == 1])
+    costs_return[edge_indications == 1] = np.multiply(w_xy, edge_costs[edge_indications == 1])
 
-    return energies_return
+    return costs_return
 
 
 # weight all edges with their length / area irrespective of them being xy or z
 # note that this is the only weighting we can do for 3d-superpixel !
-def weight_all_edges(edge_energies, edge_areas, weight):
-    assert edge_areas.shape[0] == edge_energies.shape[0]
+def weight_all_edges(edge_costs, edge_areas, weight):
+    assert edge_areas.shape[0] == edge_costs.shape[0]
 
-    energies_return = np.zeros_like(edge_energies)
+    costs_return = np.zeros_like(edge_costs)
 
     area_max = float(np.max(edge_areas))
     w = weight * edge_areas / area_max
-    energies_return = np.multiply(w, edge_energies)
+    costs_return = np.multiply(w, edge_costs)
 
-    return energies_return
+    return costs_return
 
 
-def nifty_objective(n_var, uv_ids, edge_energies):
-    assert uv_ids.shape[0] == edge_energies.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_energies.shape[0])
+def nifty_objective(n_var, uv_ids, edge_costs):
+    assert uv_ids.shape[0] == edge_costs.shape[0], str(uv_ids.shape[0]) + " , " + str(edge_costs.shape[0])
     assert np.max(uv_ids) == n_var - 1, str(np.max(uv_ids)) + " , " + str(n_var - 1)
     g = nifty.graph.UndirectedGraph(int(n_var))
     g.insertEdges(uv_ids)
-    assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
+    assert g.numberOfEdges == edge_costs.shape[0], "%i , %i" % (g.numberOfEdges, edge_costs.shape[0])
     assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
-    return nifty.graph.optimization.multicut.multicutObjective(g, edge_energies)
+    return nifty.graph.optimization.multicut.multicutObjective(g, edge_costs)
 
 
 def multicut_exact(
-        n_var,
-        uv_ids,
-        edge_energies,
-        return_obj=False
+    n_var,
+    uv_ids,
+    edge_costs,
+    return_obj=False
 ):
 
-    obj = nifty_objective(n_var, uv_ids, edge_energies)
+    obj = nifty_objective(n_var, uv_ids, edge_costs)
 
     solver = obj.multicutIlpFactory(
         ilpSolver=ilp_bkend,
@@ -165,15 +173,15 @@ def multicut_exact(
 
 
 def multicut_message_passing(
-        n_var,
-        uv_ids,
-        edge_energies,
-        n_threads=0,
-        return_obj=False
+    n_var,
+    uv_ids,
+    edge_costs,
+    n_threads=0,
+    return_obj=False
 ):
 
     assert nifty.Configuration.WITH_LP_MP, "Message passing multicut needs nifty build with LP_MP"
-    obj = nifty_objective(n_var, uv_ids, edge_energies)
+    obj = nifty_objective(n_var, uv_ids, edge_costs)
 
     # TODO params params params
     solver = obj.multicutMpFactory(n_threads=n_threads).create(obj)
@@ -191,14 +199,14 @@ def multicut_message_passing(
 
 
 def multicut_fusionmoves(
-        n_var,
-        uv_ids,
-        edge_energies,
-        n_threads=0,
-        return_obj=False
+    n_var,
+    uv_ids,
+    edge_costs,
+    n_threads=0,
+    return_obj=False
 ):
 
-    obj = nifty_objective(n_var, uv_ids, edge_energies)
+    obj = nifty_objective(n_var, uv_ids, edge_costs)
 
     # initialize the fusion moves solver with the greedy and
     # kernighan lin solution
@@ -243,19 +251,22 @@ def multicut_fusionmoves(
 
 # needs opengm
 def export_opengm_model(
-        n_var,
-        uv_ids,
-        edge_energies,
-        out_file):
+    n_var,
+    uv_ids,
+    edge_costs,
+    out_file
+):
 
     import opengm
     states = np.ones(n_var) * n_var
     gm_global = opengm.gm(states)
     # potts model
     potts_shape = [n_var, n_var]
-    potts = opengm.pottsFunctions(potts_shape,
-                                  np.zeros_like(edge_energies),
-                                  edge_energies)
+    potts = opengm.pottsFunctions(
+        potts_shape,
+        np.zeros_like(edge_costs),
+        edge_costs
+    )
     # potts model to opengm function
     fids_b = gm_global.addFunctions(potts)
     gm_global.addFactors(fids_b, uv_ids.astype('uint32'))
