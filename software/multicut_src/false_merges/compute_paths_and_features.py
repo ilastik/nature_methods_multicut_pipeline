@@ -169,7 +169,7 @@ def path_feature_aggregator(
 
             logger.debug('Computing path lengths ...')
 
-            feature_space.append(compute_path_lengths(paths, [anisotropy_factor, 1., 1.]))
+            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]))
 
             logger.debug('... done computing path lengths!')
 
@@ -245,6 +245,42 @@ def path_feature_aggregator(
 
             logger.debug('... done computing cut features!')
 
+        if feature == 'cut_features_whole_plane':
+
+            logger.debug('Computing cut features for whole cutting plane ...')
+
+            # Make sure all necessary information is supplied
+            assert mc_segmentation is not None, 'Supply a multicut segmentation when using cut features!'
+            assert paths_to_objs is not None, 'Supply an object to path dictionary when using cut features!'
+
+            # Convert paths_to_objs list to objs_to_paths dictionary
+            objs_to_paths = make_objs_to_paths_dict(paths_to_objs, paths)
+
+            if not ExperimentSettings().use_probs_map_for_cut_features:
+                assert train_sets is not None, 'Supply train sets when using cut features!'
+                # FIXME consider integrating the feature list into ExperimentSettings
+                from multicut_src import learn_and_predict_rf_from_gt
+                edge_probabilities = learn_and_predict_rf_from_gt(
+                    train_sets, ds, seg_id, seg_id, ['raw', 'prob', 'reg'],
+                    with_defects=False,
+                    use_2rfs=ExperimentSettings().use_2rfs
+                )
+
+            else:
+                # TODO: Load edge features and take first channel (see notes)
+                assert path_to_edge_features is not None, 'Supply a path to edge features when using cut features!'
+                edge_probabilities = vigra.readHDF5(path_to_edge_features, 'data')[:, 0]
+
+            feature_space.append(cut_features_with_region_whole_plane(
+                ds, seg_id, mc_segmentation, objs_to_paths,
+                edge_probabilities,
+                ExperimentSettings().anisotropy_factor,
+                ['raw', 'prob', 'distance_transform'],
+                'watershed'
+            ))
+
+            logger.debug('... done computing cut features!')
+
     logger.info('Finished path_feature_aggregator!')
 
     return np.concatenate(feature_space, axis=1)
@@ -252,7 +288,8 @@ def path_feature_aggregator(
 
 # TODO this could be parallelized over the paths
 # compute the path lens for all paths
-def compute_path_lengths(paths, anisotropy):
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+def compute_path_lengths(ds, paths, anisotropy):
     """
     Computes the length of a path
 
@@ -414,12 +451,12 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     n_var = uv_local.max() + 1
 
     return local_uv_mask, mapping, uv_local, n_var
-
+    #
     # reverse_mapping = {val: key for key, val in mapping.iteritems()}
     # save_im = np.zeros(mc_segmentation.shape)
-    # for item in seg_ids:
-    #     # save_im[seg == reverse_mapping[item]] = 1
-    #     save_im[seg == item] = 1
+    # for item in seg_ids_local:
+    #     save_im[seg == reverse_mapping[item]] = 1
+    #     # save_im[seg == item] = 1
     #
     # node_labels = seg_ids_local
     # obj_id=6
@@ -432,7 +469,6 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     # split_obj_im = ds.project_mc_result(0, node_labels_global)
     # save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
     # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
-
 
 
 @cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
@@ -1307,16 +1343,24 @@ def cut_features_with_region(
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-def cut_features_whole_plane(
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+def cut_features_with_region_whole_plane(
         ds,
         seg_id,
         mc_segmentation,
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-        edge_weights,
+        edge_probabilities,
         anisotropy_factor,
-        feat_list=['raw', 'prob', 'distance_transform'],
-        cut_method='watershed'
+        feat_list,
+        cut_method
 ):
+
+    if feat_list is None:
+        feat_list = ['raw', 'prob', 'distance_transform']
+    if cut_method is None:
+        cut_method = 'watershed'
+
+    logger.debug('Start cut features for whole plane')
 
     cutters = {
         'watershed': cut_watershed,
@@ -1327,42 +1371,15 @@ def cut_features_whole_plane(
     assert cut_method in cutters
     cutter = cutters[cut_method]
 
+    p_min = 0.001
+    p_max = 1. - p_min
+    edge_weights = (p_max - p_min) * edge_probabilities + p_min
+    edge_weights = np.log((1 - edge_weights) / edge_weights)
+
     seg = ds.seg(seg_id)
     uv_ids = ds.uv_ids(seg_id)
 
-    # find the global and local edge ids along the path, as well as the local
-    # start and ed point of the path
-    def edges_along_path(path, mapping, uvs_local):
-
-        edge_ids = []
-        edge_ids_local = []
-
-        u = seg[tuple(path[0])]
-        u_local = mapping[seg[tuple(path[0])]]
-
-        # find edge-ids along the path
-        # if this turns out to be a bottleneck, we can c++ it
-        for p in path[1:]:
-
-            v = seg[tuple(p)]
-            v_local = mapping[seg[tuple(p)]]
-
-            if u != v:
-                uv = np.array([[min(u, v), max(u, v)]])
-                uv_local = np.array([[min(u_local, v_local), max(u_local, v_local)]])
-
-                edge_id = find_matching_row_indices(uv_ids, uv)[0, 0]
-                edge_id_local = find_matching_row_indices(uvs_local, uv_local)[0, 0]
-
-                edge_ids.append(edge_id)
-                edge_ids_local.append(edge_id_local)
-
-            u = v
-            u_local = v_local
-
-        return np.array(edge_ids), np.array(edge_ids_local)
-
-    # get the edge features already calculated for the mc-ppl
+    # Get the edge features already calculated for the mc-ppl
     edge_features = []
     if 'raw' in feat_list:
         edge_features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
@@ -1373,35 +1390,85 @@ def cut_features_whole_plane(
         edge_features.append(ds.edge_features(seg_id, 2, anisotropy_factor))
     edge_features = np.concatenate(edge_features, axis=1)
 
+    # Get the local region features already calculated for the mc_ppl
+    region_features = ds.region_features(
+        seg_id, 0, uv_ids,
+        False
+    )
+
     n_paths = np.sum([len(paths) for _, paths in objs_to_paths.iteritems()])
 
     # Initialize features matrix
     # Factor of three as we use the min, max, and average of the edges at the cutting site
-    features = np.zeros((n_paths, edge_features.shape[1] * 3), dtype='float32')
+    features = np.zeros((n_paths, edge_features.shape[1] * 3 + region_features.shape[1] * 3), dtype='float32')
 
-    # TODO parallelize
-    for obj_id in objs_to_paths:
+    logger.debug('Starting loops in cut features for whole plane')
 
-        local_uv_mask, mapping, reverse_mapping = extract_local_graph_from_segmentation(
-            ds,
-            seg_id,
-            mc_segmentation,
-            obj_id,
-            uv_ids,
-            uv_ids_lifted=None
-        )
-        uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+    # 1. ---------------------------
+    logger.debug('cut_features, step 1 #####################')
+    logger.debug('    Generating local uvs...')
 
+    mappings = {}
+    local_uv_masks = {}
+    n_vars = {}
+    uv_locals = {}
+
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+
+            local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = make_local_uv(
+                seg, mc_segmentation, uv_ids, obj_id
+            )
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                tasks[obj_id] = executor.submit(make_local_uv, seg, mc_segmentation, uv_ids, obj_id)
+            for obj_id in objs_to_paths:
+                local_uv_masks[obj_id], mappings[obj_id], uv_locals[obj_id], n_vars[obj_id] = tasks[obj_id].result()
+
+    # 2. ---------------------------
+    logger.debug('cut_features, step 2 #####################')
+    logger.debug('    Calculating local graph...')
+
+    weights_locals = {}
+    graph_locals = {}
+
+    def get_local_graph(edge_weights, local_uv_mask, n_var, uv_local):
         assert len(local_uv_mask) == len(edge_weights)
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
-        graph_local = nifty.graph.UndirectedGraph(uv_local.max() + 1)
+        graph_local = nifty.graph.UndirectedGraph(n_var)
         graph_local.insertEdges(uv_local)
 
+        return weights_local, graph_local
+
+    for obj_id in objs_to_paths:
+        weights_locals[obj_id], graph_locals[obj_id] = get_local_graph(
+            edge_weights, local_uv_masks[obj_id], n_vars[obj_id], uv_locals[obj_id]
+        )
+
+    # 3. ---------------------------
+    logger.debug('cut_features, step 3 #####################')
+    logger.debug('   Computing local two-coloring...')
+
+    # FIXME No speedup by parallelization achievable
+
+    local_two_colorings_s = {}
+    node_labelings_s = {}
+
+    def get_local_two_coloring(objs_to_path, mapping, graph_local, weights_local):
+
+        # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
-        for path_id, path in objs_to_paths[obj_id].iteritems():
-            edge_ids, edge_ids_local = edges_along_path(path, mapping, uv_local)
+        local_two_colorings = {}
+        node_labelings = {}
+        for path_id, path in objs_to_path.iteritems():
+            # logger.debug('------> path_id = {}'.format(path_id))
 
             # get source and sink
             # == start and end node of the path
@@ -1410,23 +1477,171 @@ def cut_features_whole_plane(
 
             # run cut with seeds at path end points
             # returns the cut edges
-            local_two_coloring = cutter(graph_local, weights_local, source, sink)
+            local_two_colorings[path_id], node_labelings[path_id] = cutter(graph_local, weights_local, source, sink)
 
-            # find the cut edge along the path
-            cut_edges = np.where(local_two_coloring == 1)[0]
-            # cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
+        return local_two_colorings, node_labelings
 
-            new_edge_feats = []
-            for cut_edge in cut_edges:
-                global_edge = edge_ids[edge_ids_local == cut_edge]
-                new_edge_feats.append(edge_features[global_edge[0], :])
+    for obj_id in objs_to_paths:
+        local_two_colorings_s[obj_id], node_labelings_s[obj_id] = get_local_two_coloring(
+            objs_to_paths[obj_id], mappings[obj_id], graph_locals[obj_id], weights_locals[obj_id]
+        )
 
-            new_edge_feats = np.array(new_edge_feats)
+    # # TODO: For debug purposes:
+    # # TODO: Restore the segmentation and save it as volume
+    # for obj_id in objs_to_paths:
+    #     for path_id, path in objs_to_paths[obj_id].iteritems():
+    #
+    #         if not local_two_colorings_s[obj_id][path_id].max():
+    #
+    #             # Make global list of node labels initialized to zero
+    #             node_labels_global = np.zeros((uv_ids.max() + 1,))
+    #             # Set the values of the local nodes to the respective label
+    #             reverse_mapping = {val: key for key, val in mappings[obj_id].iteritems()}
+    #             node_labels = node_labelings_s[obj_id][path_id].astype('uint32')
+    #             for node_label_id, node_label in enumerate(node_labels):
+    #                 node_labels_global[reverse_mapping[node_label_id]] = node_label + 1
+    #             split_obj_im = ds.project_mc_result(0, node_labels_global)
+    #             save_filepath = '/export/home/jhennies/debug/cut_features/{}_{}_{}.h5'.format(ds.ds_name, obj_id, path_id)
+    #             vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
-            features[path_id] = np.concatenate([
-                new_edge_feats.min(axis=0),
-                new_edge_feats.max(axis=0),
-                new_edge_feats.mean(axis=0)
-            ], axis=0)
+    # 4. ---------------------------
+    logger.debug('cut_features, step 4 #####################')
+    logger.debug('    Compute the edges along the paths...')
+
+
+    def get_local_edges(mapping, uvs_local, local_uv_mask):
+
+        edge_ids = np.where(local_uv_mask)[0]
+        edge_ids_local = np.array(range(0, len(uvs_local)))
+
+        return edge_ids, edge_ids_local
+
+
+    # FIXME This is still the bottleneck, but pretty much ok
+    # Parallelization speeds up a little bit
+
+    edge_ids_s = {}
+    edge_ids_locals = {}
+
+    if ExperimentSettings().n_threads == 1:
+
+        for obj_id in objs_to_paths:
+            for path_id, path in objs_to_paths[obj_id].iteritems():
+                edge_ids_s[(obj_id, path_id)], edge_ids_locals[(obj_id, path_id)] = get_local_edges(
+                    mappings[obj_id], uv_locals[obj_id], local_uv_masks[obj_id]
+                )
+
+    else:
+
+        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            tasks = {}
+            for obj_id in objs_to_paths:
+                for path_id, path in objs_to_paths[obj_id].iteritems():
+                    tasks[(obj_id, path_id)] = executor.submit(
+                        get_local_edges,
+                        mappings[obj_id], uv_locals[obj_id], local_uv_masks[obj_id]
+                    )
+            for idx, task in tasks.iteritems():
+                edge_ids_s[idx], edge_ids_locals[idx] = task.result()
+
+    # 5. ---------------------------
+    logger.debug('cut_features, step 5 #####################')
+    logger.debug('    Compute edge features...')
+
+    new_edge_feats_s_s = {}
+    new_region_feats_s_s = {}
+
+    def get_edge_feats(objs_to_path, local_two_colorings, edge_ids_s, edge_ids_locals):
+        new_edge_feats_s = {}
+        new_region_feats_s = {}
+
+        # logger.debug('---> for path_id, path in objs_to_paths[obj_id].iteritems(): ...')
+        # TODO run graphcut or edge based ws for each path, using end points as seeds
+        # determine the cut edge and append to feats
+        for path_id, path in objs_to_path.iteritems():
+            # logger.debug('------> path_id = {}'.format(path_id))
+
+            local_two_coloring = local_two_colorings[path_id]
+
+            edge_ids = edge_ids_s[(obj_id, path_id)]
+            edge_ids_local = edge_ids_locals[(obj_id, path_id)]
+
+            # FIXME: This should always be the case, still it happened -> nvestigate!
+            # FIXME: Remove this condition once the bug is found and fixed
+            # Apparently this happens when a path is very short and starts and ends in the same superpixel
+            # TODO: Possible solutions:
+            #   1. Generally remove small paths (beware of anisotropy)
+            #   2. Keep the condition below
+            #   3. Make sure small paths are not computed in the first place
+            #       a) Merge close border contacts if they belong to the same object
+            #       b) Do not compute a path if it would start and end in the same superpixel
+            if not local_two_coloring.max():
+
+                # Probably boundary intersection point calculation failed yielding a path starting
+                # and ending in [40, 0, 0] -> corner of the image
+                logger.warning('Local two coloring failed.')
+
+            else:
+
+                # find the cut edge along the path
+                cut_edges = np.where(local_two_coloring == 1)[0]
+                # cut_edges_on_path = np.intersect1d(cut_edges, edge_ids_local)
+
+                # TODO: Use average, min, and max
+                # # make sure we only have 1 cut edge
+                # # assert cut_edge_on_path.size == 1
+                # if cut_edges_on_path.size != 1:
+                #     print 'Warning: cut_edges_on_path.size = {}'.format(cut_edges_on_path.size)
+                # else:
+                #     print 'cut_edges_on_path.size = 1'
+                # cut_edges_on_path = cut_edges_on_path[0]
+
+                # # cut-edge project back to global edge-indexing and get according features
+                # global_edge = edge_ids[edge_ids_local == cut_edges_on_path]
+                # features[path_id] = edge_features[global_edge[0], :]
+
+                new_edge_feats = []
+                new_region_feats = []
+                for cut_edge in cut_edges:
+                    # global_edge = edge_ids[edge_ids_local == cut_edge]
+                    # new_edge_feats.append(edge_features[global_edge[0], :])
+                    # new_region_feats.append(region_features[global_edge[0], :])
+
+                    global_edge = edge_ids[edge_ids_local == cut_edge]
+                    new_edge_feats.append(edge_features[global_edge[0], :])
+                    new_region_feats.append(region_features[global_edge[0], :])
+
+                new_edge_feats_s[path_id] = np.array(new_edge_feats)
+                new_region_feats_s[path_id] = np.array(new_region_feats)
+
+        return new_edge_feats_s, new_region_feats_s
+
+    for obj_id in objs_to_paths:
+        new_edge_feats_s_s[obj_id], new_region_feats_s_s[obj_id] = get_edge_feats(
+            objs_to_paths[obj_id], local_two_colorings_s[obj_id], edge_ids_s, edge_ids_locals
+        )
+
+    # 6. ---------------------------
+    logger.debug('cut features, step 6 #####################')
+    logger.debug('    Concatenating features...')
+    for obj_id, new_edge_feats_s in new_edge_feats_s_s.iteritems():
+        for path_id, new_edge_feats in new_edge_feats_s.iteritems():
+
+            if new_edge_feats.any():
+                features[path_id, :edge_features.shape[1] * 3] = np.concatenate([
+                    new_edge_feats.min(axis=0),
+                    new_edge_feats.max(axis=0),
+                    new_edge_feats.mean(axis=0)
+                ], axis=0)
+
+            new_region_feats = new_region_feats_s_s[obj_id][path_id]
+            if new_region_feats.any():
+                features[path_id, edge_features.shape[1] * 3:] = np.concatenate([
+                    new_region_feats.min(axis=0),
+                    new_region_feats.max(axis=0),
+                    new_region_feats.mean(axis=0),
+                ], axis=0)
+
+    logger.debug('End of cut features for whole plane')
 
     return features

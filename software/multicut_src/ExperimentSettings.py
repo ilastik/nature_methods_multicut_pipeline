@@ -102,5 +102,4 @@ class ExperimentSettings(object):
         self.paths_avoid_duplicates = True
         self.min_nh_range = 5
         self.max_sample_size = 20
-        self.paths_penalty_power = 10
         self.lifted_path_weights_factor = 1.
