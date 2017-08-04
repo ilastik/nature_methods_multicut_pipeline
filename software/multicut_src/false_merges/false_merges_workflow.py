@@ -11,8 +11,10 @@ import cPickle as pickle
 from copy import deepcopy
 from skimage.morphology import skeletonize_3d
 from Queue import LifoQueue
+from Queue import Queue
 from time import time
 import h5py
+from math import sqrt
 import nifty_with_cplex as nifty
 from skimage.measure import label
 from time import time
@@ -44,33 +46,6 @@ except ImportError:
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-
-
-def close_cavities(init_volume):
-    """close cavities in segments so skeletonization don't bugs"""
-
-    print "looking for open cavities inside the object..."
-    volume=deepcopy(init_volume)
-    volume[volume==0]=2
-    lab=label(volume)
-
-    if len(np.unique(lab))==2:
-        print "No cavities to close!"
-        return init_volume
-
-    count,what=0,0
-
-    for uniq in np.unique(lab):
-        if len(np.where(lab == uniq)[0])> count:
-            count=len(np.where(lab == uniq)[0])
-            what=uniq
-
-    volume[lab==what]=0
-    volume[lab != what] = 1
-
-    print "cavities closed"
-
-    return volume
 
 
 def check_box(volume, point, is_queued_map, is_node_map, stage=1):
@@ -118,9 +93,11 @@ def check_box(volume, point, is_queued_map, is_node_map, stage=1):
 
 def init(volume):
     """searches for the first node to start with"""
-    if len(np.where(volume)[0]) == 0:
+    where=np.where(volume)
+
+    if len(where[0]) == 0:
         return np.array([-1, -1, -1])
-    point = np.array((np.where(volume)[:][0][0], np.where(volume)[:][1][0], np.where(volume)[:][2][0]))
+    point = np.array((where[:][0][0], where[:][1][0], where[:][2][0]))
 
     is_queued_map = np.zeros(volume.shape, dtype=int)
     is_queued_map[point[0], point[1], point[2]] = 1
@@ -139,11 +116,11 @@ def init(volume):
     return point
 
 
-def stage_one(img, dt):
+def stage_one(skel_img, dt):
     """stage one, finds all nodes and edges, except for loops"""
 
     # initializing
-    volume = deepcopy(img)
+    volume = deepcopy(skel_img)
     is_queued_map = np.zeros(volume.shape, dtype=int)
     is_node_map = np.zeros(volume.shape, dtype=int)
     is_term_map = np.zeros(volume.shape, dtype=int)
@@ -160,7 +137,7 @@ def stage_one(img, dt):
     node_list = []
     length = 0
     if (point == np.array([-1, -1, -1])).all():
-        return is_node_map, is_term_map, is_branch_map, nodes, edges
+        return is_node_map, is_term_map, is_branch_map, nodes, edges, loop_list
 
     is_queued_map[point[0], point[1], point[2]] = 1
     not_queued, is_node_list, are_near = check_box(volume, point, is_queued_map, is_node_map)
@@ -172,7 +149,7 @@ def stage_one(img, dt):
         nodes = {}
         point = init(volume)
         if (point == np.array([-1, -1, -1])).all():
-            return is_node_map, is_term_map, is_branch_map, nodes, edges
+            return is_node_map, is_term_map, is_branch_map, nodes, edges,loop_list
         is_queued_map[point[0], point[1], point[2]] = 1
         not_queued, is_node_list, are_near = check_box(volume, point, is_queued_map, is_node_map)
         nodes[current_node] = point
@@ -206,8 +183,12 @@ def stage_one(img, dt):
         if len(not_queued) == 1:
             dt_list.extend([dt[point[0], point[1], point[2]]])
             edge_list.extend([[point[0], point[1], point[2]]])
-            length = length + np.linalg.norm(
-                [point[0] - not_queued[0][0], point[1] - not_queued[0][1], (point[2] - not_queued[0][2]) * 10])
+
+            length = length + sqrt(
+                (point[0] - not_queued[0][0])*(point[0] - not_queued[0][0])+
+                 (point[1] - not_queued[0][1])*(point[1] - not_queued[0][1])+
+                 ((point[2] - not_queued[0][2]) * 10)*((point[2] - not_queued[0][2]) * 10))
+
             queue.put(np.array([not_queued[0], current_node, length, edge_list, dt_list]))
             is_queued_map[not_queued[0][0], not_queued[0][1], not_queued[0][2]] = 1
             branch_point_list.extend([[point[0], point[1], point[2]]])
@@ -242,7 +223,11 @@ def stage_one(img, dt):
             node_list.extend([[point[0], point[1], point[2]]])
             # putting node branches in the queue
             for x in not_queued:
-                length = np.linalg.norm([point[0] - x[0], point[1] - x[1], (point[2] - x[2]) * 10])
+
+                length = sqrt((point[0] - x[0])*(point[0] - x[0])+
+                               (point[1] - x[1])*(point[1] - x[1])+
+                               ((point[2] - x[2]) * 10)*((point[2] - x[2]) * 10))
+
                 queue.put(np.array([x, last_node, length,
                                     [[point[0], point[1], point[2]]],
                                     [dt[point[0], point[1], point[2]]]]))
@@ -264,17 +249,20 @@ def stage_one(img, dt):
     return is_node_map, is_term_map, is_branch_map, nodes, edges, loop_list
 
 
-def stage_two(is_node_map, is_term_map, edges, dt):
+def stage_two(is_node_map, list_term, edges, dt):
     """finds edges for loops"""
+    i=0
 
-    list_term = np.array(np.where(is_term_map)).transpose()
 
     for point in list_term:
         _, _, list_near_nodes = check_box(is_node_map, point, np.zeros(is_node_map.shape, dtype=int),
                                           np.zeros(is_node_map.shape, dtype=int), 2)
 
-        assert (len(list_near_nodes) == 0)
+        if len(list_near_nodes) != 0:
+            i=i+1
 
+    assert (i < 2)
+        #
         #     if len(list_near_nodes) != 0:
         #
         #         assert()
@@ -300,10 +288,9 @@ def stage_two(is_node_map, is_term_map, edges, dt):
         # return edges,is_term_map
 
 
-def form_term_list(is_term_map):
+def form_term_list(term_where,is_term_map):
     """returns list of terminal points taken from an image"""
 
-    term_where = np.array(np.where(is_term_map)).transpose()
     term_list = []
     for point in term_where:
         term_list.extend([is_term_map[point[0], point[1], point[2]]])
@@ -312,19 +299,21 @@ def form_term_list(is_term_map):
     return term_list
 
 
-def skeleton_to_graph(img, dt):
+def skeleton_to_graph(skel_img, dt):
     """main function, wraps up stage one and two"""
 
     time_before_stage_one_1 = time()
-    is_node_map, is_term_map, is_branch_map, nodes, edges, loop_list = stage_one(img, dt)
-    if len(nodes) == 0:
-        return nodes, np.array(edges), [], is_node_map
+    is_node_map, is_term_map, is_branch_map, nodes, edges, loop_list = stage_one(skel_img, dt)
+    if len(nodes) < 2:
+        return nodes, np.array(edges), [], is_node_map,loop_list
 
-    edges, is_term_map = stage_two(is_node_map, is_term_map, edges, dt)
+    list_term_unfinished = np.array(np.where(is_term_map)).transpose()
+
+    stage_two(is_node_map, list_term_unfinished, edges, dt)
 
     edges = [[a, b, c, max(d)] for a, b, c, d in edges]
 
-    term_list = form_term_list(is_term_map)
+    term_list = form_term_list(list_term_unfinished,is_term_map)
     term_list -= 1
     # loop_list -= 1
     return nodes, np.array(edges), term_list, is_node_map, loop_list
@@ -396,6 +385,290 @@ def check_connected_components(g):
     assert n_ccs == 1, str(n_ccs)
 
 
+
+def terminal_func(start_queue,g,finished_dict,node_dict,main_dict,edges,nodes_list):
+
+
+
+    queue = Queue()
+
+    while start_queue.qsize():
+
+        # draw from queue
+        current_node, label = start_queue.get()
+
+
+        #check the adjacency
+        adjacency = np.array([[adj_node, adj_edge] for adj_node, adj_edge
+                              in g.nodeAdjacency(current_node)])
+
+        # assert(len(adjacency)<3), "terminal points can not have 3 adjacent neighbors," \
+        #                           " only a maximum of 2 in loops"
+        #
+
+        # #for
+        # if current_node==7:
+        #     print "hi"
+        #     print "hi"
+        #
+        #     adjacency=np.array([neighbor for neighbor in adjacency
+        #                if neighbor[0] not in term_list])
+
+        assert(len(adjacency) == 1)
+
+        # for terminating points
+        if len(adjacency) == 1:
+
+            if (edges[adjacency[0][1]][2][0]==np.array(nodes_list[current_node+1])).all():
+
+                main_dict[current_node] = [[current_node, adjacency[0][0]],
+                                           edges[adjacency[0][1]][1],
+                                           edges[adjacency[0][1]][2],
+                                           adjacency[0][1],
+                                           edges[adjacency[0][1]][3]]
+
+            else:
+
+                main_dict[current_node] = [[current_node, adjacency[0][0]],
+                                           edges[adjacency[0][1]][1],
+                                           edges[adjacency[0][1]][2][::-1],
+                                           adjacency[0][1],
+                                           edges[adjacency[0][1]][3]]
+
+            # if adjacent node was already visited
+            if adjacency[0][0] in node_dict.keys():
+
+                node_dict[adjacency[0][0]][0].remove(current_node)
+                node_dict[adjacency[0][0]][2].remove(adjacency[0][1])
+
+                # if this edge is longer than already written edge
+                if (edges[adjacency[0][1]][1]/edges[adjacency[0][1]][3]) >= \
+                        (main_dict[node_dict[adjacency[0][0]][1]][1]/
+                             main_dict[node_dict[adjacency[0][0]][1]][4]):
+
+                    finished_dict[node_dict[adjacency[0][0]][1]] \
+                        = deepcopy(main_dict[node_dict[adjacency[0][0]][1]])
+
+                    #get unique rows
+                    # finished_dict[node_dict[adjacency[0][0]][1]][2]= \
+                        # get_unique_rows(np.array
+                        #                 (finished_dict[node_dict[adjacency[0][0]][1]][2]))
+                    del main_dict[node_dict[adjacency[0][0]][1]]
+                    node_dict[adjacency[0][0]][1] = current_node
+
+                else:
+
+                    finished_dict[current_node] = deepcopy(main_dict[current_node])
+
+                    # get unique rows
+                    # finished_dict[current_node][2]=\
+                    #     get_unique_rows(np.array(finished_dict[current_node][2]))
+                    del main_dict[current_node]
+
+            # create new dict.key for adjacent node
+            else:
+
+                node_dict[adjacency[0][0]] = [[adj_node for adj_node, adj_edge
+                                               in g.nodeAdjacency(adjacency[0][0])
+                                               if adj_node != current_node],
+                                              current_node,
+                                              [adj_edge for adj_node, adj_edge
+                                               in g.nodeAdjacency(adjacency[0][0])
+                                               if adj_edge != adjacency[0][1]]]
+
+            # if all except one branches reached the adjacent node
+            if len(node_dict[adjacency[0][0]][0]) == 1:
+
+
+                # writing new node to label
+                main_dict[node_dict[adjacency[0][0]][1]][0].\
+                    extend([node_dict[adjacency[0][0]][0][0]])
+
+                #comparing maximum of dt
+                if main_dict[node_dict[adjacency[0][0]][1]][4] <\
+                        edges[node_dict[adjacency[0][0]][2][0]][3]:
+
+                    main_dict[node_dict[adjacency[0][0]][1]][4]=\
+                        edges[node_dict[adjacency[0][0]][2][0]][3]
+
+                # adding length to label
+                main_dict[node_dict[adjacency[0][0]][1]][1] += \
+                    edges[node_dict[adjacency[0][0]][2][0]][1]
+
+                # adding path to next node to label
+                if main_dict[node_dict[adjacency[0][0]][1]][2][-1]==\
+                        edges[node_dict[adjacency[0][0]][2][0]][2][-1]:
+
+                    main_dict[node_dict[adjacency[0][0]][1]][2].extend(
+                        edges[node_dict[adjacency[0][0]][2][0]][2][-2::-1])
+
+                # adding path to next node to label
+                else:
+
+                    main_dict[node_dict[adjacency[0][0]][1]][2].extend(
+                        edges[node_dict[adjacency[0][0]][2][0]][2][1:])
+
+                #adding edge number to label
+                main_dict[node_dict[adjacency[0][0]][1]][3]=\
+                    node_dict[adjacency[0][0]][2][0]
+
+                # putting next
+                queue.put([node_dict[adjacency[0][0]][0][0],
+                           node_dict[adjacency[0][0]][1]])
+
+                # deleting node from dict
+                del node_dict[adjacency[0][0]]
+
+
+    return queue,finished_dict,node_dict,main_dict
+
+
+
+
+
+#TODO check whether edgelist and termlist is ok (because of -1)
+def graph_pruning(g,term_list,edges,nodes_list):
+
+    finished_dict={}
+    node_dict={}
+    main_dict={}
+    start_queue=Queue()
+    last_dict={}
+
+    for term_point in term_list:
+        start_queue.put([term_point,term_point])
+
+
+    queue,finished_dict,node_dict,main_dict = \
+        terminal_func (start_queue, g, finished_dict,
+                       node_dict, main_dict, edges,nodes_list)
+
+
+
+    while queue.qsize():
+        test_len1=len(main_dict.keys())
+
+        # draw from queue
+        current_node, label = queue.get()
+
+
+        # if current node was already visited at least once
+        if current_node in node_dict.keys():
+
+
+            # remove previous node from adjacency
+            node_dict[current_node][0].remove(main_dict[label][0][-2])
+
+            # remove previous edge from adjacency
+            node_dict[current_node][2].remove(main_dict[label][3])
+
+
+            # if current label is longer than longest in node
+            if (main_dict[label][1]/main_dict[label][4]) >= \
+                    (main_dict[node_dict[current_node][1]][1]/
+                         main_dict[node_dict[current_node][1]][4]):
+
+
+                # finishing previous longest label
+                finished_dict[node_dict[current_node][1]] \
+                    = deepcopy(main_dict[node_dict[current_node][1]])
+                del main_dict[node_dict[current_node][1]]
+
+                # get unique rows
+                # finished_dict[node_dict[current_node][1]][2]\
+                #     =get_unique_rows(np.array
+                #                      (finished_dict[node_dict[current_node][1]][2]))
+
+                # writing new label to longest in node
+                node_dict[current_node][1]=label
+
+
+            else:
+
+                #finishing this label
+                finished_dict[label] = deepcopy(main_dict[label])
+
+                # get unique rows
+                # finished_dict[label][2]=\
+                #     get_unique_rows(np.array(finished_dict[label][2]))
+
+                del main_dict[label]
+
+
+
+        else:
+
+            #create new entry for this node
+            node_dict[current_node] = [[adj_node for adj_node, adj_edge
+                                           in g.nodeAdjacency(current_node)
+                                           if adj_node != main_dict[label][0][-2]],
+                                          label,
+                                          [adj_edge for adj_node, adj_edge
+                                           in g.nodeAdjacency(current_node)
+                                           if adj_edge != main_dict[label][3]]]
+
+        if len(main_dict.keys())==2:
+            for key in main_dict.keys():
+                finished_dict[key]=deepcopy(main_dict[key])
+                # finished_dict[key][2]=get_unique_rows(np.array(finished_dict[key][2]))
+                del main_dict[key]
+            # deleting node from dict
+            del node_dict[current_node]
+
+            break
+
+
+        # if all except one branches reached the adjacent node
+        if len(node_dict[current_node][0]) == 1:
+
+            # writing new node to label
+            main_dict[node_dict[current_node][1]][0]. \
+                extend([node_dict[current_node][0][0]])
+
+            # comparing maximum of dt
+            if main_dict[node_dict[current_node][1]][4] < \
+                    edges[node_dict[current_node][2][0]][3]:
+
+                main_dict[node_dict[current_node][1]][4]=\
+                    edges[node_dict[current_node][2][0]][3]
+
+            # adding length to label
+            main_dict[node_dict[current_node][1]][1] += \
+                edges[node_dict[current_node][2][0]][1]
+
+            # adding path to next node to label
+            if main_dict[node_dict[current_node][1]][2][-1]==\
+                    edges[node_dict[current_node][2][0]][2][-1]:
+
+                main_dict[node_dict[current_node][1]][2].extend(
+                    edges[node_dict[current_node][2][0]][2][-2::-1])
+
+            # adding path to next node to label
+            else:
+
+                main_dict[node_dict[current_node][1]][2].extend(
+                    edges[node_dict[current_node][2][0]][2][1:])
+
+            # adding edge number to label
+            main_dict[node_dict[current_node][1]][3] = \
+                node_dict[current_node][2][0]
+
+            # putting next
+            queue.put([node_dict[current_node][0][0],
+                        node_dict[current_node][1]])
+
+            # deleting node from dict
+            del node_dict[current_node]
+
+        assert(queue.qsize()>0),"contraction finished before all the nodes were seen"
+
+    pruned_term_list = np.array(
+        [key for key in finished_dict.keys() if finished_dict[key][1] / finished_dict[key][4] > 4])
+
+
+    return pruned_term_list
+
+
 def edge_paths_and_counts_for_nodes(g, weights, node_list, n_threads=8):
     """
     Returns the path of edges for all pairs of nodes in node list as
@@ -459,7 +732,9 @@ def edge_paths_and_counts_for_nodes(g, weights, node_list, n_threads=8):
             returnNodes=False,
             numberOfThreads=n_threads
         )
-        assert len(all_shortest_paths) == len(node_list) - 1, "%i, %i" % (len(all_shortest_paths), len(node_list) - 1)
+
+        # TODO for what ?
+        # assert len(all_shortest_paths) == len(node_list) - 1, "%i, %i" % (len(all_shortest_paths), len(node_list) - 1)
 
         # TODO this is still quite some serial computation overhead.
         # for good paralleliztion, this should also be parallelized
@@ -495,13 +770,13 @@ def check_edge_paths(edge_paths, node_list):
     print "passed"
 
 
-def compute_graph_and_paths(img, dt, modus="run"):
+def compute_graph_and_paths(skel_img, dt, modus="run"):
     """ overall wrapper for all functions, input: label image; output: paths
         sampled from skeleton
     """
 
-    nodes, edges, term_list, is_node_map, loop_list = skeleton_to_graph(img, dt)
-    if len(term_list) == 0:
+    nodes, edges, term_list, is_node_map, loop_list = skeleton_to_graph(skel_img, dt)
+    if len(nodes) < 2:
         return []
     g, edge_lens, edges = graph_and_edge_weights(nodes, edges)
 
@@ -520,11 +795,14 @@ def compute_graph_and_paths(img, dt, modus="run"):
     # if modus=="testing":
     #     return term_list,edges,g,nodes
 
+    pruned_term_list = graph_pruning(g, term_list, edges, nodes)
 
+
+    #TODO cores global
     edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g,
                                                               edge_lens,
-                                                              term_list[:30], 8)
-    check_edge_paths(edge_paths, term_list[:30])
+                                                              pruned_term_list, 16)
+    check_edge_paths(edge_paths, pruned_term_list)
     edge_paths_julian = {}
 
     for pair in edge_paths.keys():
@@ -629,7 +907,7 @@ def cut_off(all_paths_unfinished,paths_to_objs_unfinished,
            np.array(path_classes)
 
 
-def extract_paths_from_segmentation_alex(
+def extract_paths_from_segmentation(
         ds,
         seg_path,
         key,
@@ -659,6 +937,7 @@ def extract_paths_from_segmentation_alex(
     else:
 
         seg = vigra.readHDF5(seg_path, key)
+        dt = ds.inp(ds.n_inp - 1)
         gt = deepcopy(seg)
         img = deepcopy(seg)
         all_paths = []
@@ -672,7 +951,6 @@ def extract_paths_from_segmentation_alex(
             if label == 0:
                 continue
 
-
             # masking volume
             img[seg != label] = 0
             img[seg == label] = 1
@@ -683,33 +961,29 @@ def extract_paths_from_segmentation_alex(
             # skeletonize
             skel_img = skeletonize_3d(img)
 
-            paths=compute_graph_and_paths(skel_img)
+            paths=compute_graph_and_paths(skel_img, dt)
+
+            if len(paths)==0:
+                continue
 
             percentage = []
-            len_path=len(paths)
-            for idx,path in enumerate(paths):
-                print idx ,". path of ",len_path-1
-                #TODO better workaround
-                # workaround till tomorrow
-                workaround_array=[]
-                length_array=[]
-                last_point=path[0]
-                for i in path:
-                    workaround_array.extend([gt[i[0],i[1],i[2]]])
-                    length_array.extend([np.linalg.norm([last_point[0] - i[0],
-                                                      last_point[1] - i[1], (last_point[2] - i[2]) * 10])])
-                    last_point=i
 
+            for path in paths:
+                workaround_array = [gt[i[0], i[1], i[2]] for i in path]
+                length_array = [sqrt((path[idx + 1][0] - obj[0])*(path[idx + 1][0] - obj[0])+
+                                      (path[idx + 1][1] - obj[1])*(path[idx + 1][1] - obj[1])+
+                                      ((path[idx + 1][2] - obj[2]) * 10)*((path[idx + 1][2] - obj[2]) * 10))
+                                for idx, obj in enumerate(path[:-1])]
+
+                length_array.extend([0])
 
                 all_paths.extend([path])
                 paths_to_objs.extend([label])
 
-                half_length_array=[]
+                half_length_array = [length_array[idx] / 2 + length_array[idx + 1] / 2
+                                     for idx,obj in enumerate(length_array[:-1])]
 
-                for idx,obj in enumerate(length_array[:-1]):
-                    half_length_array.extend([length_array[idx]/2+length_array[idx+1]/2])
                 half_length_array.extend([length_array[-1] / 2])
-
 
                 percentage.extend([[workaround_array, half_length_array]])
 
@@ -742,7 +1016,7 @@ def extract_paths_from_segmentation_alex(
 
 
 
-def extract_paths_and_labels_from_segmentation_alex(
+def extract_paths_and_labels_from_segmentation(
         ds,
         seg,
         seg_id,
@@ -775,6 +1049,7 @@ def extract_paths_and_labels_from_segmentation_alex(
     else:
 
         img = deepcopy(seg)
+        dt = ds.inp(ds.n_inp - 1)
         all_paths = []
         paths_to_objs = []
 
@@ -794,33 +1069,28 @@ def extract_paths_and_labels_from_segmentation_alex(
             # skeletonize
             skel_img = skeletonize_3d(img)
 
-            paths=compute_graph_and_paths(skel_img)
+            paths=compute_graph_and_paths(skel_img,dt)
+
+            if len(paths)==0:
+                continue
 
             percentage = []
 
             for path in paths:
-
-                #TODO better workaround
-                # workaround till tomorrow
-                workaround_array=[]
-                length_array=[]
-                last_point=path[0]
-                for i in path:
-                    workaround_array.extend([gt[i[0],i[1],i[2]]])
-                    length_array.extend([np.linalg.norm([last_point[0] - i[0],
-                                                      last_point[1] - i[1], (last_point[2] - i[2]) * 10])])
-                    last_point=i
-
+                workaround_array = [gt[i[0], i[1], i[2]] for i in path]
+                length_array = [sqrt((path[idx + 1][0] - obj[0])*(path[idx + 1][0] - obj[0])+
+                                      (path[idx + 1][1] - obj[1])*(path[idx + 1][1] - obj[1])+
+                                                ((path[idx + 1][2] - obj[2]) * 10)*((path[idx + 1][2] - obj[2]) * 10))
+                                for idx, obj in enumerate(path[:-1])]
+                length_array.extend([0])
 
                 all_paths.extend([path])
                 paths_to_objs.extend([label])
 
-                half_length_array=[]
+                half_length_array = [length_array[idx] / 2 + length_array[idx + 1] / 2
+                                     for idx,obj in enumerate(length_array[:-1])]
 
-                for idx,obj in enumerate(length_array[:-1]):
-                    half_length_array.extend([length_array[idx]/2+length_array[idx+1]/2])
                 half_length_array.extend([length_array[-1] / 2])
-
 
                 percentage.extend([[workaround_array, half_length_array]])
 
@@ -856,7 +1126,7 @@ def extract_paths_and_labels_from_segmentation_alex(
     return all_paths, paths_to_objs, path_classes, correspondence_list
 
 
-def extract_paths_from_segmentation_dump(
+def extract_paths_from_segmentation_julian(
         ds,
         seg_path,
         key,
@@ -948,7 +1218,7 @@ def extract_paths_from_segmentation_dump(
     return all_paths, paths_to_objs
 
 
-def extract_paths_and_labels_from_segmentation_dump(
+def extract_paths_and_labels_from_segmentation_julian(
         ds,
         seg,
         seg_id,
@@ -1207,7 +1477,10 @@ def compute_false_merges(
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
-    ds_test.add_input_from_data(dt)
+    if ds_test.n_inp < 3:
+        ds_test.add_input_from_data(dt)
+    else:
+        ds_test.replace_inp_from_data(ds_test.n_inp - 1, dt, clear_cache=False)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,

@@ -233,7 +233,8 @@ def path_features_from_feature_images(
         # print ret.shape
         return np.array(path_features)[None, :]
 
-    if len(paths) > 1:
+    # if len(paths) > 1:
+    if False:
 
         # We parallelize over the paths for now.
         # TODO parallelizing over filters might in fact be much faster, because
