@@ -438,7 +438,10 @@ def compute_false_merges(
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
-    ds_test.add_input_from_data(dt)
+    if ds_test.n_inp < 3:
+        ds_test.add_input_from_data(dt)
+    else:
+        ds_test.replace_inp_from_data(ds_test.n_inp - 1, dt, clear_cache=False)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
