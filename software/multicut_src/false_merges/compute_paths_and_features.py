@@ -448,7 +448,10 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
 
     uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
-    n_var = uv_local.max() + 1
+    if uv_local.any():
+        n_var = uv_local.max() + 1
+    else:
+        n_var = 0
 
     return local_uv_mask, mapping, uv_local, n_var
     #
@@ -613,16 +616,20 @@ def multicut_path_features(
             # FIXME This takes forever for some objects
             # node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
             # FIXME Use this instead?
-            node_labels, _, _ = multicut_fusionmoves(
-                n_var,
-                uv_local,
-                weights,
-                n_threads=ExperimentSettings().n_threads,
-                solver_backend='kl'
-            )
-            cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
+            if n_var:
+                node_labels, _, _ = multicut_fusionmoves(
+                    n_var,
+                    uv_local,
+                    weights,
+                    n_threads=ExperimentSettings().n_threads,
+                    solver_backend='kl'
+                )
+                cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
-            cut_edges_s[ii] = cut_edges
+                cut_edges_s[ii] = cut_edges
+
+            else:
+                cut_edges_s[ii] = np.array([], dtype=bool)
 
             # # TODO: For debug purposes:
             # # TODO: Restore the segmentation and save it as volume
@@ -637,6 +644,7 @@ def multicut_path_features(
             # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
         return cut_edges_s
+
 
     # if ExperimentSettings().n_threads == 1:
     if True:
@@ -683,20 +691,27 @@ def multicut_path_features(
 
 def cut_watershed(graph, weights, source, sink):
 
-    # TODO I don't know if this is the correct way to do this
-    # make the seeds from source and sink
-    seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
-    seeds[source] = 1
-    seeds[sink] = 2
-    node_labeling = nifty.graph.edgeWeightedWatershedsSegmentation(
-        graph,
-        seeds,
-        weights
-    )
+    if source != sink:
+        # TODO I don't know if this is the correct way to do this
+        # make the seeds from source and sink
+        seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
+        seeds[source] = 1
+        seeds[sink] = 2
+        node_labeling = nifty.graph.edgeWeightedWatershedsSegmentation(
+            graph,
+            seeds,
+            weights
+        )
 
-    uvs = graph.uvIds()
+        uvs = graph.uvIds()
+
+        cut_edges = node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]]
+
+    else:
+        node_labeling = np.ones((graph.numberOfNodes,), dtype='uint64')
+        cut_edges = np.zeros((graph.numberOfEdges,)).astype('bool')
     # return the edge labels (cut or not cut for each edge)
-    return node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]], node_labeling
+    return cut_edges, node_labeling
 
 
 def cut_graphcut(graph, weights, source, sink):
@@ -1149,7 +1164,8 @@ def cut_features_with_region(
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
         graph_local = nifty.graph.UndirectedGraph(n_var)
-        graph_local.insertEdges(uv_local)
+        if uv_local.any():
+            graph_local.insertEdges(uv_local)
 
         return weights_local, graph_local
 
@@ -1273,7 +1289,7 @@ def cut_features_with_region(
             #   3. Make sure small paths are not computed in the first place
             #       a) Merge close border contacts if they belong to the same object
             #       b) Do not compute a path if it would start and end in the same superpixel
-            if not local_two_coloring.max():
+            if not local_two_coloring.any():
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
@@ -1442,7 +1458,8 @@ def cut_features_with_region_whole_plane(
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
         graph_local = nifty.graph.UndirectedGraph(n_var)
-        graph_local.insertEdges(uv_local)
+        if uv_local.any():
+            graph_local.insertEdges(uv_local)
 
         return weights_local, graph_local
 
@@ -1575,7 +1592,7 @@ def cut_features_with_region_whole_plane(
             #   3. Make sure small paths are not computed in the first place
             #       a) Merge close border contacts if they belong to the same object
             #       b) Do not compute a path if it would start and end in the same superpixel
-            if not local_two_coloring.max():
+            if not local_two_coloring.any():
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
