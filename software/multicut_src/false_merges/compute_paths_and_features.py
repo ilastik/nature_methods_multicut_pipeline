@@ -190,12 +190,28 @@ def path_features_from_feature_images(
     for path in feat_paths:
         with h5py.File(path) as f:
             feat_shape = f['data'].shape
+            print feat_shape
             # we add a singleton dimension to single channel features to loop over channel later
             if len(feat_shape) == 3:
                 feature_volumes.append(f['data'][roi][..., None])
             else:
                 feature_volumes.append(f['data'][roi])
     stats = ExperimentSettings().feature_stats
+    # check that the dimensions of the paths and the
+    # filters agree
+    if len(feat_shape) == 4:
+        feat_shape = feat_shape[:-1]
+    feat_shape = np.array(list(feat_shape))
+    assert (global_max <= feat_shape).all(), "%s %s" % (str(global_max), str(feat_shape))
+    assert (global_min >= np.array([0, 0, 0])).all(), "%s" % str(global_min)
+    if (global_max <= feat_shape).all() and (global_min >= np.array([0, 0, 0])).all():
+        pass
+    else:
+        print "FALSE"
+        print "------------------"
+        print "------------------"
+        print "------------------"
+        print "------------------"
 
     def extract_features_for_path(path):
 
@@ -219,8 +235,10 @@ def path_features_from_feature_images(
                     min_coords[2]:max_coords[2],
                     c  # wee need to also add the channel to the slicing
                 ]
+                feat_tmp = feature_volume[path_roi]
+                assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
                 extractor = vigra.analysis.extractRegionFeatures(
-                    feature_volume[path_roi],
+                    feat_tmp,
                     path_image,
                     ignoreLabel=0,
                     features=stats
@@ -233,8 +251,8 @@ def path_features_from_feature_images(
         # print ret.shape
         return np.array(path_features)[None, :]
 
-    # if len(paths) > 1:
-    if False:
+    if len(paths) > 1:
+    # if False:
 
         # We parallelize over the paths for now.
         # TODO parallelizing over filters might in fact be much faster, because
