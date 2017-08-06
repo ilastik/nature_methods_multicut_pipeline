@@ -153,17 +153,37 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
 
 
 # merge segments that are full enclosed (== have only a single neighboring segment)
-def merge_fully_enclosed(mc_segmentation, n_threads=-1):
-    rag = nrag.gridRag(mc_segmentation, numberOfThreads=n_threads)
+def merge_fully_enclosed(mc_segmentation, merge_at_boundary=True):
+
+    rag = nrag.gridRag(mc_segmentation, numberOfThreads=ExperimentSettings().n_threads)
     ufd = nifty.ufd.ufd(rag.numberOfNodes)
 
     for node_id in xrange(rag.numberOfNodes):
-        adjacent_nodes = rag.nodeAdjacency(node_id)
-        if len(adjacent_nodes) == 1:
-            ufd.merge(node_id, adjacent_nodes[0])
+
+        adjacency = [adj for adj in rag.nodeAdjacency(node_id)]
+        if len(adjacency) == 1:
+
+            # if we are not merging boundary segments, we need to check now if the current segment
+            # is at the volume boundary
+            if not merge_at_boundary:
+
+                # get coordinates of this segment
+                where_seg = np.where(mc_segmentation == node_id)
+                at_boundary = False
+                for d in xrange(mc_segmentation.ndim):
+                    coords_d = where_seg[d]
+                    # check if we are at the boundary in current dimension
+                    if 0 in coords_d or seg.shape[d] - 1 in coords_d:
+                        at_boundary = True
+                if at_boundary:
+                    continue
+
+            ufd.merge(node_id, adjacency[0][0])
 
     new_node_labels = ufd.elementLabeling()
-    return nrag.projectScalarNodeDataToPixels(rag, new_node_labels, numberOfThreads=n_threads)
+    return nrag.projectScalarNodeDataToPixels(
+        rag, new_node_labels, numberOfThreads=ExperimentSettings().n_threads
+    )
 
 
 if __name__ == '__main__':
