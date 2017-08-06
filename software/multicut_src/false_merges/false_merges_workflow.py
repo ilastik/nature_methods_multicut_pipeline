@@ -896,11 +896,11 @@ def cut_off_new(all_paths,
     indexes_true=np.concatenate((indexes_true1,indexes_true2)).tolist()
 
 
-    [all_paths.append(paths[int(idx)]) for idx in indexes_true]
+    [all_paths.append(np.array(paths[int(idx)])) for idx in indexes_true]
     [paths_to_objs.append(label) for x in xrange(0,len(indexes_true))]
     [path_classes.append(True) for x in xrange(0, len(indexes_true))]
 
-    [all_paths.append(paths[int(idx)]) for idx in indexes_false]
+    [all_paths.append(np.array(paths[int(idx)])) for idx in indexes_false]
     [paths_to_objs.append(label) for x in xrange(0, len(indexes_false))]
     [path_classes.append(False) for x in xrange(0, len(indexes_false))]
 
