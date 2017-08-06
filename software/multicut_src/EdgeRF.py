@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 import h5py
@@ -14,11 +16,11 @@ try:
     from sklearn.ensemble import RandomForestClassifier as RFType
     use_sklearn = True
     import cPickle as pickle
-    print "Using sklearn random forest"
+    print("Using sklearn random forest")
 except ImportError:
     RFType = vigra.learning.RandomForest3
     use_sklearn = False
-    print "Using vigra random forest 3"
+    print("Using vigra random forest 3")
 
 
 # wrapper for sklearn / random forest
@@ -41,7 +43,7 @@ class RandomForest(object):
 
         assert class_weight in (None, 'balanced', 'balanced_subsample')
         if class_weight is not None and not use_sklearn:
-            print "WARNING: Class weighting has no effect if you are using the vigra random forest."
+            print("WARNING: Class weighting has no effect if you are using the vigra random forest.")
         self.class_weight = class_weight
 
         assert train_data.shape[0] == train_labels.shape[0]
@@ -303,7 +305,7 @@ def _learn_seperate_rfs(
     assert all(np.unique(labels_xy) == np.array([0, 1])), "unique labels: " + str(np.unique(labels_xy))
     assert all(np.unique(labels_z) == np.array([0, 1])), "unique labels: " + str(np.unique(labels_z))
 
-    print "Start learning random forest for xy edges"
+    print("Start learning random forest for xy edges")
     rf_xy = RandomForest(
         features_xy.astype('float32'),
         labels_xy,
@@ -311,7 +313,7 @@ def _learn_seperate_rfs(
         n_threads=ExperimentSettings().n_threads
     )
 
-    print "Start learning random forest for z edges"
+    print("Start learning random forest for z edges")
     rf_z = RandomForest(
         features_z.astype('float32'),
         labels_z,
@@ -321,7 +323,7 @@ def _learn_seperate_rfs(
 
     if features_skip is not None:
         assert labels_skip is not None
-        print "Start learning defect random forest"
+        print("Start learning defect random forest")
         rf_defects = RandomForest(
             features_skip.astype('float32'),
             labels_skip,
@@ -356,7 +358,7 @@ def _learn_single_rfs(
     assert features.shape[0] == labels.shape[0]
     assert all(np.unique(labels) == np.array([0, 1])), "unique labels: " + str(np.unique(labels))
 
-    print "Start learning random forest"
+    print("Start learning random forest")
     rf = RandomForest(
         features.astype('float32'),
         labels,
@@ -366,7 +368,7 @@ def _learn_single_rfs(
 
     if features_skip is not None:
         assert labels_skip is not None
-        print "Start learning defect random forest"
+        print("Start learning defect random forest")
         rf_defects = RandomForest(
             features_skip.astype('float32'),
             labels_skip,
@@ -409,8 +411,8 @@ def learn_rf(
             os.mkdir(rf_folder)
         rf_path   = os.path.join(rf_folder, rf_name)
         if RandomForest.is_cached(rf_path):
-            print "Loading random forest from:"
-            print rf_path
+            print("Loading random forest from:")
+            print(rf_path)
             if use_2rfs:
                 rfs = [
                     RandomForest.load_from_file(rf_path, 'rf_xy', ExperimentSettings().n_threads),
@@ -584,8 +586,8 @@ def learn_and_predict_rf_from_gt(
 
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
-            print "Loading prediction from:"
-            print pred_path
+            print("Loading prediction from:")
+            print(pred_path)
             return vigra.readHDF5(pred_path, 'data')
 
     # get the random forest(s)
@@ -634,11 +636,11 @@ def learn_and_predict_rf_from_gt(
         pmem_test[edge_indications == 1] = pmem_xy
         pmem_test[edge_indications == 0] = pmem_z
     else:
-        print "Start predicting random forest"
+        print("Start predicting random forest")
         pmem_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
 
     if with_defects and ds_test.has_defects:
-        print "Start predicting defect random forest"
+        print("Start predicting defect random forest")
         pmem_skip = rf_defects.predict_probabilities(features_test_skip.astype('float32'))[:, 1]
         pmem_test = np.concatenate([pmem_test, pmem_skip])
 

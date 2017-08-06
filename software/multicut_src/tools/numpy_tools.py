@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 # wrapping some helpful numpy functionality
 import numpy as np
 
@@ -72,6 +74,6 @@ def relabel_consecutive(array, start_label=0, keep_zeros=True):
             new_values[1:] += start_label
         else:
             new_values += start_label
-    replace_dict = {uniques[i]: new_values[i] for i in xrange(len(new_values))}
+    replace_dict = {uniques[i]: new_values[i] for i in range(len(new_values))}
     new_max = new_values.max()
     return replace_from_dict(array, replace_dict), new_max, replace_dict

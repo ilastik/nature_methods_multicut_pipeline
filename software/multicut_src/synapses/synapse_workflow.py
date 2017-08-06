@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 import os
@@ -47,7 +49,7 @@ def synapse_node_labels(ds, seg_id, synapse_gt_path, synapse_gt_key):
     overlaps = ngt.Overlap(n_nodes - 1, ds.seg(seg_id), synapse_gt)
 
     # extract the max overlaps for each superpixel, ignoring overlaps with 0
-    synapse_labels_to_nodes = [overlaps.overlapArraysNormalized(node_id)[0] for node_id in xrange(n_nodes)]
+    synapse_labels_to_nodes = [overlaps.overlapArraysNormalized(node_id)[0] for node_id in range(n_nodes)]
     return synapse_labels_to_nodes
 
 
@@ -93,7 +95,7 @@ def synapse_edge_labels(ds, seg_id, synapse_labels_to_nodes):
     # nodes connected by edge contain the same syn id -> 1
     # nodes contain only ignore label or no overlap at all -> 0
     # nodes
-    for edge_id in xrange(len(uv_ids)):
+    for edge_id in range(len(uv_ids)):
         u, v = uv_ids[edge_id]
         syns_u, syns_v = synapse_labels_to_nodes[u], synapse_labels_to_nodes[v]
         matches = syns_u[np.in1d(syns_u, syns_v)]
@@ -172,7 +174,7 @@ def subsample_labels(label):
     n_neg = np.sum(where_neg)
     n_pos = np.sum(where_pos)
 
-    print "Balancing labels starting from %i positive and %i negative labels" % (n_neg, n_pos)
+    print("Balancing labels starting from %i positive and %i negative labels" % (n_neg, n_pos))
     assert n_neg > n_pos
 
     mask = np.zeros_like(label, dtype=bool)
@@ -196,7 +198,7 @@ def mine_hard_examples(features, labels):
 
     n_neg = len(where_neg)
     n_pos = len(where_pos)
-    print "Mining hard examples for %i positive and %i negative labels" % (n_neg, n_pos)
+    print("Mining hard examples for %i positive and %i negative labels" % (n_neg, n_pos))
     assert n_neg > n_pos
 
     # we mine 'n_pos' examples for positives and negatives
@@ -278,8 +280,8 @@ def learn_synapse_rf(
 
         rf_path   = os.path.join(rf_folder, rf_name)
         if RandomForest.is_cached(rf_path):
-            print "Loading synapse random forest from:"
-            print rf_path
+            print("Loading synapse random forest from:")
+            print(rf_path)
             return RandomForest.load_from_file(rf_path, 'rf_synapse', ExperimentSettings().n_threads)
 
     features = []

@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import os
 import time
 
@@ -59,11 +61,11 @@ def clusteringFeatures(
     # FIXME
     import vigra.graphs as vgraph
 
-    print "Computing clustering features for lifted neighborhood", liftedNeighborhood
+    print("Computing clustering features for lifted neighborhood", liftedNeighborhood)
     if is_perturb_and_map:
-        print "For perturb and map"
+        print("For perturb and map")
     else:
-        print "For normal clustering"
+        print("For normal clustering")
 
     uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds.uv_ids(segId)
     n_nodes = uvs_local.max() + 1
@@ -189,7 +191,7 @@ def compute_lifted_feature_mala_agglomeration(
     from workflow_no_learning import accumulate_affinities_over_edges
 
     assert len(inp_ids) == 2
-    print "Computing mala agglomeration features for lifted neighborhood", lifted_nh
+    print("Computing mala agglomeration features for lifted neighborhood", lifted_nh)
     assert not with_defects, "Not Implemented for defects yet!"
 
     edge_lens = ds.topology_features(seg_id, False)[:, 0]
@@ -247,7 +249,7 @@ def compute_lifted_feature_multicut(
         with_defects=False
 ):
 
-    print "Computing multicut features for lifted neighborhood", lifted_nh
+    print("Computing multicut features for lifted neighborhood", lifted_nh)
     # variables for the multicuts
     uv_ids_local = modified_adjacency(ds, seg_id) if with_defects and ds.has_defects else ds.uv_ids(seg_id)
     n_var = uv_ids_local.max() + 1
@@ -437,8 +439,8 @@ def compute_and_save_lifted_nh(
     original_graph = nifty.graph.UndirectedGraph(n_nodes)
     original_graph.insertEdges(uvs_local)
 
-    print ds.ds_name
-    print "Computing lifted neighbors for range:", lifted_neighborhood
+    print(ds.ds_name)
+    print("Computing lifted neighbors for range:", lifted_neighborhood)
     lifted_graph = nifty.graph.lifted_multicut.liftedMulticutObjective(original_graph)
     lifted_graph.insertLiftedEdgesBfs(lifted_neighborhood)
     return np.sort(lifted_graph.liftedUvIds(), axis=1)
@@ -625,7 +627,7 @@ def learn_lifted_rf(
     features_train = np.concatenate(features_train, axis=0)
     labels_train = np.concatenate(labels_train, axis=0)
 
-    print "Start learning lifted random forest"
+    print("Start learning lifted random forest")
     rf = RandomForest(
         features_train.astype('float32'),
         labels_train.astype('uint32'),
@@ -712,7 +714,7 @@ def learn_and_predict_lifted_rf(
         with_defects
     )
 
-    print "Start prediction lifted random forest"
+    print("Start prediction lifted random forest")
     p_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
     if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
@@ -727,7 +729,7 @@ def optimize_lifted(
         costs_lifted,
         starting_point=None
 ):
-    print "Optimizing lifted model"
+    print("Optimizing lifted model")
 
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
@@ -748,28 +750,28 @@ def optimize_lifted(
 
     # if no starting point is given, start with ehc solver
     if starting_point is None:
-        print "optimize_lifted: start from ehc solver"
+        print("optimize_lifted: start from ehc solver")
         solver_ehc = lifted_obj.liftedMulticutGreedyAdditiveFactory().create(lifted_obj)
         result = solver_ehc.optimize(visitor) if ExperimentSettings().verbose else solver_ehc.optimize()
 
     else:  # else, we use the starting point that is given as argument
-        print "optimize_lifted: start from external node result"
+        print("optimize_lifted: start from external node result")
         assert len(starting_point) == n_nodes
         result = starting_point
-    print "Start energy: %f" % lifted_obj.evalNodeLabels(result)
+    print("Start energy: %f" % lifted_obj.evalNodeLabels(result))
     t0 = time.time()
 
     # run kernighan lin solver
-    print "optimize_lifted: run kernighan lin"
+    print("optimize_lifted: run kernighan lin")
     solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)  # standard settings
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
     t1   = time.time()
     t_kl = t1 - t0
-    print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
-    print "Kernighan lin took %f s" % t_kl
+    print("Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result))
+    print("Kernighan lin took %f s" % t_kl)
 
     # run fusion move solver
-    print "optimize_lifted: run fusion move solver"
+    print("optimize_lifted: run fusion move solver")
     # proposal generator -> watersheds
     pgen = lifted_obj.watershedProposalGenerator(
         seedingStrategy=ExperimentSettings().seed_strategy_lifted,
@@ -785,8 +787,8 @@ def optimize_lifted(
     result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
     t_fm = time.time() - t1
     energy_fm = lifted_obj.evalNodeLabels(result)
-    print "Energy after fusion moves: %f" % energy_fm
-    print "Fusion moves took %f s" % t_fm
+    print("Energy after fusion moves: %f" % energy_fm)
+    print("Fusion moves took %f s" % t_fm)
 
     assert len(result) == n_nodes
     result, _, _ = vigra.analysis.relabelConsecutive(result, start_label=1)
@@ -796,14 +798,14 @@ def optimize_lifted(
 # TODO weight connections in plane: kappa=20
 @cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_probs_to_energies(
-        ds,
-        edge_probs,
-        seg_id,
-        edge_z_distance,
-        lifted_nh,
-        beta_lifted=0.5,
-        gamma=1.,
-        with_defects=False
+    ds,
+    edge_probs,
+    seg_id,
+    edge_z_distance,
+    lifted_nh,
+    beta_lifted=0.5,
+    gamma=1.,
+    with_defects=False
 ):
 
     p_min = 0.001

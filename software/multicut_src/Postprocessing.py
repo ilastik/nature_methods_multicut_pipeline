@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 from concurrent import futures
@@ -46,8 +48,8 @@ def remove_small_segments(
     # Keep all uniques that have a count smaller than size_thresh
     small_objs = uniq[counts < size_thresh]
     large_objs = uniq[counts >= size_thresh]
-    print 'len(large_objs) == {}'.format(len(large_objs))
-    print 'len(small_objs) == {}'.format(len(small_objs))
+    print('len(large_objs) == {}'.format(len(large_objs)))
+    print('len(small_objs) == {}'.format(len(small_objs)))
 
     # I think this is the fastest (single threaded way) to do this
     # If we really need to parallelize this, we need to rethink a little, but for now, this should be totally fine!
@@ -78,7 +80,7 @@ def merge_small_segments(mc_seg, min_seg_size):
     n_nodes = rag.numberOfNodes
     assert n_nodes == mc_seg.max() + 1, "%i, %i" % (n_nodes, mc_seg.max() + 1)
 
-    print "Merging segments in mc-result with size smaller than", min_seg_size
+    print("Merging segments in mc-result with size smaller than", min_seg_size)
     _, node_sizes = np.unique(mc_seg, return_counts=True)
     edge_sizes = nrag.accumulateEdgeMeanAndLength(
         rag,
@@ -132,8 +134,8 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
     segment_ids, segment_sizes = np.unique(postprocessed, return_counts=True)
     merge_ids = segment_ids[segment_sizes < size_threshold]
 
-    print "Merge with according to size threshold %i:" % size_threshold
-    print "Merging %i / %i segments" % (len(merge_ids), len(segment_ids))
+    print("Merge with according to size threshold %i:" % size_threshold)
+    print("Merging %i / %i segments" % (len(merge_ids), len(segment_ids)))
 
     # mask out the merge-ids
     mask = np.ma.masked_array(postprocessed, mask=np.in1d(postprocessed, merge_ids))
@@ -145,7 +147,7 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
         postprocessed[z] = ws_z
 
     with futures.ThreadPoolExecutor(max_workers=8) as tp:
-        tasks = [tp.submit(pp_z, z) for z in xrange(postprocessed.shape[0])]
+        tasks = [tp.submit(pp_z, z) for z in range(postprocessed.shape[0])]
         [t.result() for t in tasks]
 
     postprocessed, _, _ = vigra.analysis.relabelConsecutive(postprocessed, start_label=1, keep_zeros=False)
@@ -158,7 +160,7 @@ def merge_fully_enclosed(mc_segmentation, merge_at_boundary=True):
     rag = nrag.gridRag(mc_segmentation, numberOfThreads=ExperimentSettings().n_threads)
     ufd = nifty.ufd.ufd(rag.numberOfNodes)
 
-    for node_id in xrange(rag.numberOfNodes):
+    for node_id in range(rag.numberOfNodes):
 
         adjacency = [adj for adj in rag.nodeAdjacency(node_id)]
         if len(adjacency) == 1:
@@ -170,7 +172,7 @@ def merge_fully_enclosed(mc_segmentation, merge_at_boundary=True):
                 # get coordinates of this segment
                 where_seg = np.where(mc_segmentation == node_id)
                 at_boundary = False
-                for d in xrange(mc_segmentation.ndim):
+                for d in range(mc_segmentation.ndim):
                     coords_d = where_seg[d]
                     # check if we are at the boundary in current dimension
                     if 0 in coords_d or seg.shape[d] - 1 in coords_d:

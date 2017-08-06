@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import vigra
 import os
 import numpy as np
@@ -8,15 +10,12 @@ from multicut_src.ExperimentSettings import ExperimentSettings
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.graph.rag as nrag
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
@@ -67,9 +66,9 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
             filepath = cache_name(fname, _folder, ignoreNumpyArrays, _cache_edgefeats, *args)
             fkey  = "data"
             if not os.path.isfile(filepath):
-                print "Computing: ", function.__name__, "with args:"
-                print args[1:]
-                print "Results will be written in ", filepath, fkey
+                print("Computing: ", function.__name__, "with args:")
+                print(args[1:])
+                print("Results will be written in ", filepath, fkey)
                 _res = function(*args)
                 if compress:
                     vigra.writeHDF5(_res, filepath, fkey, compression='gzip')
@@ -103,7 +102,7 @@ def edges_to_volume(rag, edges, edge_direction=0):
 def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_in_plane
-    print "Computing edge volume from uv ids in plane"
+    print("Computing edge volume from uv ids in plane")
     return fast_edge_volume_from_uvs_in_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
@@ -112,7 +111,7 @@ def edges_to_volume_from_uvs_in_plane(ds, seg, uv_ids, edge_labels):
 def edges_to_volume_from_uvs_between_plane(ds, seg, uv_ids, edge_labels):
     assert uv_ids.shape[0] == edge_labels.shape[0]
     from cython_tools import fast_edge_volume_from_uvs_between_plane
-    print "Computing edge volume from uv ids between planes"
+    print("Computing edge volume from uv ids between planes")
     return fast_edge_volume_from_uvs_between_plane(seg, uv_ids, edge_labels.astype('uint8'))
 
 
@@ -132,7 +131,7 @@ def edges_to_volumes_for_skip_edges(
     assert uv_ids.shape[1] == 2
 
     from cython_tools import fast_edge_volume_for_skip_edges_slice
-    print "Computing edge volume for skip edges"
+    print("Computing edge volume for skip edges")
     volume = np.zeros(seg.shape, dtype=edge_labels.dtype)
 
     # find all the slices with defect starts
@@ -141,7 +140,7 @@ def edges_to_volumes_for_skip_edges(
 
     # iterate over the slice pairs with skip edges and get the label volumes from cython
     for lower in lower_slices:
-        print "Slice", lower
+        print("Slice", lower)
         # get the uvs and ranges for this lower slice
         mask_lower = skip_masks_to_lower[lower]
         ranges_lower = skip_ranges[mask_lower]
@@ -151,12 +150,12 @@ def edges_to_volumes_for_skip_edges(
         unique_ranges = np.unique(ranges_lower)
         targets = unique_ranges + lower
         for i, upper in enumerate(targets):
-            print "to", upper
+            print("to", upper)
 
             seg_dn = seg[lower]
             seg_up = seg[upper]
-            print seg_dn.shape
-            print seg_up.shape
+            print(seg_dn.shape)
+            print(seg_up.shape)
             assert seg_dn.shape == seg_up.shape, "%s, %s" % (str(seg_dn.shape), str(seg_up.shape))
 
             # get the mask for skip edges connecting to this upper slice

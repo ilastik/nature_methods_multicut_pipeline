@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import vigra
 import vigra.graphs as graphs
 import numpy as np
@@ -24,7 +26,7 @@ except ImportError:
 def distance_transform(segmentation, anisotropy):
     edge_volume = np.concatenate(
         [vigra.analysis.regionImageToEdgeImage(segmentation[z])[None, :]
-         for z in xrange(segmentation.shape[0])],
+         for z in range(segmentation.shape[0])],
         axis=0
     )
     dt = vigra.filters.distanceTransform(edge_volume.astype('uint32'), pixel_pitch=anisotropy, background=True)
@@ -52,7 +54,7 @@ def extract_local_graph_from_segmentation(
     )
     # mapping = old to new,
     # reverse = new to old
-    reverse_mapping = {val: key for key, val in mapping.iteritems()}
+    reverse_mapping = {val: key for key, val in mapping.items()}
 
     # mask the local uv ids in this object
     local_uv_mask = np.in1d(uv_ids, seg_ids)
@@ -85,7 +87,7 @@ def shortest_paths(
     def single_path(pair, instance=None):
         source = pair[0]
         target = pair[1]
-        print 'Calculating path from {} to {}'.format(source, target)
+        print('Calculating path from {} to {}'.format(source, target))
         if instance is None:
             instance = graphs.ShortestPathPathDijkstra(gridgr)
 
@@ -98,12 +100,12 @@ def shortest_paths(
             return path
 
     if n_threads > 1:
-        print "Multi-threaded w/ n-threads = ", n_threads
+        print("Multi-threaded w/ n-threads = ", n_threads)
         with futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
             tasks = [executor.submit(single_path, pair) for pair in pairs]
             paths = [t.result() for t in tasks]
     else:
-        print "Single threaded"
+        print("Single threaded")
         instance = graphs.ShortestPathPathDijkstra(gridgr)
         paths = [single_path(pair, instance) for pair in pairs]
 
@@ -139,9 +141,9 @@ def compute_path_lengths(paths, anisotropy):
     """
     def compute_path_length(path, aniso_temp):
         # pathlen = 0.
-        # for i in xrange(1, len(path)):
+        # for i in range(1, len(path)):
         #    add2pathlen = 0.
-        #    for j in xrange(0, len(path[0, :])):
+        #    for j in range(0, len(path[0, :])):
         #        add2pathlen += (anisotropy[j] * (path[i, j] - path[i - 1, j])) ** 2
 
         #    pathlen += add2pathlen ** (1. / 2)
@@ -339,7 +341,7 @@ def multicut_path_features(
         n_var = uv_local.max() + 1
 
         path_edge_ids = {}
-        for path_id, path in objs_to_paths[obj_id].iteritems():
+        for path_id, path in objs_to_paths[obj_id].items():
             path_edge_ids[path_id] = edges_along_path(path, mapping, uv_local)
 
         for ii, beta in enumerate(betas):
@@ -347,7 +349,7 @@ def multicut_path_features(
             node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
             cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
-            for path_id, e_ids in path_edge_ids.iteritems():
+            for path_id, e_ids in path_edge_ids.items():
                 features[path_id, ii] = np.sum(cut_edges[e_ids])
 
     return features
@@ -467,7 +469,7 @@ def cut_features(
 
         # TODO run graphcut or edge based ws for each path, using end points as seeds
         # determine the cut edge and append to feats
-        for path_id, path in objs_to_paths[obj_id].iteritems():
+        for path_id, path in objs_to_paths[obj_id].items():
             edge_ids, edge_ids_local, source, sink = edges_along_path(path, mapping, uv_local)
 
             # get source and sink

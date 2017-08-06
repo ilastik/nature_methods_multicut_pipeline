@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import time
 
@@ -51,13 +53,13 @@ def probs_to_energies(
 
     # weight edges
     if weighting_scheme == "z":
-        print "Weighting Z edges"
+        print("Weighting Z edges")
         edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, weight)
     elif weighting_scheme == "xyz":
-        print "Weighting xyz edges"
+        print("Weighting xyz edges")
         edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight)
     elif weighting_scheme == "all":
-        print "Weighting all edges"
+        print("Weighting all edges")
         edge_energies = weight_all_edges(edge_energies, edge_areas, weight)
 
     # set the edges within the segmask to be maximally repulsive

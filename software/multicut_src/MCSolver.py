@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 
@@ -34,7 +36,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
     elif ExperimentSettings().solver == "multicut_fusionmoves":
         mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var, uv_ids, edge_energies, ExperimentSettings().n_threads)
     elif ExperimentSettings().solver == "multicut_message_passing":
-        print "WARNING: message passing multicut is experimental and not supported in conda version yet"
+        print("WARNING: message passing multicut is experimental and not supported in conda version yet")
         mc_node, mc_energy, t_inf = multicut_message_passing(
             n_var,
             uv_ids,
@@ -69,15 +71,15 @@ def multicut_workflow(
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(ds_test, DataSet)
 
-    print "Running multicut on", ds_test.ds_name
+    print("Running multicut on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
-        print "Weights learned on", trainsets.ds_name
+        print("Weights learned on", trainsets.ds_name)
     else:
-        print "Weights learned on multiple Datasets"
-    print "with solver", ExperimentSettings().solver
+        print("Weights learned on multiple Datasets")
+    print("with solver", ExperimentSettings().solver)
 
     # get edge probabilities from random forest
-    print "Learning random forests with", ExperimentSettings().n_trees, "trees"
+    print("Learning random forests with", ExperimentSettings().n_trees, "trees")
     edge_probs = learn_and_predict_rf_from_gt(
         trainsets,
         ds_test,
@@ -121,12 +123,12 @@ def multicut_workflow_with_defect_correction(
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
     assert isinstance(ds_test, DataSet)
 
-    print "Running multicut with defect correction on", ds_test.ds_name
+    print("Running multicut with defect correction on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
-        print "Weights learned on", trainsets.ds_name
+        print("Weights learned on", trainsets.ds_name)
     else:
-        print "Weights learned on multiple Datasets"
-    print "with solver", ExperimentSettings().solver
+        print("Weights learned on multiple Datasets")
+    print("with solver", ExperimentSettings().solver)
 
     # get edge probabilities from random forest
     edge_probs = learn_and_predict_rf_from_gt(
@@ -173,14 +175,14 @@ def lifted_multicut_workflow(
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
 
-    print "Running lifted multicut on", ds_test.ds_name
+    print("Running lifted multicut on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
-        print "Weights learned on", trainsets.ds_name
+        print("Weights learned on", trainsets.ds_name)
     else:
-        print "Weights learned on multiple datasets"
+        print("Weights learned on multiple datasets")
 
     # ) step one, train a random forest
-    print "Start learning"
+    print("Start learning")
 
     p_test_lifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
         trainsets,
@@ -230,8 +232,8 @@ def lifted_multicut_workflow(
     edge_energies_lifted /= edge_energies_lifted.shape[0]
     uvs_local = ds_test.uv_ids(seg_id_test)
 
-    #vigra.writeHDF5(edge_energies_local, './costs_local.h5', 'data')
-    #vigra.writeHDF5(edge_energies_lifted, './costs_lifted.h5', 'data')
+    # vigra.writeHDF5(edge_energies_local, './costs_local.h5', 'data')
+    # vigra.writeHDF5(edge_energies_lifted, './costs_lifted.h5', 'data')
 
     # warmstart with multicut result
     if warmstart:
@@ -267,11 +269,11 @@ def lifted_multicut_workflow_with_defect_correction(
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
 
-    print "Running lifted multicut with defect detection on", ds_test.ds_name
+    print("Running lifted multicut with defect detection on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
-        print "Weights learned on", trainsets.ds_name
+        print("Weights learned on", trainsets.ds_name)
     else:
-        print "Weights learned on multiple datasets"
+        print("Weights learned on multiple datasets")
 
     p_test_lifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
         trainsets,

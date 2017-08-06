@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 import os
@@ -21,15 +23,12 @@ from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pa
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.graph.rag as nrag
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
@@ -219,7 +218,7 @@ def extract_paths_and_labels_from_segmentation(
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
             try:
-                print 'Saving paths in {}'.format(paths_save_file)
+                print('Saving paths in {}'.format(paths_save_file))
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
@@ -258,7 +257,7 @@ def train_random_forest_for_merges(
 
     # check if rf is already cached
     if RandomForest.is_cached(rf_save_path):
-        print "Loading rf from:", rf_save_path
+        print("Loading rf from:", rf_save_path)
         rf = RandomForest.load_from_file(rf_save_path, 'rf', ExperimentSettings().n_threads)
 
     # otherwise do the actual calculations
@@ -319,7 +318,7 @@ def train_random_forest_for_merges(
                     labels_train.append(path_classes)
 
                 else:
-                    print "No paths found for seg_id = {}".format(seg_id)
+                    print("No paths found for seg_id = {}".format(seg_id))
                     continue
 
         features_train = np.concatenate(features_train, axis=0)
@@ -373,7 +372,8 @@ def compute_false_merges(
     """
 
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
-    assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
+    assert len(mc_segs_train_keys) == len(mc_segs_train), % \
+        "we must have the same number of segmentation vectors as trainsets"
 
     rf = train_random_forest_for_merges(
         trainsets,

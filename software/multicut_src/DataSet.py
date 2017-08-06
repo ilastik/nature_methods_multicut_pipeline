@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 import os
@@ -88,8 +90,6 @@ def connected_components_with_ignore_mask(seg):
         # the segmentation and restore the big connected component of the ignore label
         if len(new_ignore_vals) > 1:
 
-            print z
-
             rag = nrag.gridRag(seg_cc, numberOfThreads=ExperimentSettings().n_threads)
             label_sizes = [np.sum(seg_cc == l) for l in new_ignore_vals]
             keep_label = new_ignore_vals[np.argmax(label_sizes)]
@@ -129,7 +129,7 @@ def connected_components_with_ignore_mask(seg):
 
     # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as tp:
     with futures.ThreadPoolExecutor(max_workers=1) as tp:
-        tasks = [tp.submit(cc_z, z) for z in xrange(seg.shape[0])]
+        tasks = [tp.submit(cc_z, z) for z in range(seg.shape[0])]
         offsets = [t.result() for t in tasks]
 
     # add offsets to the slices
@@ -137,7 +137,7 @@ def connected_components_with_ignore_mask(seg):
     offsets[0] = 0
     offsets = np.cumsum(offsets)
 
-    for z in xrange(seg.shape[0]):
+    for z in range(seg.shape[0]):
         seg_new[z][seg_new[z] != ExperimentSettings().ignore_seg_value] += offsets[z]
 
     return seg_new
@@ -535,7 +535,7 @@ class DataSet(object):
             if seg.min() == 0:
                 seg += 1
 
-            print "Cutting segmentation mask from seg"
+            print("Cutting segmentation mask from seg")
             mask = self.seg_mask()
             seg[np.logical_not(mask)] = ExperimentSettings().ignore_seg_value
             seg = connected_components_with_ignore_mask(seg)
@@ -739,7 +739,7 @@ class DataSet(object):
                 return [cent + (z,) for cent in centers]  # extend by z coordinate
 
             with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
-                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[0])]
+                tasks = [executor.submit(centers_2d, z) for z in range(seg.shape[0])]
                 centers = [t.result() for t in tasks]
                 # return flattened list
             centers_list = list(itertools.chain(*centers))
@@ -770,7 +770,7 @@ class DataSet(object):
         import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
-        print "Calculating filters for input id:", inp_id
+        print("Calculating filters for input id:", inp_id)
 
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         input_name = "inp_" + str(inp_id)
@@ -795,8 +795,8 @@ class DataSet(object):
             os.makedirs(filter_folder)
 
         if not calculation_2d and anisotropy_factor > 1.:
-            print "Anisotropic feature calculation not supported in fastfilters yet."
-            print "Using vigra filters instead."
+            print("Anisotropic feature calculation not supported in fastfilters yet.")
+            print("Using vigra filters instead.")
             filter_names = [".".join(("vigra.filters", filtname)) for filtname in filter_names]
         else:
             filter_names = [".".join(("fastfilters", filtname)) for filtname in filter_names]
@@ -835,7 +835,7 @@ class DataSet(object):
                     (1, min(512, inp.shape[1]), min(512, inp.shape[2]), 2)
 
                 filter_res = np.zeros(f_shape, dtype='float32')
-                for z in xrange(inp.shape[0]):
+                for z in range(inp.shape[0]):
                     filter_res[z] = filter_fu(inp[z], sig)
 
                 assert not np.isnan(filter_res).all(), "%i / %i" % (np.sum(np.isnan(filter_res)), filter_res.size)
@@ -850,12 +850,12 @@ class DataSet(object):
                     f.create_dataset(filter_key, data=filter_res, chunks=True)
 
             if calculation_2d:
-                print "Calculating Filter in 2d"
+                print("Calculating Filter in 2d")
                 change_sigma = False
                 _calc_filter = _calc_filter_2d
                 change_sigma = False
             else:
-                print "Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor)
+                print("Calculating filter in 3d, with anisotropy factor:", str(anisotropy_factor))
                 _calc_filter = _calc_filter_3d
                 change_sigma = anisotropy_factor > 1.
 
@@ -906,7 +906,7 @@ class DataSet(object):
             names_return.extend(["_".join(["EdgeFeature", filt_name, suffix]) for suffix in suffixes])
         elif len(filt.shape) == 4:
             for c in range(filt.shape[3]):
-                print "Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3]
+                print("Multichannel feature, accumulating channel:", c + 1, "/", filt.shape[3])
                 filt_c = filt[..., c]
                 min_val = filt_c.min()
                 max_val = filt_c.max()
@@ -941,19 +941,19 @@ class DataSet(object):
 
         N = len(paths_xy)
         for ii, path_xy in enumerate(paths_xy):
-            print "Accumulating features:", ii, "/", N
+            print("Accumulating features:", ii, "/", N)
             path_z = paths_z[ii]
 
             # accumulate over the xy channel
             with h5py.File(path_xy) as f:
                 filtXY = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            print "computing XY from", path_xy
+            print("computing XY from", path_xy)
             featsXY, _ = self._accumulate_filter_over_edge(seg_id, filtXY, "", rag, z_direction)
 
             # accumulate over the z channel
             with h5py.File(path_z) as f:
                 filtZ = f['data'][self.bb] if isinstance(self, Cutout) else f['data'][:]
-            print "computing Z from", path_z
+            print("computing Z from", path_z)
             featsZ, _  = self._accumulate_filter_over_edge(seg_id, filtZ, "", rag, z_direction)
 
             # merge the feats
@@ -984,8 +984,8 @@ class DataSet(object):
         edge_features_names = []
         for path in filter_paths:
             n += 1
-            print "Accumulating features:", n, "/", N
-            print "From:", path
+            print("Accumulating features:", n, "/", N)
+            print("From:", path)
 
             # load the precomputed filter from file
             with h5py.File(path) as f:
@@ -1045,12 +1045,12 @@ class DataSet(object):
         )
 
         reg_stat_names = list(itertools.chain.from_iterable(
-            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] if extractor[stat_name].ndim > 1
+            [[stat_name for _ in range(extractor[stat_name].shape[1])] if extractor[stat_name].ndim > 1
                 else [stat_name] for stat_name in statistics[:9]])
         )
 
         reg_center_names = list(itertools.chain.from_iterable(
-            [[stat_name for _ in xrange(extractor[stat_name].shape[1])] for stat_name in statistics[9:]])
+            [[stat_name for _ in range(extractor[stat_name].shape[1])] for stat_name in statistics[9:]])
         )
 
         # this is the number of node feats that are combined with min, max, sum, absdiff
@@ -1073,9 +1073,9 @@ class DataSet(object):
         import gc
 
         if lifted_nh:
-            print "Computing Lifted Region Features for NH:", lifted_nh
+            print("Computing Lifted Region Features for NH:", lifted_nh)
         else:
-            print "Computing Region features for local Edges"
+            print("Computing Region features for local Edges")
 
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
@@ -1173,7 +1173,7 @@ class DataSet(object):
             "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5"
         )
         vigra.writeHDF5(feat_names, save_file, "region_features_names")
-        print "writing feat_names to", save_file
+        print("writing feat_names to", save_file)
 
         return allFeat
 
@@ -1198,7 +1198,7 @@ class DataSet(object):
     def node_z_coord(self, seg_id):
         seg = self.seg(seg_id)
         nz = np.zeros(seg.max() + 1, dtype='uint32')
-        for z in xrange(seg.shape[0]):
+        for z in range(seg.shape[0]):
             lz = seg[z]
             nz[lz] = z
         return nz
@@ -1306,7 +1306,7 @@ class DataSet(object):
         uv_ids = rag.uvIds()
 
         ignore_mask = np.zeros(rag.numberOfEdges, dtype=bool)
-        for edge_id in xrange(rag.numberOfEdges):
+        for edge_id in range(rag.numberOfEdges):
             n0 = uv_ids[edge_id, 0]
             n1 = uv_ids[edge_id, 1]
             # if both superpixel have ignore label in the gt
@@ -1317,7 +1317,7 @@ class DataSet(object):
             if node_gt[n0] in self.gt_false_merges and node_gt[n1] in self.gt_false_merges:
                 ignore_mask[edge_id] = True
 
-        print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
+        print("IGNORE MASK NONZEROS:", np.sum(ignore_mask))
         return ignore_mask
 
     # return mask that hides edges that lie between 2 superpixel for lifted edges
@@ -1333,7 +1333,7 @@ class DataSet(object):
         node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
 
         ignore_mask = np.zeros(uvs_lifted.shape[0], dtype=bool)
-        for edge_id in xrange(rag.numberOfEdges):
+        for edge_id in range(rag.numberOfEdges):
             n0 = uvs_lifted[edge_id][0]
             n1 = uvs_lifted[edge_id][1]
             # if both superpixel have ignore label in the gt
@@ -1344,7 +1344,7 @@ class DataSet(object):
             if node_gt[n0] in self.gt_false_merges and node_gt[n1] in self.gt_false_merges:
                 ignore_mask[edge_id] = True
 
-        print "IGNORE MASK NONZEROS:", np.sum(ignore_mask)
+        print("IGNORE MASK NONZEROS:", np.sum(ignore_mask))
         return ignore_mask
 
     # get the projection of the gt to the segmentation
@@ -1399,7 +1399,7 @@ class DataSet(object):
         # if we are making a cutout of a cutout, we must adjust the parent ds and block offset
         parent_ds     = self.parent_ds.cache_folder if isinstance(self, Cutout) else self.cache_folder
         if isinstance(self, Cutout):
-            for dd in xrange(3):
+            for dd in range(3):
                 start[dd] += self.start[dd]
                 stop[dd]  += self.stop[dd]
 

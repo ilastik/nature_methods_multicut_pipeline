@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 
@@ -34,7 +36,7 @@ def topo_feats_slice(seg, uv_ids):
         keep_zeros=False,
         start_label=1
     )
-    reverse_mapping = {new: old for old, new in mapping.iteritems()}
+    reverse_mapping = {new: old for old, new in mapping.items()}
     assert seg_z.min() == 1
 
     tgrid = ncgp.TopologicalGrid2D(seg_z)
@@ -173,8 +175,8 @@ def topo_feats_slice(seg, uv_ids):
         missing_ids = consecutive_edge_ids[
             np.logical_not(np.in1d(consecutive_edge_ids, unique_ids))
         ]
-        print "Inserting missing edge features for ids:"
-        print missing_ids
+        print("Inserting missing edge features for ids:")
+        print(missing_ids)
         mean_feats = np.mean(feats, axis=0)
         feats[missing_ids] = mean_feats
 
@@ -201,8 +203,8 @@ def topo_feats_xy(rag, seg, edge_indications, node_z_coords):
 
     # iterate over the slices and
     # TODO parallelize
-    for z in xrange(seg.shape[0]):
-        print "Slice", z
+    for z in range(seg.shape[0]):
+        print("Slice", z)
 
         # get the uv_ids in this slice
         nodes_z = np.where(node_z_coords == z)[0]
@@ -248,8 +250,8 @@ def topo_feats_z(rag, seg, edge_indications):
 
     # iterate over the pairs of adjacent slices, map z-edges to
     # a segmentation and compute the corresponding features
-    for z in xrange(seg.shape[0] - 1):
-        print "Slice", z
+    for z in range(seg.shape[0] - 1):
+        print("Slice", z)
 
         # z-edges to segmentation:
         # first find the edges in connecting slice z to z + 1
@@ -264,7 +266,7 @@ def topo_feats_z(rag, seg, edge_indications):
 
         # map to a consecutive segmentation
         edge_seg_cc = nseg.connectedComponents(edge_seg, ignoreBackground=False)
-        map_to_cc = {e_id: np.unique(edge_seg_cc[edge_seg == e_id]) for e_id in xrange(len(this_edge_ids))}
+        map_to_cc = {e_id: np.unique(edge_seg_cc[edge_seg == e_id]) for e_id in range(len(this_edge_ids))}
 
         # build a rag based on the edge segmentation to have the uv-ids
         # and extract features for the lines between the z-edges
@@ -274,7 +276,7 @@ def topo_feats_z(rag, seg, edge_indications):
 
         # map the feats back to the z-edges via averaging over the line feats
         feats = np.zeros((len(this_edge_ids), feat_lines.shape[1]), dtype='float32')
-        for ii in xrange(len(this_edge_ids)):
+        for ii in range(len(this_edge_ids)):
             edge_mask = []
             for jj in map_to_cc[ii]:
                 edge_mask.append(
@@ -297,9 +299,9 @@ def topology_features_impl(rag, seg, edge_indications, edge_lens, node_z_coords)
     # calculate the topo features for xy and z edges
     # for now we use the same number if features here
     # if that should change, we need to pad with zeros
-    print "Computing features for xy-edges..."
+    print("Computing features for xy-edges...")
     feats_xy = topo_feats_xy(rag, seg, edge_indications, node_z_coords)
-    print "Computing features for z-edges..."
+    print("Computing features for z-edges...")
     feats_z  = topo_feats_z(rag, seg, edge_indications)
 
     # merge features
@@ -320,8 +322,8 @@ if __name__ == '__main__':
         rag = nrag.gridRag(seg)
         uv_ids = rag.uvIds()
         feats = topo_feats_slice(seg, uv_ids)
-        print feats.shape
-        print feats[:, -5:]
+        print(feats.shape)
+        print(feats[:, -5:])
 
     def test_seg():
         import os
@@ -348,18 +350,18 @@ if __name__ == '__main__':
     def test_topofeats_xy():
         seg, rag, nodes_z, edge_indications = test_seg()
         feats = topo_feats_xy(rag, seg, edge_indications, nodes_z)
-        print feats.shape
+        print(feats.shape)
 
     def test_topofeats_z():
         seg, rag, nodes_z, edge_indications = test_seg()
         feats = topo_feats_z(rag, seg, edge_indications)
-        print feats.shape
+        print(feats.shape)
 
     def topofeats():
         seg, rag, nodes_z, edge_indications = test_seg()
         edge_lens = np.ones(rag.numberOfEdges)
         feats, _ = topology_features_impl(rag, seg, edge_indications, edge_lens, nodes_z)
-        print feats.shape
+        print(feats.shape)
 
     test_topofeats_xy()
     # test_topofeats_z()

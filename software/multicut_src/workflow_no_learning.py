@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import vigra
 import numpy as np
 
@@ -54,7 +56,7 @@ def accumulate_affinities_over_edges(
 
     edge_indications = ds.edge_indications(seg_id)
 
-    print "Accumulating xy affinities with feature:", feature
+    print("Accumulating xy affinities with feature:", feature)
     accumulated = nrag.accumulateEdgeFeaturesFlat(
         rag,
         aff_xy,
@@ -64,7 +66,7 @@ def accumulate_affinities_over_edges(
         ExperimentSettings().n_threads
     )[:, index]
 
-    print "Accumulating z affinities with feature:", feature
+    print("Accumulating z affinities with feature:", feature)
     accumulated_z = nrag.accumulateEdgeFeaturesFlat(
         rag,
         aff_z,
@@ -102,7 +104,7 @@ def costs_from_affinities(
         return_probs=False
 ):
 
-    print "Computing mc costs from affinities"
+    print("Computing mc costs from affinities")
     # NOTE we need to invert, because we have affinity maps, not boundary probabilities
     probs = 1. - accumulate_affinities_over_edges(
         ds,
@@ -116,7 +118,7 @@ def costs_from_affinities(
     assert (probs >= 0.).all(), str(probs.min())
     assert (probs <= 1.).all(), str(probs.max())
 
-    print "Cost range before scaling:", probs.min(), probs.max()
+    print("Cost range before scaling:", probs.min(), probs.max())
     costs = probs.copy()
 
     # map affinities to weight space
@@ -128,23 +130,23 @@ def costs_from_affinities(
     # then map to ]-inf, inf[
     costs = np.log((1. - costs) / costs) + np.log((1. - beta) / beta)
     assert not np.isinf(costs).any()
-    print "Cost range after scaling:", costs.min(), costs.max()
+    print("Cost range after scaling:", costs.min(), costs.max())
 
     edge_sizes = ds.topology_features(seg_id, False)[:, 0]
     edge_indications = ds.edge_indications(seg_id)
 
     # weight with the edge lens according to the weighting scheme
     if weighting_scheme == "z":
-        print "Weighting Z edges"
+        print("Weighting Z edges")
         costs = weight_z_edges(costs, edge_sizes, edge_indications, weight)
     elif weighting_scheme == "xyz":
-        print "Weighting xyz edges"
+        print("Weighting xyz edges")
         costs = weight_xyz_edges(costs, edge_sizes, edge_indications, weight)
     elif weighting_scheme == "all":
-        print "Weighting all edges"
+        print("Weighting all edges")
         costs = weight_all_edges(costs, edge_sizes, weight)
     else:
-        print "Edges are not weighted"
+        print("Edges are not weighted")
 
     assert not np.isinf(costs).any()
 
@@ -175,7 +177,7 @@ def lifted_multicut_costs_from_shortest_paths(
         edge_z_distance=None
 ):
 
-    print "Computing lifted costs along shortest paths"
+    print("Computing lifted costs along shortest paths")
 
     # TODO add quantiles ?!
     agglomerators = {
@@ -208,7 +210,7 @@ def lifted_multicut_costs_from_shortest_paths(
         graph,
         (1. - local_probabilities),
         start_nodes,
-        [targets[start_idx[ii]] for ii in xrange(len(start_nodes))],
+        [targets[start_idx[ii]] for ii in range(len(start_nodes))],
         returnNodes=False,
         numberOfThreads=ExperimentSettings().n_threads
     )
@@ -261,7 +263,7 @@ def multicut_workflow_no_learning(
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_test, DataSet)
 
-    print "Running Multicut with weights from affinities"
+    print("Running Multicut with weights from affinities")
 
     # get all parameters for the multicut
     uv_ids = ds_test.uv_ids(seg_id)
@@ -297,7 +299,7 @@ def lifted_multicut_workflow_no_learning(
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(ds_test, DataSet)
 
-    print "Running Lifted Multicut with weights from affinities"
+    print("Running Lifted Multicut with weights from affinities")
 
     # get all parameters for the multicut
     uv_ids = ds_test.uv_ids(seg_id)
@@ -380,7 +382,7 @@ def mala_clustering_workflow(
         threshold=threshold
     )
 
-    print "start clustering"
+    print("start clustering")
     clustering = nifty.graph.agglo.agglomerativeClustering(policy)
     clustering.run(verbose=True)
 

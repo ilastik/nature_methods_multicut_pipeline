@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import vigra
 import h5py
 import numpy as np
@@ -10,17 +12,14 @@ from feature_impls import topo_feats_z
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty
     import nifty.graph.rag as nrag
     import nifty.ground_truth as ngt
 except ImportError:
     try:
-        import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
         import nifty_with_cplex.ground_truth as ngt
     except ImportError:
         try:
-            import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
             import nifty_with_gurobi.ground_truth as ngt
         except ImportError:
@@ -66,7 +65,7 @@ def defects_to_nodes(ds, seg_id):
     completely_defected_slices = []
     with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
         tasks = []
-        for z in xrange(seg.shape[0]):
+        for z in range(seg.shape[0]):
             tasks.append(executor.submit(defects_to_nodes_z, z))
         defect_nodes = []
         nodes_z      = []
@@ -172,7 +171,7 @@ def compute_skip_edges_z(
         defect_node_dict
 ):
 
-    print "Computing skip edges for slice %i" % z
+    print("Computing skip edges for slice %i" % z)
 
     def skip_edges_for_nodes(z_up, z_dn, nodes_dn, mask):
         skip_range = z_up - z_dn
@@ -280,7 +279,7 @@ def modified_adjacency(ds, seg_id):
         ignore_edge_ids = []
 
     for i, z in enumerate(defect_slices):
-        print "Processing slice %i: %i / %i" % (z, i, len(defect_slices))
+        print("Processing slice %i: %i / %i" % (z, i, len(defect_slices)))
         # get the skip edges between adjacent slices
         # skip for first or last slice or slice with lower defect
         has_lower_defect = True if z in has_lower_defect_list else False
@@ -309,7 +308,7 @@ def modified_adjacency(ds, seg_id):
         if not duplicate_mask.all():  # -> we have entries that will be masked out
             # make sure that all duplicates have ignore segment value
             assert (skip_edges[np.logical_not(duplicate_mask)] == ExperimentSettings().ignore_seg_value).all()
-            print "Removing duplicate skip edges due to ignore segment label"
+            print("Removing duplicate skip edges due to ignore segment label")
             skip_edges = skip_edges[duplicate_mask]
             skip_ranges = skip_ranges[duplicate_mask]
             skip_starts = skip_starts[duplicate_mask]
@@ -338,7 +337,7 @@ def modified_adjacency(ds, seg_id):
         assert all((skip_edges[matches[:, 1]] == ExperimentSettings().ignore_seg_value).any(axis=1)), \
             "All duplicate skip edges should connect to a ignore segment"
 
-        print "Removing %i skip edges that were duplicates of uv ids." % len(matches)
+        print("Removing %i skip edges that were duplicates of uv ids." % len(matches))
         # get a mask for the duplicates
         duplicate_mask = np.ones(len(skip_edges), dtype=np.bool)
         duplicate_mask[matches[:, 1]] = False
@@ -475,7 +474,7 @@ def _get_skip_edge_features_for_slices(
 
     n_threads = ExperimentSettings().n_threads
     for i, z_up in enumerate(targets):
-        print "to", z_up
+        print("to", z_up)
 
         which_skip_edges = skip_edge_ranges == unique_ranges[i]
         skip_pairs_z   = skip_edge_pairs[which_skip_edges]
@@ -638,9 +637,9 @@ def _get_skip_topo_features_for_slices(
     unique_ranges = np.unique(skip_edge_ranges)
     targets = unique_ranges + z_dn
 
-    print "Computing skip edge features from slice ", z_dn
+    print("Computing skip edge features from slice ", z_dn)
     for i, z_up in enumerate(targets):
-        print "to", z_up
+        print("to", z_up)
 
         which_skip_edges = skip_edge_ranges == unique_ranges[i]
         skip_pairs_z   = skip_edge_pairs[which_skip_edges]
@@ -747,13 +746,13 @@ def modified_probs_to_energies(
 
     # weight edges
     if weighting_scheme == "z":
-        print "Weighting Z edges"
+        print("Weighting Z edges")
         edge_energies = weight_z_edges(edge_energies, edge_areas, edge_indications, weight)
     elif weighting_scheme == "xyz":
-        print "Weighting xyz edges"
+        print("Weighting xyz edges")
         edge_energies = weight_xyz_edges(edge_energies, edge_areas, edge_indications, weight)
     elif weighting_scheme == "all":
-        print "Weighting all edges"
+        print("Weighting all edges")
         edge_energies = weight_all_edges(edge_energies, edge_areas, weight)
 
     # set ignore edges to be maximally repulsive
@@ -821,9 +820,9 @@ def postprocess_segmentation(ds, seg_id, seg_result):
 
 # FIXME I have now idea if this is still doing the right thing
 def postprocess_segmentation_with_missing_slices(seg_result, slice_list):
-    print "WARNING"
-    print "WARNING: This function 'postprocess_segmentation_with_missing_slices' may do completely bogus things!"
-    print "WARNING"
+    print("WARNING")
+    print("WARNING: This function 'postprocess_segmentation_with_missing_slices' may do completely bogus things!")
+    print("WARNING")
     replace_slices = _get_replace_slices(slice_list)
     total_insertions = 0
     for insrt in replace_slices:

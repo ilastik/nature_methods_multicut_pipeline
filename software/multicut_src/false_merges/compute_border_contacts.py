@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 import vigra
 import itertools
@@ -196,7 +198,7 @@ def compute_border_contacts(seg, merge_along_lines=False):
 
     # now we invert the centroids to labels, potentially leaving out ignore ids
     labels_to_centroids = {}
-    for centroid_id, label in centroid_ids_to_labels.iteritems():
+    for centroid_id, label in centroid_ids_to_labels.items():
         if centroid_id not in ignore_centroid_ids:
             labels_to_centroids.setdefault(label, []).append(centroid_list[centroid_id])
 
@@ -208,14 +210,6 @@ def compute_border_contacts(seg, merge_along_lines=False):
     for label in labels_to_centroids:
         if len(labels_to_centroids[label]) == 1:
             del labels_to_centroids[label]
-
-    # debugging
-    #print
-    #print len(labels_to_centroids)
-    #print
-    #for labs in labels_to_centroids:
-    #    print labs, ":", len(labels_to_centroids[labs])
-    #quit()
 
     return labels_to_centroids
 
@@ -234,7 +228,7 @@ def get_faces_with_neighbors(image):
     xy0 = (0, 0)
     xy1 = (image.shape[2],) * 2
     xy2 = (image.shape[2] + image.shape[0], image.shape[2] + image.shape[1])
-    print shpxy, xy0, xy1, xy2
+    print(shpxy, xy0, xy1, xy2)
 
     # xy front face
     xyf = np.zeros(shpxy)
@@ -258,7 +252,7 @@ def get_faces_with_neighbors(image):
     xz0 = (0, 0)
     xz1 = (image.shape[1],) * 2
     xz2 = (image.shape[1] + image.shape[0], image.shape[1] + image.shape[2])
-    print shpxz, xz0, xz1, xz2
+    print(shpxz, xz0, xz1, xz2)
 
     # xz front face
     xzf = np.zeros(shpxz)
@@ -282,7 +276,7 @@ def get_faces_with_neighbors(image):
     yz0 = (0, 0)
     yz1 = (image.shape[0],) * 2
     yz2 = (image.shape[0] + image.shape[1], image.shape[0] + image.shape[2])
-    print shpyz, yz0, yz1, yz2
+    print(shpyz, yz0, yz1, yz2)
 
     # yz front face
     yzf = np.zeros(shpyz)
@@ -356,7 +350,7 @@ def find_centroids(seg, dt, bounds):
 
             # Get disttancetransf of the object
             cur_dt = dt.copy()
-            cur_dt[curobj == False] = 0
+            cur_dt[curobj==False] = 0
 
             # Detect the global maximum of this object
             amax = np.amax(cur_dt)
@@ -384,40 +378,40 @@ def find_centroids(seg, dt, bounds):
 def translate_centroids_to_volume(centroids, volume_shape):
     rtrn_centers = {}
 
-    for orientation, centers in centroids.iteritems():
+    for orientation, centers in centroids.items():
 
         if orientation == 'xyf':
             centers = {
                 lbl: [center + [0] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
         elif orientation == 'xyb':
             centers = {
                 lbl: [center + [volume_shape[2] - 1] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
         elif orientation == 'xzf':
             centers = {
                 lbl: [[center[0], 0, center[1]] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
         elif orientation == 'xzb':
             centers = {
                 lbl: [[center[0], volume_shape[1] - 1, center[1]] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
         elif orientation == 'yzf':
             centers = {
                 lbl: [[0, center[0], center[1]] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
         elif orientation == 'yzb':
             centers = {
                 lbl: [[volume_shape[0] - 1, center[0], center[1]] for center in centers_in_lbl]
-                for lbl, centers_in_lbl in centers.iteritems()
+                for lbl, centers_in_lbl in centers.items()
             }
 
-        for key, val in centers.iteritems():
+        for key, val in centers.items():
             if key in rtrn_centers:
                 rtrn_centers[key].extend(val)
             else:
@@ -434,7 +428,7 @@ def compute_border_contacts_old(
     faces_seg, bounds = get_faces_with_neighbors(segmentation)
     faces_dt, _ = get_faces_with_neighbors(disttransf)
 
-    centroids = {key: find_centroids(val, faces_dt[key], bounds[key]) for key, val in faces_seg.iteritems()}
+    centroids = {key: find_centroids(val, faces_dt[key], bounds[key]) for key, val in faces_seg.items()}
     centroids = translate_centroids_to_volume(centroids, segmentation.shape)
 
     return centroids
@@ -468,7 +462,7 @@ def compute_path_end_pairs_and_labels(
     labels = []
     classes = []
     gt_labels = []
-    for lbl, contacts in border_contacts.iteritems():
+    for lbl, contacts in border_contacts.items():
 
         # Get all possible combinations of path ends in one segmentation object
         ps = list(itertools.combinations(contacts, 2))
@@ -509,7 +503,7 @@ def compute_path_end_pairs_and_labels(
         np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
     uniques = np.unique(b)
     correspondence_list = uniques.view(correspondence_list.dtype)
-    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0] / 2, 2))
+    correspondence_list = correspondence_list.reshape((correspondence_list.shape[0] // 2, 2))
 
     return np.array(pairs), np.array(labels), np.array(classes), np.array(gt_labels), correspondence_list.tolist()
 
@@ -519,7 +513,7 @@ def compute_path_end_pairs(border_contacts):
     # Convert border_contacts to path_end_pairs
     pairs = []
     labels = []
-    for lbl, contacts in border_contacts.iteritems():
+    for lbl, contacts in border_contacts.items():
         # Get all possible combinations of path ends in one segmentation object
         ps = list(itertools.combinations(contacts, 2))
         # Pairs are found if the segmentation object has more than one path end
