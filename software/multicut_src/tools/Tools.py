@@ -83,7 +83,6 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
     return actualDecorator
 
 
-# FIXME this is deprecated, use nrag.ragCoordinates.edgesToVolume
 # for visualizing edges
 def edges_to_volume(rag, edges, edge_direction=0):
 

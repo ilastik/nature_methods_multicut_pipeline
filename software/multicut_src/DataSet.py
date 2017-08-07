@@ -1273,6 +1273,15 @@ class DataSet(object):
     # Groundtruth projection
     #
 
+    def segmentation_to_2d_edges(self, seg_id, segmentation):
+        rag = self.rag(seg_id)
+        node_labels = nrag.gridRagAccumulateLabels(rag, segmentation)
+        uv_ids = rag.uvIds()
+        edge_labels = node_labels[uv_ids[:, 0]] != node_labels[uv_ids[:, 1]]
+        edge_indications = self.edge_indications(0)
+        edge_labels[edge_indications==0] = 0
+        return edges_to_volume(rag, edge_labels)
+
     # get the edge labeling from dense groundtruth
     @cacher_hdf5()
     def edge_gt(self, seg_id):
