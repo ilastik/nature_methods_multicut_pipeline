@@ -3,11 +3,11 @@ from __future__ import print_function, division
 import vigra
 import numpy as np
 
-from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
-from MCSolver import run_mc_solver
-from DataSet import DataSet
-from ExperimentSettings import ExperimentSettings
-from lifted_mc import optimize_lifted, compute_and_save_lifted_nh
+from .MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
+from .MCSolver import run_mc_solver
+from .DataSet import DataSet
+from .ExperimentSettings import ExperimentSettings
+from .lifted_mc import optimize_lifted, compute_and_save_lifted_nh
 
 # for future uses
 # from tools import cacher_hdf5

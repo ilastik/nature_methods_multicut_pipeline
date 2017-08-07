@@ -3,7 +3,7 @@ from __future__ import print_function, division
 import numpy as np
 import vigra
 
-from tools import find_matching_row_indices, replace_from_dict, find_exclusive_matching_indices
+from .tools import find_matching_row_indices, replace_from_dict, find_exclusive_matching_indices
 
 # from concurrent import futures
 # from ExperimentSettings import ExperimentSettings

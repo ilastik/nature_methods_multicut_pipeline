@@ -3,13 +3,12 @@ from __future__ import print_function, division
 import numpy as np
 import vigra
 
-from DataSet import DataSet
-from ExperimentSettings import ExperimentSettings
-
-from MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves, multicut_message_passing
-from EdgeRF import learn_and_predict_rf_from_gt
-from lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs_to_energies
-from defect_handling import modified_adjacency, modified_probs_to_energies
+from .DataSet import DataSet
+from .ExperimentSettings import ExperimentSettings
+from .MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves, multicut_message_passing
+from .EdgeRF import learn_and_predict_rf_from_gt
+from .lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs_to_energies
+from .defect_handling import modified_adjacency, modified_probs_to_energies
 
 
 # all these ifs look stupid, but we want to have a fixed order

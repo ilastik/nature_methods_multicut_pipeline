@@ -4,11 +4,11 @@ import vigra
 import h5py
 import numpy as np
 from concurrent import futures
-from tools import cacher_hdf5, cache_name, get_unique_rows, find_matching_row_indices, find_matching_indices
 
-from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
-from ExperimentSettings import ExperimentSettings
-from feature_impls import topo_feats_z
+from .MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
+from .ExperimentSettings import ExperimentSettings
+from .feature_impls import topo_feats_z
+from .tools import cacher_hdf5, cache_name, get_unique_rows, find_matching_row_indices, find_matching_indices
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:

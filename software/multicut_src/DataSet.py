@@ -7,18 +7,18 @@ import shutil
 import h5py
 from concurrent import futures
 import itertools
-import cPickle as pickle
+import pickle
 
-from tools import cacher_hdf5, cache_name
-from tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
-from tools import edges_to_volumes_for_skip_edges, edges_to_volume
+from .tools import cacher_hdf5, cache_name
+from .tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
+from .tools import edges_to_volumes_for_skip_edges, edges_to_volume
 
-from defect_handling import modified_edge_indications, modified_adjacency
-from defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
-from defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
+from .defect_handling import modified_edge_indications, modified_adjacency
+from .defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
+from .defect_handling import get_skip_edges, get_skip_ranges, get_skip_starts
 
-from ExperimentSettings import ExperimentSettings
-from feature_impls import topology_features_impl
+from .ExperimentSettings import ExperimentSettings
+from .feature_impls import topology_features_impl
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
@@ -221,6 +221,11 @@ class DataSet(object):
     #
     # Saving the dataset, and clearing caches
     #
+
+    # check if the cache of the dataset already exists
+    @staticmethod
+    def cache_exists(meta_folder, ds_name):
+        return os.path.exists(os.path.join(meta_foler, ds_name))
 
     def save(self):
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')

@@ -1,4 +1,4 @@
-from DataSet import DataSet
+from .DataSet import DataSet
 
 
 # TODO

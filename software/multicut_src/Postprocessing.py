@@ -4,7 +4,8 @@ import numpy as np
 import vigra
 from concurrent import futures
 
-from ExperimentSettings import ExperimentSettings
+from .ExperimentSettings import ExperimentSettings
+from .tools import replace_from_dict
 
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:
@@ -20,8 +21,6 @@ except ImportError:
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
-
-from tools import replace_from_dict
 
 
 # TODO 10,000 seems to be a pretty large default value !

@@ -6,16 +6,16 @@ import h5py
 import os
 from functools import partial
 
-from defect_handling import modified_edge_features, modified_region_features, modified_topology_features
-from defect_handling import modified_edge_features_from_affinity_maps
-from defect_handling import modified_edge_indications, modified_edge_gt, modified_edge_gt_fuzzy
-from defect_handling import get_skip_edges, modified_adjacency, get_ignore_edge_ids
-from ExperimentSettings import ExperimentSettings
+from .defect_handling import modified_edge_features, modified_region_features, modified_topology_features
+from .defect_handling import modified_edge_features_from_affinity_maps
+from .defect_handling import modified_edge_indications, modified_edge_gt, modified_edge_gt_fuzzy
+from .defect_handling import get_skip_edges, modified_adjacency, get_ignore_edge_ids
+from .ExperimentSettings import ExperimentSettings
 
 try:
     from sklearn.ensemble import RandomForestClassifier as RFType
     use_sklearn = True
-    import cPickle as pickle
+    import pickle
     print("Using sklearn random forest")
 except ImportError:
     RFType = vigra.learning.RandomForest3

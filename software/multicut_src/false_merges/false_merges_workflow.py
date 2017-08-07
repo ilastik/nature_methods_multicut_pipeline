@@ -372,7 +372,7 @@ def compute_false_merges(
     """
 
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
-    assert len(mc_segs_train_keys) == len(mc_segs_train), % \
+    assert len(mc_segs_train_keys) == len(mc_segs_train), \
         "we must have the same number of segmentation vectors as trainsets"
 
     rf = train_random_forest_for_merges(

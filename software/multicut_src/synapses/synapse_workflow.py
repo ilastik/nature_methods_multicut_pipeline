@@ -4,11 +4,11 @@ import numpy as np
 import vigra
 import os
 
-from .. import RandomForest, local_feature_aggregator
-from .. import DataSet, ExperimentSettings
-from .. import edges_to_volume
-from .. import get_ignore_edge_ids
-from hard_example_mining import mine_hard_examples_felzenszwalb
+from ..EdgeRF import RandomForest, local_feature_aggregator
+from ..DataSet import DataSet, ExperimentSettings
+from ..tools import edges_to_volume
+from ..defect_handling import get_ignore_edge_ids
+from .hard_example_mining import mine_hard_examples_felzenszwalb
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
