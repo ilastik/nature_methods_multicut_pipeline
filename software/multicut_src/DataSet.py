@@ -225,7 +225,7 @@ class DataSet(object):
     # check if the cache of the dataset already exists
     @staticmethod
     def cache_exists(meta_folder, ds_name):
-        return os.path.exists(os.path.join(meta_foler, ds_name))
+        return os.path.exists(os.path.join(meta_folder, ds_name))
 
     def save(self):
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
