@@ -9,8 +9,7 @@ class Singleton(type):
 
 
 # singleton class, holding all experiment parameters
-class ExperimentSettings(object):
-    __metaclass__ = Singleton
+class ExperimentSettings(metaclass=Singleton):
 
     # init the experiment setttings, setting all parameter to their default
     def __init__(self):

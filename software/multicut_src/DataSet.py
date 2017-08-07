@@ -51,7 +51,7 @@ def load_dataset(meta_folder, ds_name=None):
         assert os.path.exists(cache_folder), cache_folder
     ds_obj_path = os.path.join(cache_folder, 'ds_obj.pkl')
     assert os.path.exists(ds_obj_path), ds_obj_path
-    with open(ds_obj_path) as f:
+    with open(ds_obj_path, 'rb') as f:
         return pickle.load(f)
 
 
@@ -229,7 +229,7 @@ class DataSet(object):
 
     def save(self):
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
-        with open(obj_save_path, 'w') as f:
+        with open(obj_save_path, 'wb') as f:
             pickle.dump(self, f)
 
     def clear_all_caches(self):
@@ -1011,7 +1011,7 @@ class DataSet(object):
 
         # save the feature names to file
         save_file = cache_name('edge_features', 'feature_folder', False, True, self, seg_id, inp_id, anisotropy_factor)
-        vigra.writeHDF5(edge_features_names, save_file, "edge_features_names")
+        vigra.writeHDF5([nn.encode('utf-8') for nn in edge_features_names], save_file, "edge_features_names")
 
         return np.nan_to_num(edge_features)
 
@@ -1061,15 +1061,20 @@ class DataSet(object):
         # this is the number of node feats that are combined with min, max, sum, absdiff
         # in conrast to center feats, which are combined with euclidean distance
         n_stat_feats = 17  # magic_nu...
+        node_features = np.nan_to_num(node_features)
 
         save_path = cache_name("_region_statistics", "feature_folder", False, False, self, seg_id, inp_id)
 
         vigra.writeHDF5(node_features[:, :n_stat_feats], save_path, "region_statistics")
-        vigra.writeHDF5(reg_stat_names, save_path, "region_statistics_names")
+        vigra.writeHDF5(
+            [nn.encode('utf-8') for nn in reg_stat_names], save_path, "region_statistics_names"
+        )
         vigra.writeHDF5(node_features[:, n_stat_feats:], save_path, "region_centers")
-        vigra.writeHDF5(reg_center_names, save_path, "region_center_names")
+        vigra.writeHDF5(
+            [nn.encode('utf-8') for nn in reg_center_names], save_path, "region_center_names"
+        )
 
-        return statistics
+        return [nn.encode('utf-8') for nn in statistics]
 
     # the argument 'with_defects' is needed for correctly caching the lmc features
     @cacher_hdf5(folder="feature_folder", ignoreNumpyArrays=True)
@@ -1119,8 +1124,9 @@ class DataSet(object):
 
         feat_names = []
         feat_names.extend(
-            ["RegionFeatures_" + name + combine
-                for combine in ("_min", "_max", "_absdiff", "_sum") for name in regStatNames])
+            ["RegionFeatures_%s_%s" % (name , combine)
+             for combine in ("min", "max", "absdiff", "sum") for name in regStatNames]
+        )
 
         # we actively delete stuff we don't need to free memory
         # because this may become memory consuming for lifted edges
@@ -1140,7 +1146,7 @@ class DataSet(object):
         sV = regCenters[uv_ids[:, 1], :]
         allFeat.append((sU - sV)**2)
 
-        feat_names.extend(["RegionFeatures_" + name for name in regCenterNames])
+        feat_names.extend(["RegionFeatures_%s" % name for name in regCenterNames])
 
         sV = sV.resize((1, 1))
         sU = sU.resize((1, 1))
@@ -1177,9 +1183,9 @@ class DataSet(object):
             save_folder,
             "region_features_" + str(seg_id) + "_" + str(inp_id) + "_" + str(lifted_nh) + ".h5"
         )
-        vigra.writeHDF5(feat_names, save_file, "region_features_names")
-        print("writing feat_names to", save_file)
-
+        vigra.writeHDF5(
+            [nn.encode('utf-8') for nn in feat_names], save_file, "region_features_names"
+        )
         return allFeat
 
     # get the names of the region features
@@ -1250,7 +1256,9 @@ class DataSet(object):
             topo_feat_names.extend(extra_names)
 
         save_file = cache_name('topology_features', 'feature_folder', False, False, self, seg_id, use_2d_edges)
-        vigra.writeHDF5(topo_feat_names, save_file, "topology_features_names")
+        vigra.writeHDF5(
+            [nn.encode('utf-8') for nn in topo_feat_names], save_file, "topology_features_names"
+        )
 
         return np.nan_to_num(topo_feats)
 
