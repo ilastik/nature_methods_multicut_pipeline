@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 # script for multicut on isotropic data
 
 # if build from source and not a conda pkg, we assume that we have cplex
@@ -17,19 +18,19 @@ has_cplex  = nifty.Configuration.WITH_CPLEX
 has_gurobi = nifty.Configuration.WITH_GUROBI
 #try to import nifty mc solver, it will fail if cplex is not installed
 if has_gurobi and not has_cplex:
-    print "##########################################################################"
-    print "################ You are using gurobi instead of cplex ###################"
-    print "###################### Inference may be slower ###########################"
-    print "##########################################################################"
+    print("##########################################################################")
+    print("################ You are using gurobi instead of cplex ###################")
+    print("###################### Inference may be slower ###########################")
+    print("##########################################################################")
 elif not has_cplex and not has_gurobi:
-    print "##########################################################################"
-    print "#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######"
-    print "##########################################################################"
-    print "######### you have cplex? run install-cplex-shared-libs.sh script! #######"
-    print "##########################################################################"
-    print "######### don't have cplex? apply for an academic license at IBM!  #######"
-    print "#########               see README.txt for details                 #######"
-    print "##########################################################################"
+    print("##########################################################################")
+    print("#########            CPLEX LIBRARY HAS NOT BEEN FOUND!!!           #######")
+    print("##########################################################################")
+    print("######### you have cplex? run install-cplex-shared-libs.sh script! #######")
+    print("##########################################################################")
+    print("######### don't have cplex? apply for an academic license at IBM!  #######")
+    print("#########               see README.txt for details                 #######")
+    print("##########################################################################")
     sys.exit(1)
 
 import argparse
@@ -38,8 +39,7 @@ import vigra
 import numpy as np
 
 # watershed on distance transform
-# change for conda package
-from wsdt import wsDtSegmentation
+from wsdt_impl import compute_wsdt_segmentation
 
 from multicut_src import DataSet, load_dataset
 from multicut_src import multicut_workflow, lifted_multicut_workflow
@@ -90,15 +90,12 @@ def wsdt(prob_map):
 
     # off the shelve settings
     threshold  = 0.3
-    minMemSize = 50
-    minSegSize = 75
-    sigMinima  = 2.0
-    sigWeights = 2.6
-    groupSeeds = False
+    min_segment_size = 50
+    sigma_minima = 2.0
 
-    segmentation, _ = wsDtSegmentation(prob_map, threshold,
-            minMemSize, minSegSize,
-            sigMinima, sigWeights, groupSeeds)
+    segmentation, _ = compute_wsdt_segmentation(
+        prob_map, threshold, sigma_minima, min_segment_size=min_segment_size
+    )
 
     if not 0 in segmentation:
         segmentation -= 1
@@ -108,7 +105,7 @@ def wsdt(prob_map):
 
 def init(data_folder, cache_folder):
 
-    print "Generating initial cache, this may take some minutes"
+    print("Generating initial cache, this may take some minutes")
 
     # init train
     ds_train = DataSet(cache_folder, "ds_train")
@@ -180,7 +177,7 @@ def main():
     seg_id = 0
 
     if args.use_lifted:
-        print "Starting Lifted Multicut Workflow"
+        print("Starting Lifted Multicut Workflow")
 
         mc_node, mc_edges, mc_energy, t_inf = lifted_multicut_workflow(ds_train, ds_test,
            seg_id, seg_id,
@@ -190,7 +187,7 @@ def main():
         save_path = os.path.join(out_folder, "lifted_multicut_segmentation.tif")
 
     else:
-        print "Starting Multicut Workflow"
+        print("Starting Multicut Workflow")
         mc_node, mc_edges, mc_energy, t_inf = multicut_workflow(
                 ds_train, ds_test,
                 seg_id, seg_id,
@@ -200,7 +197,7 @@ def main():
 
     mc_seg = ds_test.project_mc_result(seg_id, mc_node)
 
-    print "Saving Result to", save_path
+    print("Saving Result to", save_path)
     vigra.impex.writeVolume(mc_seg.transpose( (2,1,0) ), save_path, '')
 
 if __name__ == '__main__':

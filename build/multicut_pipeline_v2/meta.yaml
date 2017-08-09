@@ -19,19 +19,16 @@ build:
 
 requirements:
     build:
-        - python 2.7*
+        - python {{PY_VER}}*
     run:
-        - python 2.7*
-        - vigra 1.11.0.post222
-        - wsdt 0.2.post9
+        - python {{PY_VER}}*
+        - vigra
         - nifty-with-cplex
         - h5py >=2.7
-        - futures
-        - fastfilters >=0.2.4.post3
-        - boost 1.60.0 # this is just a hack to have the correct boost version for skeletopyze
-        - scipy
-        - scikit-image
+        - fastfilters
+        - boost 1.63.0
         - scikit-learn >=0.18.2
+        - futures # [py2k]
 
 test:
     imports:
