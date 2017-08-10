@@ -5,12 +5,10 @@ import os
 # import shutil
 # import itertools
 import h5py
-import numpy as np
-import vigra
-import cPickle as pickle
-from copy import deepcopy,copy
-import h5py
+from copy import deepcopy
 from path_computation import compute_graph_and_paths,cut_off
+import logging
+logger = logging.getLogger(__name__)
 
 # relative imports from top level dir
 from ..Postprocessing import remove_small_segments
@@ -41,7 +39,6 @@ except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
-
 def extract_paths_from_segmentation(
         ds,
         seg_path,
@@ -64,11 +61,10 @@ def extract_paths_from_segmentation(
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
         if all_paths.size:
-            all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
+            all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
 
     # otherwise compute the paths
-
     else:
 
         seg = vigra.readHDF5(seg_path, key)
@@ -80,8 +76,6 @@ def extract_paths_from_segmentation(
         len_uniq=len(np.unique(seg))-1
         for idx,label in enumerate(np.unique(seg)):
             print "Number ", idx, " without labels of ",len_uniq-1
-            if label == 0:
-                continue
 
             # masking volume
             img[seg != label] = 0
@@ -98,7 +92,6 @@ def extract_paths_from_segmentation(
 
         # all_paths=np.array(all_paths)
         paths_to_objs=np.array(paths_to_objs, dtype="float64")
-
 
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
@@ -124,7 +117,6 @@ def extract_paths_from_segmentation(
     return all_paths, paths_to_objs
 
 
-
 def extract_paths_and_labels_from_segmentation(
         ds,
         seg,
@@ -136,6 +128,7 @@ def extract_paths_and_labels_from_segmentation(
     """
         extract paths from segmentation, for learning
     """
+    logger.debug('Extracting paths and labels from segmentation ...')
 
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
@@ -149,14 +142,15 @@ def extract_paths_and_labels_from_segmentation(
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
         if all_paths.size:
-            all_paths = np.array( [ path.reshape( (len(path)/3, 3) ) for path in all_paths ] )
+            all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
         path_classes = vigra.readHDF5(paths_save_file, 'path_classes')
         correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list').tolist()
 
     # otherwise compute paths
-
     else:
+        assert seg.shape == gt.shape
+        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
 
         img = deepcopy(seg)
         dt = ds.inp(ds.n_inp - 1)
@@ -167,12 +161,6 @@ def extract_paths_and_labels_from_segmentation(
         len_uniq=len(np.unique(seg))-1
         for label in np.unique(seg):
             print "Label ", label, " of ",len_uniq
-            if label == 0:
-                continue
-
-            if label==13:
-                print "hi"
-                print "hi"
 
             # masking volume
             img[seg != label] = 0
@@ -200,7 +188,7 @@ def extract_paths_and_labels_from_segmentation(
             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
             # see also the following issue (https://github.com/h5py/h5py/issues/875)
             try:
-                print 'Saving paths in {}'.format(paths_save_file)
+                logger.info('Saving paths in {}'.format(paths_save_file))
                 with h5py.File(paths_save_file) as f:
                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
                     f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
@@ -216,221 +204,21 @@ def extract_paths_and_labels_from_segmentation(
             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
 
+    logger.debug('... done extracting paths and labels from segmentation!')
     return all_paths, paths_to_objs, path_classes, correspondence_list
 
-
-
-# def extract_paths_from_segmentation_julian(
-#         ds,
-#         seg_path,
-#         key,
-#         paths_cache_folder=None
-# ):
-#
-#     if paths_cache_folder is not None:
-#         if not os.path.exists(paths_cache_folder):
-#             os.mkdir(paths_cache_folder)
-#         paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s.h5' % ds.ds_name)
-#     else:
-#         paths_save_file = ''
-#
-#     # if the cache exists, load paths from cache
-#     if os.path.exists(paths_save_file):
-#         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
-#         # we need to reshape the paths again to revover the coordinates
-#         if all_paths.size:
-#             all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
-#         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
-#
-#     # otherwise compute the paths
-#     else:
-#         # TODO we don't remove small objects for now, because this would relabel the segmentation,
-#         # which we don't want in this case
-#         seg = vigra.readHDF5(seg_path, key)
-#         dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
-#
-#         # Compute path end pairs
-#         # TODO debug the new border contact computation, which is much faster
-#         # border_contacts = compute_border_contacts(seg, False)
-#         border_contacts = compute_border_contacts_old(seg, dt)
-#
-#         path_pairs, paths_to_objs = compute_path_end_pairs(border_contacts)
-#         # Sort the paths_to_objs by size (not doing that leads to a possible bug in the next loop)
-#         order = np.argsort(paths_to_objs)
-#         paths_to_objs = np.array(paths_to_objs)[order]
-#         path_pairs = np.array(path_pairs)[order]
-#
-#         # Invert the distance transform and take penalty power
-#         dt = np.amax(dt) - dt
-#         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
-#
-#         all_paths = []
-#         for obj in np.unique(paths_to_objs):
-#
-#             # Mask distance transform to current object
-#             masked_dt = dt.copy()
-#             masked_dt[seg != obj] = np.inf
-#
-#             # Take only the relevant path pairs
-#             pairs_in = path_pairs[paths_to_objs == obj]
-#
-#             paths = shortest_paths(
-#                 masked_dt,
-#                 pairs_in,
-#                 n_threads=ExperimentSettings().n_threads
-#             )
-#             # paths is now a list of numpy arrays
-#             all_paths.extend(paths)
-#
-#         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
-#         keep_mask = np.array([isinstance(x, np.ndarray) for x in all_paths], dtype=np.bool)
-#         all_paths = np.array(all_paths)[keep_mask]
-#         paths_to_objs = paths_to_objs[keep_mask]
-#
-#         # if we cache paths save the results
-#         if paths_cache_folder is not None:
-#             # need to write paths with vlen and flatten before writing to properly save this
-#             all_paths_save = np.array([pp.flatten() for pp in all_paths])
-#             # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
-#             # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
-#             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
-#             # see also the following issue (https://github.com/h5py/h5py/issues/875)
-#             try:
-#                 with h5py.File(paths_save_file) as f:
-#                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-#                     f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
-#             except (TypeError, IndexError):
-#                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-#             # if len(all_paths_save) < 2:
-#             #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-#             # else:
-#             #     with h5py.File(paths_save_file) as f:
-#             #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-#             #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
-#             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
-#
-#     return all_paths, paths_to_objs
-#
-#
-# def extract_paths_and_labels_from_segmentation_julian(
-#         ds,
-#         seg,
-#         seg_id,
-#         gt,
-#         correspondence_list,
-#         paths_cache_folder=None
-# ):
-#     """
-#     params:
-#     """
-#
-#     if paths_cache_folder is not None:
-#         if not os.path.exists(paths_cache_folder):
-#             os.mkdir(paths_cache_folder)
-#         paths_save_file = os.path.join(paths_cache_folder, 'paths_ds_%s_seg_%i.h5' % (ds.ds_name, seg_id))
-#     else:
-#         paths_save_file = ''
-#
-#     # if the cache exists, load paths from cache
-#     if os.path.exists(paths_save_file):
-#         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
-#         # we need to reshape the paths again to revover the coordinates
-#         if all_paths.size:
-#             all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
-#         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
-#         path_classes = vigra.readHDF5(paths_save_file, 'path_classes')
-#         correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list').tolist()
-#
-#     # otherwise compute paths
-#     else:
-#         assert seg.shape == gt.shape
-#         dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
-#
-#         # Compute path end pairs
-#         # TODO debug the new border contact computation, which is much faster
-#         # border_contacts = compute_border_contacts(seg, False)
-#         border_contacts = compute_border_contacts_old(seg, dt)
-#
-#         # This is supposed to only return those pairs that will be used for path computation
-#         # TODO: Throw out some under certain conditions (see also within function)
-#         path_pairs, paths_to_objs, path_classes, path_gt_labels, correspondence_list = compute_path_end_pairs_and_labels(
-#             border_contacts, gt, correspondence_list
-#         )
-#
-#         # Invert the distance transform and take penalty power
-#         dt = np.amax(dt) - dt
-#         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
-#
-#         all_paths = []
-#         for obj in np.unique(paths_to_objs):
-#
-#             # Mask distance transform to current object
-#             # TODO use a mask in dijkstra instead
-#             masked_dt = dt.copy()
-#             masked_dt[seg != obj] = np.inf
-#
-#             # Take only the relevant path pairs
-#             pairs_in = path_pairs[paths_to_objs == obj]
-#
-#             paths = shortest_paths(
-#                 masked_dt,
-#                 pairs_in,
-#                 n_threads=ExperimentSettings().n_threads
-#             )
-#             # paths is now a list of numpy arrays
-#             all_paths.extend(paths)
-#
-#         # TODO: Here we have to ensure that every path is actually computed
-#         # TODO:  --> Throw not computed paths out of the lists
-#
-#         # TODO: Remove paths under certain criteria
-#         # TODO: Do this only if GT is supplied
-#         # a) Class 'non-merged': Paths cross labels in GT multiple times
-#         # b) Class 'merged': Paths have to contain a certain amount of pixels in both GT classes
-#         # TODO implement stuff here
-#
-#         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
-#         keep_mask = np.array([isinstance(x, np.ndarray) for x in all_paths], dtype=np.bool)
-#         all_paths = np.array(all_paths)[keep_mask]
-#         paths_to_objs = paths_to_objs[keep_mask]
-#         path_classes  = path_classes[keep_mask]
-#
-#         # if caching is enabled, write the results to cache
-#         if paths_cache_folder is not None:
-#             # need to write paths with vlen and flatten before writing to properly save this
-#             all_paths_save = np.array([pp.flatten() for pp in all_paths])
-#             # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
-#             # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
-#             # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
-#             # see also the following issue (https://github.com/h5py/h5py/issues/875)
-#             try:
-#                 print 'Saving paths in {}'.format(paths_save_file)
-#                 with h5py.File(paths_save_file) as f:
-#                     dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-#                     f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
-#             except (TypeError, IndexError):
-#                 vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-#             # if len(all_paths_save) < 2:
-#             #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-#             # else:
-#             #     with h5py.File(paths_save_file) as f:
-#             #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-#             #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
-#             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
-#             vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
-#             vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
-#
-#     return all_paths, paths_to_objs, path_classes, correspondence_list
-#
 
 # cache the random forest here
 def train_random_forest_for_merges(
         trainsets,  # list of datasets with training data
         mc_segs_train,  # list with paths to segmentations (len(mc_segs_train) == len(trainsets))
         mc_segs_train_keys,
-        rf_cache_folder=None,
         paths_cache_folder=None
 ):
+
+    logger.info('Training false merges random forest ...')
+
+    rf_cache_folder = ExperimentSettings().rf_cache_folder
 
     if rf_cache_folder is not None:
         if not os.path.exists(rf_cache_folder):
@@ -443,20 +231,38 @@ def train_random_forest_for_merges(
 
     # check if rf is already cached
     if RandomForest.is_cached(rf_save_path):
-        print "Loading rf from:", rf_save_path
+
+        logger.info("Loading RF from: {}".format(rf_save_path))
         rf = RandomForest.load_from_file(rf_save_path, 'rf', ExperimentSettings().n_threads)
 
     # otherwise do the actual calculations
     else:
+
+        logger.info('RF was not cached and will be computed.')
+
         features_train = []
         labels_train = []
+
+        logger.debug('Looping over training sets:')
 
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
+            # # FIXME delete this!
+            # if ds_id == 0:
+            #     continue
+
+            logger.debug('----------')
+            logger.debug('ds_id = {}'.format(ds_id))
+
             current_ds = trainsets[ds_id]
+            logger.debug('current_ds.ds_name = {}'.format(current_ds.ds_name))
+
             keys_to_betas = mc_segs_train_keys[ds_id]
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
+
+            # For training of the training data split the trainsets again
+            current_trainsets = np.delete(trainsets, ds_id, axis=0).tolist()
 
             # Load ground truth
             gt = current_ds.gt()
@@ -474,8 +280,9 @@ def train_random_forest_for_merges(
                 correspondence_list = None
 
             # loop over the different beta segmentations per train set
-            for seg_id, seg_path in enumerate(paths_to_betas):
-                key = keys_to_betas[seg_id]
+            for seg_path_id, seg_path in enumerate(paths_to_betas):
+                logger.debug('seg_path_id = {}'.format(seg_path_id))
+                key = keys_to_betas[seg_path_id]
 
                 # Calculate the new distance transform and replace it in the dataset inputs
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
@@ -489,22 +296,42 @@ def train_random_forest_for_merges(
                 current_ds.clear_filters(current_ds.n_inp - 1)
 
                 # Compute the paths
-                paths, _, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
+                paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                     current_ds,
                     seg,
-                    seg_id,
+                    seg_path_id,
                     gt,
                     correspondence_list,
                     paths_cache_folder
                 )
 
                 if paths.size:
+
+                    path_to_edge_features = None
+                    if ExperimentSettings().use_probs_map_for_cut_features:
+
+                        # FIXME replace this by the acutal cached function call
+                        # Add for test set (current_ds)
+                        path_to_edge_features = os.path.join(
+                            current_ds.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+                        )
+
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-                    features_train.append(path_feature_aggregator(current_ds, paths))
+                    features_train.append(
+                        path_feature_aggregator(
+                            current_ds,
+                            paths,
+                            ExperimentSettings().path_features,
+                            mc_segmentation=seg,
+                            paths_to_objs=paths_to_objs,
+                            train_sets=current_trainsets,
+                            path_to_edge_features=path_to_edge_features
+                        )
+                    )
                     labels_train.append(path_classes)
 
                 else:
-                    print "No paths found for seg_id = {}".format(seg_id)
+                    print "No paths found for seg_id = {}".format(seg_path_id)
                     continue
 
         features_train = np.concatenate(features_train, axis=0)
@@ -523,6 +350,7 @@ def train_random_forest_for_merges(
         if rf_cache_folder is not None:
             rf.write(rf_save_path, 'rf')
 
+    logger.info('... done training false merges random forest!')
     return rf
 
 
@@ -533,7 +361,6 @@ def compute_false_merges(
         mc_segs_train_keys,
         mc_seg_test,
         mc_seg_test_key,
-        rf_cache_folder=None,
         test_paths_cache_folder=None,
         train_paths_cache_folder=None
 ):
@@ -557,6 +384,8 @@ def compute_false_merges(
     :return:
     """
 
+    logger.info('Begin of compute_false_merges ...')
+
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
     assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
 
@@ -564,17 +393,13 @@ def compute_false_merges(
         trainsets,
         mc_segs_train,
         mc_segs_train_keys,
-        rf_cache_folder,
         train_paths_cache_folder
     )
 
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
-    if ds_test.n_inp < 3:
-        ds_test.add_input_from_data(dt)
-    else:
-        ds_test.replace_inp_from_data(ds_test.n_inp - 1, dt, clear_cache=False)
+    ds_test.add_input_from_data(dt)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
@@ -585,7 +410,23 @@ def compute_false_merges(
 
     assert len(paths_test) == len(paths_to_objs_test)
 
-    features_test = path_feature_aggregator(ds_test, paths_test)
+    path_to_edge_features = None
+    if ExperimentSettings().use_probs_map_for_cut_features:
+        # FIXME replace this by the acutal cached function call
+        # Add for test set (current_ds)
+        path_to_edge_features = os.path.join(
+            ds_test.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+        )
+
+    features_test = path_feature_aggregator(
+        ds_test,
+        paths_test,
+        ExperimentSettings().path_features,
+        mc_segmentation=seg,
+        paths_to_objs=paths_to_objs_test,
+        train_sets=trainsets,
+        path_to_edge_features=path_to_edge_features
+    )
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
 
@@ -744,6 +585,7 @@ def combine_paths(
 # resolve each potential false merge individually with lifted edges
 def resolve_merges_with_lifted_edges(
         ds,
+        train_sets,
         seg_id,
         false_paths,  # dict(merge_ids : false_paths)
         path_rf,
@@ -798,93 +640,99 @@ def resolve_merges_with_lifted_edges(
 
         # extract local uv ids and corresponding weights
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
+        mc_weights     = mc_weights_all[local_uv_mask]
 
-        if uv_local.size:
-            mc_weights     = mc_weights_all[local_uv_mask]
+        # extract the lifted uv ids and corresponding weights
+        uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
+        lifted_weights = lifted_weights_all[lifted_uv_mask]
 
-            # extract the lifted uv ids and corresponding weights
-            uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
-            lifted_weights = lifted_weights_all[lifted_uv_mask]
+        # FIXME somthing goes wrong here, but what? merge_id = 75
+        # FIXME ecc_centers_seg still doesn't have switched dimensions!!! -> Old cache or in computation?
+        # sample new paths corresponding to lifted edges with min graph distance
+        paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
+            paths_cache_folder,
+            ds,
+            mc_segmentation,
+            merge_id,
+            uv_local,
+            disttransf,
+            ecc_centers_seg,
+            reverse_mapping
+        )
 
-            # sample new paths corresponding to lifted edges with min graph distance
-            paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
-                paths_cache_folder,
-                ds,
-                mc_segmentation,
-                merge_id,
-                uv_local,
-                disttransf,
-                ecc_centers_seg,
-                reverse_mapping
+        # Map to local uvs
+        uv_ids_paths_min_nh = np.array([[mapping[u] for u in uv] for uv in uv_ids_paths_min_nh])
+
+        # add the paths that were initially classified
+        paths_obj, uv_ids_paths_min_nh = combine_paths(
+            paths_obj,
+            np.array(false_paths[merge_id]),  # <- initial paths
+            uv_ids_paths_min_nh,
+            seg,
+            mapping)
+
+        if not paths_obj.size:
+            continue
+
+        # Compute the path features
+        features = path_feature_aggregator(
+            ds, paths_obj, feature_list=ExperimentSettings().path_features,
+            mc_segmentation=mc_segmentation,
+            paths_to_objs=[merge_id] * len(paths_obj),  # FIXME is this correct?
+            train_sets=train_sets,
+            edge_weights=mc_weights_all
+        )
+        features = np.nan_to_num(features)
+
+        # Cache features for debug purpose # TODO disabled for now
+        # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+        #    pickle.dump(features, f)
+
+        # compute the lifted weights from rf probabilities
+        # FIXME TODO - not caching this for now -> should not be performance relevant
+        lifted_path_weights = path_rf.predict_probabilities(features)[:, 1]
+
+        # Class 1: contain a merge
+        # Class 0: don't contain a merge
+
+        # scale the probabilities
+        p_min = 0.001
+        p_max = 1. - p_min
+        lifted_path_weights = (p_max - p_min) * lifted_path_weights + p_min
+
+        # Transform probs to weights
+        lifted_path_weights = np.log((1 - lifted_path_weights) / lifted_path_weights)
+
+        # Weighting edges with their length for proper lifted to local scaling
+        lifted_path_weights /= lifted_path_weights.shape[0]
+        lifted_path_weights *= ExperimentSettings().lifted_path_weights_factor
+        lifted_weights /= lifted_weights.shape[0]
+        mc_weights /= mc_weights.shape[0]
+
+        # Concatenate all lifted weights and edges
+        if lifted_weights.size:  # only concatenate if we have lifted edges from sampling
+            lifted_weights = np.concatenate(
+                (lifted_path_weights, lifted_weights),
+                axis=0
             )
-
-            # Map to local uvs
-            uv_ids_paths_min_nh = np.array([[mapping[u] for u in uv] for uv in uv_ids_paths_min_nh])
-
-            # add the paths that were initially classified
-            paths_obj, uv_ids_paths_min_nh = combine_paths(
-                paths_obj,
-                np.array(false_paths[merge_id]),  # <- initial paths
-                uv_ids_paths_min_nh,
-                seg,
-                mapping)
-
-            if not paths_obj.size:
-                continue
-
-            # Compute the path features
-            features = path_feature_aggregator(ds, paths_obj)
-            features = np.nan_to_num(features)
-
-            # Cache features for debug purpose # TODO disabled for now
-            # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
-            #    pickle.dump(features, f)
-
-            # compute the lifted weights from rf probabilities
-            # FIXME TODO - not caching this for now -> should not be performance relevant
-            lifted_path_weights = path_rf.predict_probabilities(features)[:, 1]
-
-            # Class 1: contain a merge
-            # Class 0: don't contain a merge
-
-            # scale the probabilities
-            p_min = 0.001
-            p_max = 1. - p_min
-            lifted_path_weights = (p_max - p_min) * lifted_path_weights + p_min
-
-            # Transform probs to weights
-            lifted_path_weights = np.log((1 - lifted_path_weights) / lifted_path_weights)
-
-            # Weighting edges with their length for proper lifted to local scaling
-            lifted_path_weights /= lifted_path_weights.shape[0]
-            lifted_path_weights *= ExperimentSettings().lifted_path_weights_factor
-            lifted_weights /= lifted_weights.shape[0]
-            mc_weights /= mc_weights.shape[0]
-
-            # Concatenate all lifted weights and edges
-            if lifted_weights.size:  # only concatenate if we have lifted edges from sampling
-                lifted_weights = np.concatenate(
-                    (lifted_path_weights, lifted_weights),
-                    axis=0
-                )
-                uv_ids_lifted_nh_total = np.concatenate(
-                    (uv_ids_paths_min_nh, uv_local_lifted),
-                    axis=0
-                )
-            else:
-                lifted_weights = lifted_path_weights
-                uv_ids_lifted_nh_total = uv_ids_paths_min_nh
-
-            resolved_nodes, _, _ = optimize_lifted(
-                uv_local,
-                uv_ids_lifted_nh_total,
-                mc_weights,
-                lifted_weights
+            uv_ids_lifted_nh_total = np.concatenate(
+                (uv_ids_paths_min_nh, uv_local_lifted),
+                axis=0
             )
+        else:
+            lifted_weights = lifted_path_weights
+            uv_ids_lifted_nh_total = uv_ids_paths_min_nh
 
-            resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
-            # project back to global node ids and save
-            resolved_objs[merge_id] = {reverse_mapping[i]: node_res for i, node_res in enumerate(resolved_nodes)}
+        resolved_nodes, _, _ = optimize_lifted(
+            uv_local,
+            uv_ids_lifted_nh_total,
+            mc_weights,
+            lifted_weights
+        )
+
+        resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
+        # project back to global node ids and save
+        resolved_objs[merge_id] = {reverse_mapping[i]: node_res for i, node_res in enumerate(resolved_nodes)}
 
     return resolved_objs
 

@@ -760,6 +760,54 @@ def build_paths_from_edges(edge_paths,edges):
     return finished_paths
 
 
+def compute_graph_and_paths(img, dt, anisotropy):
+    """ overall wrapper for all functions, input: label image; output: paths
+        sampled from skeleton
+    """
+
+    #skeletonize
+    skel_img=skeletonize_3d(img)
+
+    nodes, edges_and_lens, term_list, is_node_map, loop_list = \
+        skeleton_to_graph(skel_img, dt, anisotropy)
+    if len(nodes) < 2:
+        return []
+    g, edge_lens, edges_and_lens = graph_and_edge_weights(nodes, edges_and_lens)
+
+    #FIXME graph_pruning keeps screwing up the edges_and_lens array
+    for_building=deepcopy(edges_and_lens)
+    check_connected_components(g)
+
+    loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
+
+    for where in np.where(loop_nr > 1)[0]:
+
+        adjacency = np.array([[adj_node, adj_edge] for adj_node, adj_edge
+                              in g.nodeAdjacency(loop_uniq[where] - 1)])
+
+        if (len(adjacency)) == 1:
+            term_list = np.append(term_list, loop_uniq[where] - 1)
+
+    # if modus=="testing":
+    #     return term_list,edges,g,nodes
+
+    pruned_term_list = graph_pruning(g, term_list, edges_and_lens, nodes)
+
+
+    #TODO cores global
+    edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g,
+                                                              edge_lens,
+                                                              pruned_term_list, 24)
+    check_edge_paths(edge_paths, pruned_term_list)
+
+    finished_paths=build_paths_from_edges(edge_paths,for_building)
+
+    return finished_paths
+
+
+
+
+
 def cut_off(all_paths,
                 paths_to_objs,
                 path_classes, label,
@@ -818,53 +866,3 @@ def cut_off(all_paths,
     [path_classes.append(False) for x in xrange(0, len(indexes_false))]
 
     return all_paths, paths_to_objs, path_classes
-
-
-
-
-def compute_graph_and_paths(img, dt, anisotropy):
-    """ overall wrapper for all functions, input: label image; output: paths
-        sampled from skeleton
-    """
-
-    #skeletonize
-    skel_img=skeletonize_3d(img)
-
-    nodes, edges_and_lens, term_list, is_node_map, loop_list = \
-        skeleton_to_graph(skel_img, dt, anisotropy)
-    if len(nodes) < 2:
-        return []
-    g, edge_lens, edges_and_lens = graph_and_edge_weights(nodes, edges_and_lens)
-
-    #FIXME graph_pruning keeps screwing up the edges_and_lens array
-    for_building=deepcopy(edges_and_lens)
-    check_connected_components(g)
-
-    loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
-
-    for where in np.where(loop_nr > 1)[0]:
-
-        adjacency = np.array([[adj_node, adj_edge] for adj_node, adj_edge
-                              in g.nodeAdjacency(loop_uniq[where] - 1)])
-
-        if (len(adjacency)) == 1:
-            term_list = np.append(term_list, loop_uniq[where] - 1)
-
-    # if modus=="testing":
-    #     return term_list,edges,g,nodes
-
-    pruned_term_list = graph_pruning(g, term_list, edges_and_lens, nodes)
-
-
-    #TODO cores global
-    edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g,
-                                                              edge_lens,
-                                                              pruned_term_list, 24)
-    check_edge_paths(edge_paths, pruned_term_list)
-
-    finished_paths=build_paths_from_edges(edge_paths,for_building)
-
-    return finished_paths
-
-
-
