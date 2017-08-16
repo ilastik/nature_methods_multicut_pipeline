@@ -491,7 +491,8 @@ def graph_pruning(g,term_list,edges,nodes_list):
 
     queue,finished_dict,node_dict,main_dict = \
         terminal_func (start_queue, g, finished_dict,
-                       node_dict, main_dict, copy(edges),nodes_list)
+                       node_dict, main_dict, copy(edges),
+                       nodes_list)
 
 
 
@@ -612,6 +613,7 @@ def graph_pruning(g,term_list,edges,nodes_list):
 
         assert(queue.qsize()>0),"contraction finished before all the nodes were seen"
 
+    #This is the pruning
     pruned_term_list = np.array(
         [key for key in finished_dict.keys() if
          finished_dict[key][1] / finished_dict[key][4] > 4])
@@ -772,7 +774,8 @@ def compute_graph_and_paths(img, dt, anisotropy):
         skeleton_to_graph(skel_img, dt, anisotropy)
     if len(nodes) < 2:
         return []
-    g, edge_lens, edges_and_lens = graph_and_edge_weights(nodes, edges_and_lens)
+    g, edge_lens, edges_and_lens = \
+        graph_and_edge_weights(nodes, edges_and_lens)
 
     #FIXME graph_pruning keeps screwing up the edges_and_lens array
     for_building=deepcopy(edges_and_lens)
@@ -782,7 +785,8 @@ def compute_graph_and_paths(img, dt, anisotropy):
 
     for where in np.where(loop_nr > 1)[0]:
 
-        adjacency = np.array([[adj_node, adj_edge] for adj_node, adj_edge
+        adjacency = np.array([[adj_node, adj_edge]
+                              for adj_node, adj_edge
                               in g.nodeAdjacency(loop_uniq[where] - 1)])
 
         if (len(adjacency)) == 1:
@@ -791,19 +795,56 @@ def compute_graph_and_paths(img, dt, anisotropy):
     # if modus=="testing":
     #     return term_list,edges,g,nodes
 
-    pruned_term_list = graph_pruning(g, term_list, edges_and_lens, nodes)
+    pruned_term_list = graph_pruning\
+        (g, term_list, edges_and_lens, nodes)
 
 
     #TODO cores global
-    edge_paths, edge_counts = edge_paths_and_counts_for_nodes(g,
-                                                              edge_lens,
-                                                              pruned_term_list, 24)
+    edge_paths, edge_counts = \
+        edge_paths_and_counts_for_nodes\
+            (g,edge_lens,pruned_term_list, 32)
     check_edge_paths(edge_paths, pruned_term_list)
 
     finished_paths=build_paths_from_edges(edge_paths,for_building)
 
     return finished_paths
 
+
+def parallel_wrapper(seg, dt, gt, anisotropy,
+                      label, len_uniq, mode="with_labels"):
+
+    if mode == "with_labels":
+        print "Label ", label, " of ", len_uniq
+
+    if mode == "only_paths":
+        print "Number ", label, " without labels of ", len_uniq
+
+    # masking volume
+    img=np.zeros(seg.shape)
+    img[seg==label]=1
+
+    paths = compute_graph_and_paths(img, dt, anisotropy)
+
+    if mode=="with_labels":
+
+        if len(paths) == 0:
+            return [],[],[]
+
+        all_paths_single, paths_to_objs_single, path_classes_single = \
+            cut_off([], [], [], label, paths, gt, anisotropy)
+
+
+        return all_paths_single, paths_to_objs_single, path_classes_single
+
+    elif mode=="only_paths":
+
+        if len(paths) == 0:
+            return [],[]
+
+        all_paths_single=[np.array(path) for path in paths]
+        paths_to_objs_single=[label for path in paths]
+
+        return all_paths_single, paths_to_objs_single
 
 
 

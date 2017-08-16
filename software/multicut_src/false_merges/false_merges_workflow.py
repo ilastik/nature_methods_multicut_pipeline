@@ -6,9 +6,10 @@ import os
 # import itertools
 import h5py
 from copy import deepcopy
-from path_computation import compute_graph_and_paths,cut_off
+from path_computation import parallel_wrapper
 import logging
 logger = logging.getLogger(__name__)
+from joblib import Parallel,delayed
 
 # relative imports from top level dir
 from ..Postprocessing import remove_small_segments
@@ -43,7 +44,7 @@ def extract_paths_from_segmentation(
         ds,
         seg_path,
         key,
-        paths_cache_folder=None, anisotropy=[1,1,10]):
+        paths_cache_folder=None, anisotropy=[1, 1, 10]):
     """
         extract paths from segmentation, for pipeline
     """
@@ -67,6 +68,8 @@ def extract_paths_from_segmentation(
     # otherwise compute the paths
     else:
 
+
+        #TODO remove this
         seg = vigra.readHDF5(seg_path, key)
         dt = ds.inp(ds.n_inp - 1)
         img = deepcopy(seg)
@@ -74,21 +77,19 @@ def extract_paths_from_segmentation(
         paths_to_objs = []
 
         len_uniq=len(np.unique(seg))-1
-        for idx,label in enumerate(np.unique(seg)):
-            print "Number ", idx, " without labels of ",len_uniq-1
 
-            # masking volume
-            img[seg != label] = 0
-            img[seg == label] = 1
+        parallel_array = Parallel(n_jobs=-1)\
+            (delayed(parallel_wrapper)(seg, dt, [],
+                                       anisotropy, label, len_uniq,"only_paths")
+             for label in np.unique(seg))
 
+        [[all_paths.append(path)
+           for path in seg_array[0] if seg_array!=[]]
+            for seg_array in parallel_array]
 
-            paths=compute_graph_and_paths(img, dt, anisotropy)
-
-            if len(paths)==0:
-                continue
-
-            [all_paths.extend([np.array(path)]) for path in paths]
-            [paths_to_objs.extend([label]) for path in paths]
+        [[paths_to_objs.append(path_to_obj)
+          for path_to_obj in seg_array[1] if seg_array!=[]]
+            for seg_array in parallel_array]
 
         # all_paths=np.array(all_paths)
         paths_to_objs=np.array(paths_to_objs, dtype="float64")
@@ -123,11 +124,12 @@ def extract_paths_and_labels_from_segmentation(
         seg_id,
         gt,
         correspondence_list,
-        paths_cache_folder=None, anisotropy=[1,1,10]):
+        paths_cache_folder=None, anisotropy=[1, 1, 10]):
 
     """
         extract paths from segmentation, for learning
     """
+
     logger.debug('Extracting paths and labels from segmentation ...')
 
     if paths_cache_folder is not None:
@@ -149,6 +151,8 @@ def extract_paths_and_labels_from_segmentation(
 
     # otherwise compute paths
     else:
+
+
         assert seg.shape == gt.shape
         dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
 
@@ -156,57 +160,39 @@ def extract_paths_and_labels_from_segmentation(
         dt = ds.inp(ds.n_inp - 1)
         all_paths = []
         paths_to_objs = []
-        path_classes=[]
+        path_classes = []
 
-        len_uniq=len(np.unique(seg))-1
-        for label in np.unique(seg):
-            print "Label ", label, " of ",len_uniq
+        len_uniq = len(np.unique(seg)) - 1
 
-            # masking volume
-            img[seg != label] = 0
-            img[seg == label] = 1
+        parallel_array = Parallel(n_jobs=-1)\
+            (delayed(parallel_wrapper)(seg, dt, gt,
+                                       anisotropy, label, len_uniq)
+             for label in np.unique(seg))
 
-            paths=compute_graph_and_paths(img, dt, anisotropy)
+        [[all_paths.append(path)
+           for path in seg_array[0]]
+            for seg_array in parallel_array]
 
-            if len(paths)==0:
-                continue
+        [[paths_to_objs.append(path_to_obj)
+          for path_to_obj in seg_array[1]]
+            for seg_array in parallel_array]
 
-            all_paths, paths_to_objs, path_classes=\
-                cut_off(all_paths, paths_to_objs,
-                            path_classes, label, paths, gt, anisotropy)
+        [[path_classes.append(path_class)
+           for path_class in seg_array[2]]
+            for seg_array in parallel_array]
 
-        all_paths=np.array(all_paths)
-        paths_to_objs=np.array(paths_to_objs, dtype="float64")
-        path_classes=np.array(path_classes)
 
-        # if caching is enabled, write the results to cache
-        if paths_cache_folder is not None:
-            # need to write paths with vlen and flatten before writing to properly save this
-            all_paths_save = np.array([pp.flatten() for pp in all_paths])
-            # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
-            # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
-            # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
-            # see also the following issue (https://github.com/h5py/h5py/issues/875)
-            try:
-                logger.info('Saving paths in {}'.format(paths_save_file))
-                with h5py.File(paths_save_file) as f:
-                    dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-                    f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
-            except (TypeError, IndexError):
-                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-            # if len(all_paths_save) < 2:
-            #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
-            # else:
-            #     with h5py.File(paths_save_file) as f:
-            #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
-            #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
-            vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
-            vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
-            vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
+        print "finished appending"
+        all_paths = np.array(all_paths)
+        paths_to_objs = np.array(paths_to_objs, dtype="float64")
+        path_classes = np.array(path_classes)
+
+        print "finished numpying"
 
     logger.debug('... done extracting paths and labels from segmentation!')
-    return all_paths, paths_to_objs, path_classes, correspondence_list
 
+    return all_paths, paths_to_objs, \
+            path_classes, correspondence_list
 
 # cache the random forest here
 def train_random_forest_for_merges(
