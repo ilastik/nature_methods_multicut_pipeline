@@ -59,15 +59,15 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
 
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list
 ):
 
     # this should also work for cutouts, because they inherit from dataset
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
+    assert isinstance(trainsets, (DataSet, list, tuple))
     assert isinstance(ds_test, DataSet)
 
     print("Running multicut on", ds_test.ds_name)
@@ -112,14 +112,15 @@ def multicut_workflow(
 # TODO with_defects as flag instead of code duplication
 # multicut on the test dataset, weights learned with a rf on the train dataset
 def multicut_workflow_with_defect_correction(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list):
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list
+):
 
     # this should also work for cutouts, because they inherit from dataset
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
+    assert isinstance(trainsets, (DataSet, list, tuple))
     assert isinstance(ds_test, DataSet)
 
     print("Running multicut with defect correction on", ds_test.ds_name)
@@ -160,19 +161,19 @@ def multicut_workflow_with_defect_correction(
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
 def lifted_multicut_workflow(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_local,
-        feature_list_lifted,
-        gamma=1.,
-        warmstart=False,
-        weight_z_lifted=True
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list_local,
+    feature_list_lifted,
+    gamma=1.,
+    warmstart=False,
+    weight_z_lifted=True
 ):
 
     assert isinstance(ds_test, DataSet)
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
+    assert isinstance(trainsets, (DataSet, list, tuple))
 
     print("Running lifted multicut on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
@@ -183,7 +184,7 @@ def lifted_multicut_workflow(
     # ) step one, train a random forest
     print("Start learning")
 
-    p_test_lifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
+    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(
         trainsets,
         ds_test,
         seg_id_train,
@@ -214,13 +215,19 @@ def lifted_multicut_workflow(
         _get_feat_str(feature_list_local)
     )
 
-    # node z to edge z distance
-    edgeZdistance = np.abs(nzTest[uv_ids_lifted[:, 0]] - nzTest[uv_ids_lifted[:, 1]]) if weight_z_lifted else None
+    # calculate the z distance for edges if 'weight_z_lifted == True'
+    if weight_z_lifted:
+        nz_test = ds_test.node_z_coord(seg_id_test)
+        # node z to edge z distance
+        edge_z_distance = np.abs(nz_test[uv_ids_lifted[:, 0]] - nz_test[uv_ids_lifted[:, 1]])
+    else:
+        edge_z_distance = None
+
     edge_energies_lifted = lifted_probs_to_energies(
         ds_test,
         p_test_lifted,
         seg_id_test,
-        edgeZdistance,
+        edge_z_distance,
         ExperimentSettings().lifted_neighborhood,
         ExperimentSettings().beta_lifted,
         gamma
@@ -254,19 +261,19 @@ def lifted_multicut_workflow(
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
 def lifted_multicut_workflow_with_defect_correction(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_local,
-        feature_list_lifted,
-        gamma=1.,
-        warmstart=False,
-        weight_z_lifted=True
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list_local,
+    feature_list_lifted,
+    gamma=1.,
+    warmstart=False,
+    weight_z_lifted=True
 ):
 
     assert isinstance(ds_test, DataSet)
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list)
+    assert isinstance(trainsets, (DataSet, list, tuple))
 
     print("Running lifted multicut with defect detection on", ds_test.ds_name)
     if isinstance(trainsets, DataSet):
@@ -274,7 +281,7 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         print("Weights learned on multiple datasets")
 
-    p_test_lifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
+    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(
         trainsets,
         ds_test,
         seg_id_train,
@@ -312,13 +319,19 @@ def lifted_multicut_workflow_with_defect_correction(
     assert not np.isnan(edge_energies_local).any()
 
     # lifted energies
-    # node z to edge z distance
-    edgeZdistance = np.abs(nzTest[uv_ids_lifted[:, 0]] - nzTest[uv_ids_lifted[:, 1]]) if weight_z_lifted else None
+    # calculate the z distance for edges if 'weight_z_lifted == True'
+    if weight_z_lifted:
+        nz_test = ds_test.node_z_coord(seg_id_test)
+        # node z to edge z distance
+        edge_z_distance = np.abs(nz_test[uv_ids_lifted[:, 0]] - nz_test[uv_ids_lifted[:, 1]])
+    else:
+        edge_z_distance = None
+
     edge_energies_lifted = lifted_probs_to_energies(
         ds_test,
         p_test_lifted,
         seg_id_test,
-        edgeZdistance,
+        edge_z_distance,
         ExperimentSettings().lifted_neighborhood,
         ExperimentSettings().beta_lifted,
         gamma,

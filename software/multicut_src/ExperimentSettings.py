@@ -83,6 +83,7 @@ class ExperimentSettings(metaclass=Singleton):
         self.nLocalTrainingSlices = 5
         # number of neighbors for the lifted neighborhood
         self.lifted_neighborhood = 4
+        self.long_range = 4
 
         self.pAndMapIterations = 1000
 

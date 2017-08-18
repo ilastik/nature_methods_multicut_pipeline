@@ -553,13 +553,13 @@ def mask_lifted_edges(
 
 
 def learn_lifted_rf(
-        trainsets,
-        seg_id,
-        feature_list_lifted,
-        feature_list_local,
-        trainstr,
-        paramstr,
-        with_defects=False
+    trainsets,
+    seg_id,
+    feature_list_lifted,
+    feature_list_local,
+    trainstr,
+    paramstr,
+    with_defects=False
 ):
 
     cache_folder = ExperimentSettings().rf_cache_folder
@@ -642,17 +642,17 @@ def learn_lifted_rf(
 
 
 def learn_and_predict_lifted_rf(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_lifted,
-        feature_list_local,
-        with_defects=False
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list_lifted,
+    feature_list_local,
+    with_defects=False
 ):
 
-    assert isinstance(trainsets, DataSet) or isinstance(trainsets, list), type(trainsets)
-    if not isinstance(trainsets, list):
+    assert isinstance(trainsets, (DataSet, list, tuple), type(trainsets)
+    if not isinstance(trainsets, (list, tuple)):
         trainsets = [trainsets]
 
     # strings for caching
@@ -672,7 +672,6 @@ def learn_and_predict_lifted_rf(
         ExperimentSettings().lifted_neighborhood,
         with_defects
     )
-    nz_test = ds_test.node_z_coord(seg_id_test)
 
     # check if rf is already cached, if we use caching for random forests ( == rf_cache folder is not None )
     # we cache predictions in the ds_train cache folder
@@ -683,7 +682,7 @@ def learn_and_predict_lifted_rf(
         pred_path = os.path.join(ds_test.cache_folder, pred_name)
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
-            return vigra.readHDF5(pred_path, 'data'), uv_ids_test, nz_test
+            return vigra.readHDF5(pred_path, 'data'), uv_ids_test
 
     rf = learn_lifted_rf(
         trainsets,
@@ -719,7 +718,7 @@ def learn_and_predict_lifted_rf(
     if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 
-    return p_test, uv_ids_test, nz_test
+    return p_test, uv_ids_test
 
 
 def optimize_lifted(
@@ -805,7 +804,8 @@ def lifted_probs_to_energies(
     lifted_nh,
     beta_lifted=0.5,
     gamma=1.,
-    with_defects=False
+    with_defects=False,
+    is_long_range=False  # this is only a hack for caching
 ):
 
     p_min = 0.001
