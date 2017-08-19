@@ -1,13 +1,17 @@
 from __future__ import print_function, division
+import os
 import numpy as np
 import h5py
+import vigra
 
-from .DataSet import Cutout
+from .DataSet import Cutout, DataSet
 from .ExperimentSettings import ExperimentSettings
-from .lifted_mc import compute_and_save_lifted_nh, lifted_feature_aggregator
-from .lifted_mc import lifted_hard_gt, mask_lifted_edges, optimize_lifted
+from .lifted_mc import compute_and_save_lifted_nh, lifted_feature_aggregator, lifted_probs_to_energies
+from .lifted_mc import lifted_hard_gt, mask_lifted_edges, optimize_lifted, learn_and_predict_lifted_rf
 from .tools import find_matching_row_indices
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
+from .MCSolverImpl import probs_to_energies
+from .MCSolver import _get_feat_str, run_mc_solver
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
@@ -54,21 +58,12 @@ def get_long_range_z_features(ds, seg_id, affinity_map_path, affinity_map_key, l
     rag = ds.rag(seg_id)
     adjacency = get_long_range_z_adjacency(ds, seg_id, long_range)
 
-    if ds.has_seg_mask:
-        long_range_feats = nrag.accumulateLongRangeFeatures(
-            rag,
-            affinity_maps,
-            len(adjacency),
-            ignoreSegValue=ExperimentSettings().ignore_seg_value,
-            numberOfThreads=ExperimentSettings().n_threads
-        )
-    else:
-        long_range_feats = nrag.accumulateLongRangeFeatures(
-            rag,
-            affinity_maps,
-            len(adjacency),
-            numberOfThreads=ExperimentSettings().n_threads
-        )
+    long_range_feats = nrag.accumulateLongRangeFeatures(
+        rag,
+        affinity_maps,
+        adjacency,
+        numberOfThreads=ExperimentSettings().n_threads
+    )
     return np.nan_to_num(long_range_feats)
 
 
@@ -159,12 +154,12 @@ def learn_long_range_rf(
             train_cut,
             seg_id,
             affinity_map_paths[ii],
-            affinity_map_key[ii],
+            affinity_map_keys[ii],
             ExperimentSettings().long_range
         )
 
         to_lifted_nh = match_to_lifted_nh(
-            ds,
+            train_cut,
             ExperimentSettings().lifted_neighborhood,
             ExperimentSettings().long_range
         )
@@ -203,8 +198,8 @@ def learn_and_predict_long_range_rf(
     feature_list_local,
     affinity_map_paths_train,
     affinity_map_keys_train,
-    affinty_map_path_test,
-    affinty_map_key_test,
+    affinity_map_path_test,
+    affinity_map_key_test,
     with_defects=False
 ):
 
@@ -216,7 +211,7 @@ def learn_and_predict_long_range_rf(
     if not isinstance(affinity_map_paths_train, (list, tuple)):
         affinity_map_paths_train = [affinity_map_paths_train]
 
-    assert isinstance(affinity_map_keys_train, (str, list, tuple), type(affinity_map_keys_train)
+    assert isinstance(affinity_map_keys_train, (str, list, tuple)), type(affinity_map_keys_train)
     if not isinstance(affinity_map_keys_train, (list, tuple)):
         affinity_map_keys_train = [affinity_map_keys_train]
 
@@ -295,7 +290,7 @@ def learn_and_predict_long_range_rf(
     long_range_features = get_long_range_z_features(
         ds_test,
         seg_id_test,
-        affinty_map_path_test,
+        affinity_map_path_test,
         affinity_map_key_test,
         ExperimentSettings().long_range
     )
@@ -359,7 +354,7 @@ def long_range_multicut_wokflow(
         feature_list_local,
         affinity_map_paths_train,
         affinity_map_keys_train,
-        affinty_map_path_test,
+        affinity_map_path_test,
         affinity_map_key_test
     )
 
