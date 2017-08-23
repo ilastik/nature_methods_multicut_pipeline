@@ -476,7 +476,7 @@ def terminal_func(start_queue,g,finished_dict,node_dict,main_dict,edges,nodes_li
 
 
 #TODO check whether edgelist and termlist is ok (because of -1)
-def graph_pruning(g,term_list,edges,nodes_list):
+def graph_pruning(g,term_list,edges,nodes_list,pruning_threshhold):
 
     finished_dict={}
     node_dict={}
@@ -616,7 +616,7 @@ def graph_pruning(g,term_list,edges,nodes_list):
     #This is the pruning
     pruned_term_list = np.array(
         [key for key in finished_dict.keys() if
-         finished_dict[key][1] / finished_dict[key][4] > 4])
+         finished_dict[key][1] / finished_dict[key][4] > pruning_threshhold])
 
 
     return pruned_term_list
@@ -770,8 +770,16 @@ def compute_graph_and_paths(img, dt, anisotropy):
     #skeletonize
     skel_img=skeletonize_3d(img)
 
+
+    print "deleting img..."
+    del img
+
     nodes, edges_and_lens, term_list, is_node_map, loop_list = \
         skeleton_to_graph(skel_img, dt, anisotropy)
+
+    print "deleting skel_img..."
+    del skel_img
+
     if len(nodes) < 2:
         return []
     g, edge_lens, edges_and_lens = \
@@ -796,13 +804,13 @@ def compute_graph_and_paths(img, dt, anisotropy):
     #     return term_list,edges,g,nodes
 
     pruned_term_list = graph_pruning\
-        (g, term_list, edges_and_lens, nodes)
+        (g, term_list, edges_and_lens, nodes, 4)
 
 
     #TODO cores global
     edge_paths, edge_counts = \
         edge_paths_and_counts_for_nodes\
-            (g,edge_lens,pruned_term_list, 32)
+            (g,edge_lens,pruned_term_list, 1)
     check_edge_paths(edge_paths, pruned_term_list)
 
     finished_paths=build_paths_from_edges(edge_paths,for_building)

@@ -67,9 +67,6 @@ def extract_paths_from_segmentation(
 
     # otherwise compute the paths
     else:
-
-
-        #TODO remove this
         seg = vigra.readHDF5(seg_path, key)
         dt = ds.inp(ds.n_inp - 1)
         img = deepcopy(seg)
@@ -151,12 +148,6 @@ def extract_paths_and_labels_from_segmentation(
 
     # otherwise compute paths
     else:
-
-
-        assert seg.shape == gt.shape
-        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
-
-        img = deepcopy(seg)
         dt = ds.inp(ds.n_inp - 1)
         all_paths = []
         paths_to_objs = []
@@ -186,8 +177,32 @@ def extract_paths_and_labels_from_segmentation(
         all_paths = np.array(all_paths)
         paths_to_objs = np.array(paths_to_objs, dtype="float64")
         path_classes = np.array(path_classes)
-
         print "finished numpying"
+
+        # if caching is enabled, write the results to cache
+        if paths_cache_folder is not None:
+            # need to write paths with vlen and flatten before writing to properly save this
+            all_paths_save = np.array([pp.flatten() for pp in all_paths])
+            # TODO this is kind of a dirty hack, because write vlen fails if the vlen objects have the same lengths
+            # -> this fails if we have only 0 or 1 paths, beacause these trivially have the same lengths
+            # -> in the edge case that we have more than 1 paths with same lengths, this will still fail
+            # see also the following issue (https://github.com/h5py/h5py/issues/875)
+            try:
+                logger.info('Saving paths in {}'.format(paths_save_file))
+                with h5py.File(paths_save_file) as f:
+                    dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+                    f.create_dataset('all_paths', data=all_paths_save, dtype=dt)
+            except (TypeError, IndexError):
+                vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # if len(all_paths_save) < 2:
+            #     vigra.writeHDF5(all_paths_save, paths_save_file, 'all_paths')
+            # else:
+            #     with h5py.File(paths_save_file) as f:
+            #         dt = h5py.special_dtype(vlen=np.dtype(all_paths_save[0].dtype))
+            #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
+            vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
+            vigra.writeHDF5(path_classes, paths_save_file, 'path_classes')
+            vigra.writeHDF5(correspondence_list, paths_save_file, 'correspondence_list')
 
     logger.debug('... done extracting paths and labels from segmentation!')
 
@@ -292,28 +307,8 @@ def train_random_forest_for_merges(
                 )
 
                 if paths.size:
-
-                    path_to_edge_features = None
-                    if ExperimentSettings().use_probs_map_for_cut_features:
-
-                        # FIXME replace this by the acutal cached function call
-                        # Add for test set (current_ds)
-                        path_to_edge_features = os.path.join(
-                            current_ds.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
-                        )
-
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-                    features_train.append(
-                        path_feature_aggregator(
-                            current_ds,
-                            paths,
-                            ExperimentSettings().path_features,
-                            mc_segmentation=seg,
-                            paths_to_objs=paths_to_objs,
-                            train_sets=current_trainsets,
-                            path_to_edge_features=path_to_edge_features
-                        )
-                    )
+                    features_train.append(path_feature_aggregator(current_ds, paths))
                     labels_train.append(path_classes)
 
                 else:
@@ -385,7 +380,10 @@ def compute_false_merges(
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
-    ds_test.add_input_from_data(dt)
+    if ds_test.n_inp < 3:
+        ds_test.add_input_from_data(dt)
+    else:
+        ds_test.replace_inp_from_data(ds_test.n_inp - 1, dt, clear_cache=False)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
@@ -396,23 +394,7 @@ def compute_false_merges(
 
     assert len(paths_test) == len(paths_to_objs_test)
 
-    path_to_edge_features = None
-    if ExperimentSettings().use_probs_map_for_cut_features:
-        # FIXME replace this by the acutal cached function call
-        # Add for test set (current_ds)
-        path_to_edge_features = os.path.join(
-            ds_test.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
-        )
-
-    features_test = path_feature_aggregator(
-        ds_test,
-        paths_test,
-        ExperimentSettings().path_features,
-        mc_segmentation=seg,
-        paths_to_objs=paths_to_objs_test,
-        train_sets=trainsets,
-        path_to_edge_features=path_to_edge_features
-    )
+    features_test = path_feature_aggregator(ds_test, paths_test)
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
 
@@ -661,13 +643,7 @@ def resolve_merges_with_lifted_edges(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(
-            ds, paths_obj, feature_list=ExperimentSettings().path_features,
-            mc_segmentation=mc_segmentation,
-            paths_to_objs=[merge_id] * len(paths_obj),  # FIXME is this correct?
-            train_sets=train_sets,
-            edge_weights=mc_weights_all
-        )
+        features = path_feature_aggregator(ds, paths_obj)
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO disabled for now

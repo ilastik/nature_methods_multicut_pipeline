@@ -1,6 +1,8 @@
 import vigra
 import vigra.graphs as graphs
 import numpy as np
+import scipy
+from joblib import Parallel,delayed
 from concurrent import futures
 
 from ..ExperimentSettings import ExperimentSettings
@@ -167,22 +169,22 @@ def path_features_from_feature_images(
     # load the feature images ->
     # FIXME this might be too memory hungry if we have a large global bounding box
 
-    # compute the global bounding box
-    global_min = np.min(
-        np.concatenate([np.min(path, axis=0)[None, :] for path in paths], axis=0),
-        axis=0
-    )
-    global_max = np.max(
-        np.concatenate([np.max(path, axis=0)[None, :] for path in paths], axis=0),
-        axis=0
-    ) + 1
-    # substract min coords from all paths to bring them to new coordinates
-    paths_in_roi = [path - global_min for path in paths]
-    roi = np.s_[
-        global_min[0]:global_max[0],
-        global_min[1]:global_max[1],
-        global_min[2]:global_max[2]
-    ]
+    # # compute the global bounding box
+    # global_min = np.min(
+    #     np.concatenate([np.min(path, axis=0)[None, :] for path in paths], axis=0),
+    #     axis=0
+    # )
+    # global_max = np.max(
+    #     np.concatenate([np.max(path, axis=0)[None, :] for path in paths], axis=0),
+    #     axis=0
+    # ) + 1
+    # # substract min coords from all paths to bring them to new coordinates
+    # paths_in_roi = [path - global_min for path in paths]
+    # roi = np.s_[
+    #     global_min[0]:global_max[0],
+    #     global_min[1]:global_max[1],
+    #     global_min[2]:global_max[2]
+    # ]
 
     # load features in global boundng box
     feature_volumes = []
@@ -190,66 +192,75 @@ def path_features_from_feature_images(
     for path in feat_paths:
         with h5py.File(path) as f:
             feat_shape = f['data'].shape
-            print feat_shape
             # we add a singleton dimension to single channel features to loop over channel later
             if len(feat_shape) == 3:
-                feature_volumes.append(f['data'][roi][..., None])
+                feature_volumes.append(f['data'][..., None])
             else:
-                feature_volumes.append(f['data'][roi])
+                feature_volumes.append(f['data'])
     stats = ExperimentSettings().feature_stats
-    # check that the dimensions of the paths and the
-    # filters agree
-    if len(feat_shape) == 4:
-        feat_shape = feat_shape[:-1]
-    feat_shape = np.array(list(feat_shape))
-    assert (global_max <= feat_shape).all(), "%s %s" % (str(global_max), str(feat_shape))
-    assert (global_min >= np.array([0, 0, 0])).all(), "%s" % str(global_min)
-    if (global_max <= feat_shape).all() and (global_min >= np.array([0, 0, 0])).all():
-        pass
-    else:
-        print "FALSE"
-        print "------------------"
-        print "------------------"
-        print "------------------"
-        print "------------------"
 
-    def extract_features_for_path(path):
+    # def extract_features_for_path(path):
+    #
+    #     # calculate the local path bounding box
+    #     min_coords = np.min(path, axis=0)
+    #     max_coords = np.max(path, axis=0)
+    #     max_coords += 1
+    #     shape = tuple(max_coords - min_coords)
+    #     path_image = np.zeros(shape, dtype='uint32')
+    #     path -= min_coords
+    #     # we swapaxes to properly index the image properly
+    #     path_sa = np.swapaxes(path, 0, 1)
+    #     path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
+    #
+    #     path_features = []
+    #     for feature_volume in feature_volumes:
+    #         for c in range(feature_volume.shape[-1]):
+    #             path_roi = np.s_[
+    #                        min_coords[0]:max_coords[0],
+    #                        min_coords[1]:max_coords[1],
+    #                        min_coords[2]:max_coords[2],
+    #                        c  # wee need to also add the channel to the slicing
+    #                        ]
+    #             feat_tmp = feature_volume[path_roi]
+    #             assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
+    #             extractor = vigra.analysis.extractRegionFeatures(
+    #                 feat_tmp,
+    #                 path_image,
+    #                 ignoreLabel=0,
+    #                 features=stats
+    #             )
+    #             # TODO make sure that dimensions match for more that 1d stats!
+    #             path_features.extend(
+    #                 [extractor[stat][1] for stat in stats]
+    #             )
+    #     # ret = np.array(path_features)[:,None]
+    #     # print ret.shape
+    #     return np.array(path_features)[None, :]
 
-        # calculate the local path bounding box
-        min_coords  = np.min(path, axis=0)
-        max_coords = np.max(path, axis=0)
-        max_coords += 1
-        shape = tuple(max_coords - min_coords)
-        path_image = np.zeros(shape, dtype='uint32')
-        path -= min_coords
-        # we swapaxes to properly index the image properly
-        path_sa = np.swapaxes(path, 0, 1)
-        path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
 
-        path_features = []
+
+    def python_region_features_extractor_sc(path):
+
+        pixel_values = []
+
         for feature_volume in feature_volumes:
             for c in range(feature_volume.shape[-1]):
-                path_roi = np.s_[
-                    min_coords[0]:max_coords[0],
-                    min_coords[1]:max_coords[1],
-                    min_coords[2]:max_coords[2],
-                    c  # wee need to also add the channel to the slicing
-                ]
-                feat_tmp = feature_volume[path_roi]
-                assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
-                extractor = vigra.analysis.extractRegionFeatures(
-                    feat_tmp,
-                    path_image,
-                    ignoreLabel=0,
-                    features=stats
-                )
-                # TODO make sure that dimensions match for more that 1d stats!
-                path_features.extend(
-                    [extractor[stat][1] for stat in stats]
-                )
-        # ret = np.array(path_features)[:,None]
-        # print ret.shape
-        return np.array(path_features)[None, :]
+                pixel_values.extend([feature_volume[path[:, 0],
+                                                    path[:, 1],
+                                                    path[:, 2]]
+                                                    [:, c]])
+
+        return np.array(pixel_values)
+
+    def python_region_features_extractor_2_mc(single_vals):
+
+        path_features = []
+
+        [path_features.extend([np.mean(vals), np.var(vals), sum(vals),
+                               max(vals), min(vals),
+                               scipy.stats.kurtosis(vals), scipy.stats.skew(vals)]) for vals in single_vals]
+
+        return np.array(path_features)
 
     if len(paths) > 1:
     # if False:
@@ -259,16 +270,20 @@ def path_features_from_feature_images(
         # we avoid the single threaded i/o in the beginning!
         # it also lessens memory requirements if we have less threads than filters
         # parallel
-        with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
-            tasks = []
-            for p_id, path in enumerate(paths_in_roi):
-                tasks.append(executor.submit(extract_features_for_path, path))
-            out = np.concatenate([t.result() for t in tasks], axis=0)
+        pixel_values_all = [python_region_features_extractor_sc (path)
+                              for idx,path in enumerate(paths)]
+
+        out = np.array(Parallel(n_jobs=-1) \
+            (delayed(python_region_features_extractor_2_mc)(single_vals)
+             for single_vals in pixel_values_all ))
 
     else:
 
-        out = np.concatenate([extract_features_for_path(path) for path in paths_in_roi])
+        pixel_values_all = [python_region_features_extractor_sc (path)
+                              for idx,path in enumerate(paths)]
 
+        out=np.array([python_region_features_extractor_2_mc(single_vals)
+                            for single_vals in pixel_values_all])
     # serial for debugging
     # out = []
     # for p_id, path in enumerate(paths_in_roi):
