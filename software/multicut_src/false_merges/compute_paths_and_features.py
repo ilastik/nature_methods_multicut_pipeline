@@ -273,7 +273,7 @@ def path_features_from_feature_images(
         pixel_values_all = [python_region_features_extractor_sc (path)
                               for idx,path in enumerate(paths)]
 
-        out = np.array(Parallel(n_jobs=-1) \
+        out = np.array(Parallel(n_jobs=ExperimentSettings().n_threads) \
             (delayed(python_region_features_extractor_2_mc)(single_vals)
              for single_vals in pixel_values_all ))
 

@@ -75,7 +75,7 @@ def extract_paths_from_segmentation(
 
         len_uniq=len(np.unique(seg))-1
 
-        parallel_array = Parallel(n_jobs=-1)\
+        parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
             (delayed(parallel_wrapper)(seg, dt, [],
                                        anisotropy, label, len_uniq,"only_paths")
              for label in np.unique(seg))
@@ -152,10 +152,11 @@ def extract_paths_and_labels_from_segmentation(
         all_paths = []
         paths_to_objs = []
         path_classes = []
+        # vigra.filters.boundaryDistanceTransform()
 
         len_uniq = len(np.unique(seg)) - 1
 
-        parallel_array = Parallel(n_jobs=-1)\
+        parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
             (delayed(parallel_wrapper)(seg, dt, gt,
                                        anisotropy, label, len_uniq)
              for label in np.unique(seg))
