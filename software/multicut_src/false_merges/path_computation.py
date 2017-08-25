@@ -215,8 +215,12 @@ def stage_two(is_node_map, list_term, edges, dt):
 
 
 
-def form_term_list(term_where,is_term_map):
+def form_term_list(is_term_map,volume_dt_boundaries):
     """returns list of terminal points taken from an image"""
+
+    is_term_map[volume_dt_boundaries]=0
+
+    term_where = np.array(np.where(is_term_map)).transpose()
 
     term_list = []
     for point in term_where:
@@ -226,21 +230,25 @@ def form_term_list(term_where,is_term_map):
     return term_list
 
 
-def skeleton_to_graph(skel_img, dt, anisotropy):
+def skeleton_to_graph(skel_img, dt, anisotropy,volume_dt_boundaries):
     """main function, wraps up stage one and two"""
 
     is_node_map, is_term_map, is_branch_map, nodes, edges_and_lens, loop_list = \
         stage_one(skel_img, dt, anisotropy)
+
+    print "deleting skel_img..."
+    del skel_img
+
+
     if len(nodes) < 2:
         return nodes, np.array(edges_and_lens), [], is_node_map,loop_list
 
-    list_term_unfinished = np.array(np.where(is_term_map)).transpose()
 
-    stage_two(is_node_map, list_term_unfinished, edges_and_lens, dt)
+    # stage_two(is_node_map, list_term_unfinished, edges_and_lens, dt)
 
-    edges_and_lens = [[a, b, c, max(d)] for a, b, c, d in edges_and_lens]
+    edges_and_lens = [[val1, val2, val3, max(val4)] for val1, val2, val3, val4 in edges_and_lens]
 
-    term_list = form_term_list(list_term_unfinished,is_term_map)
+    term_list = form_term_list(is_term_map,volume_dt_boundaries)
     term_list -= 1
 
 
@@ -733,7 +741,7 @@ def build_paths_from_edges(edge_paths,edges):
     return finished_paths
 
 
-def compute_graph_and_paths(img, dt, anisotropy):
+def compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries):
     """ overall wrapper for all functions, input: label image; output: paths
         sampled from skeleton
     """
@@ -746,10 +754,10 @@ def compute_graph_and_paths(img, dt, anisotropy):
     del img
 
     nodes, edges_and_lens, term_list, is_node_map, loop_list = \
-        skeleton_to_graph(skel_img, dt, anisotropy)
+        skeleton_to_graph(skel_img, dt, anisotropy,volume_dt_boundaries)
 
-    print "deleting skel_img..."
-    del skel_img
+    if len(term_list)<2:
+        return []
 
     if len(nodes) < 2:
         return []
@@ -759,29 +767,29 @@ def compute_graph_and_paths(img, dt, anisotropy):
     for_building=deepcopy(edges_and_lens)
     check_connected_components(g)
 
-    loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
-
-    for where in np.where(loop_nr > 1)[0]:
-
-        adjacency = np.array([[adj_node, adj_edge]
-                              for adj_node, adj_edge
-                              in g.nodeAdjacency(loop_uniq[where] - 1)])
-
-        if (len(adjacency)) == 1:
-            term_list = np.append(term_list, loop_uniq[where] - 1)
-
-    # if modus=="testing":
-    #     return term_list,edges,g,nodes
-
-    pruned_term_list = graph_pruning\
-        (g, term_list, edges_and_lens, nodes, 4)
-
+    # #FOR PRUNING
+    # ##########################################
+    # loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
+    #
+    # for where in np.where(loop_nr > 1)[0]:
+    #
+    #     adjacency = np.array([[adj_node, adj_edge]
+    #                           for adj_node, adj_edge
+    #                           in g.nodeAdjacency(loop_uniq[where] - 1)])
+    #
+    #     if (len(adjacency)) == 1:
+    #         term_list = np.append(term_list, loop_uniq[where] - 1)
+    #
+    #
+    # pruned_term_list = graph_pruning\
+    #     (g, term_list, edges_and_lens, nodes, 4)
+    # ##########################################
 
     #TODO cores global
     edge_paths, edge_counts = \
         edge_paths_and_counts_for_nodes\
-            (g,edge_lens,pruned_term_list, 1)
-    check_edge_paths(edge_paths, pruned_term_list)
+            (g,edge_lens,term_list, 1)
+    check_edge_paths(edge_paths, term_list)
 
     finished_paths=build_paths_from_edges(edge_paths,for_building)
 
@@ -789,7 +797,7 @@ def compute_graph_and_paths(img, dt, anisotropy):
 
 
 def parallel_wrapper(seg, dt, gt, anisotropy,
-                      label, len_uniq, mode="with_labels"):
+                      label, len_uniq,volume_dt_boundaries, mode="with_labels"):
 
     if mode == "with_labels":
         print "Label ", label, " of ", len_uniq
@@ -801,7 +809,7 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
     img=np.zeros(seg.shape)
     img[seg==label]=1
 
-    paths = compute_graph_and_paths(img, dt, anisotropy)
+    paths = compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries)
 
     if mode=="with_labels":
 
