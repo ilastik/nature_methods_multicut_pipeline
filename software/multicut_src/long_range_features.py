@@ -8,37 +8,46 @@ from .DataSet import Cutout, DataSet
 from .ExperimentSettings import ExperimentSettings
 from .lifted_mc import compute_and_save_lifted_nh, lifted_feature_aggregator, lifted_probs_to_energies
 from .lifted_mc import lifted_hard_gt, mask_lifted_edges, optimize_lifted, learn_and_predict_lifted_rf
-from .tools import find_matching_row_indices
+from .tools import find_matching_row_indices, cacher_hdf5
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from .MCSolverImpl import probs_to_energies
 from .MCSolver import _get_feat_str, run_mc_solver
 
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
-    import nifty.graph.rag as nrag
+    import nifty.graph.long_range_adjacency as nlr
 except ImportError:
     try:
-        import nifty_with_cplex.graph.rag as nrag
+        import nifty_with_cplex.graph.long_range_adjacency as nlr
     except ImportError:
         try:
-            import nifty_with_gurobi.graph.rag as nrag
+            import nifty_with_gurobi.graph.long_range_adjacency as nlr
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
 
-# TODO cache
 # get the long range z adjacency
-def get_long_range_z_adjacency(ds, seg_id, long_range):
-    rag = ds.rag(seg_id)
-    adjacency = nrag.getLongRangeAdjacency(rag, long_range)
-    if ds.has_seg_mask:
-        where_uv = (adjacency != ExperimentSettings().ignore_seg_value).all(axis=1)
-        adjacency = adjacency[where_uv]
+def long_range_adjacency(ds, seg_id, long_range):
+    seg = ds.seg(seg_id)
+    save_path = os.path.join(ds.cache_folder, 'long_range_adjacency_%i_%i.h5' % (seg_id, long_range))
+    if os.path.exists(save_path):
+        serialization = vigra.readHDF5(save_path, 'data')
+        adjacency = nlr.long_range_adjacency(seg, serialization=serialization)
+    else:
+        adjacency = nlr.longRangeAdjacency(seg, long_range, numberOfThreads=ExperimentSettings().n_threads)
+        vigra.writeHDF5(adjacency.serialize(), save_path, 'data')
     return adjacency
 
 
+@cacher_hdf5()
+def long_range_uv_ids(ds, seg_id, long_range):
+    adjacency = long_range_adjacency(ds, seg_id, long_range)
+    return adjacency.uvIds()
+
+
 # get features of the long range z-adjacency from affinity maps
-def get_long_range_z_features(ds, seg_id, affinity_map_path, affinity_map_key, long_range):
+@cacher_hdf5()
+def get_long_range_features(ds, seg_id, affinity_map_path, affinity_map_key, long_range):
 
     # load the affinity maps from file
     with h5py.File(affinity_map_path, 'r') as f:
@@ -55,13 +64,14 @@ def get_long_range_z_features(ds, seg_id, affinity_map_path, affinity_map_key, l
     assert affinity_maps.shape[-1] == long_range
     assert affinity_maps.shape[:-1] == ds.shape
 
-    rag = ds.rag(seg_id)
-    adjacency = get_long_range_z_adjacency(ds, seg_id, long_range)
+    adjacency = long_range_adjacency(ds, seg_id, long_range)
+    seg = ds.seg(seg_id)
 
-    long_range_feats = nrag.accumulateLongRangeFeatures(
-        rag,
-        affinity_maps,
+    long_range_feats = nlr.longRangeFeatures(
         adjacency,
+        seg,
+        affinity_maps,
+        ExperimentSettings().affinity_z_direction,
         numberOfThreads=ExperimentSettings().n_threads
     )
     return np.nan_to_num(long_range_feats)
@@ -71,7 +81,7 @@ def get_long_range_z_features(ds, seg_id, affinity_map_path, affinity_map_key, l
 def match_to_lifted_nh(ds, seg_id, lifted_nh, long_range):
     assert lifted_nh >= long_range
     uv_lifted = compute_and_save_lifted_nh(ds, seg_id, lifted_nh)
-    uv_long_range = get_long_range_z_adjacency(ds, seg_id, long_range)
+    uv_long_range = long_range_uv_ids(ds, seg_id, long_range)
     # match
     matches = find_matching_row_indices(uv_long_range, uv_lifted)[:, 0]
     assert len(matches) == len(uv_long_range)
@@ -150,7 +160,7 @@ def learn_long_range_rf(
 
         # get the long range features and keep only standard features / labels
         # that also have long range features
-        long_range_feats = get_long_range_z_features(
+        long_range_feats = get_long_range_features(
             train_cut,
             seg_id,
             affinity_map_paths[ii],
@@ -287,7 +297,7 @@ def learn_and_predict_long_range_rf(
         seg_id_test,
         with_defects
     )
-    long_range_features = get_long_range_z_features(
+    long_range_features = get_long_range_features(
         ds_test,
         seg_id_test,
         affinity_map_path_test,
