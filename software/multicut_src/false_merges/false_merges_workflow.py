@@ -81,17 +81,16 @@ def extract_paths_from_segmentation(
 
         #threshhold for distance transform for picking terminal
         #points near boundary
-        threshhold_boundary=30
-        volume_where_threshhold = np.where(volume_dt < threshhold_boundary)
-        volume_dt_boundaries = np.s_[min(volume_where_threshhold[0])+1:max(volume_where_threshhold[0]),
-                               min(volume_where_threshhold[1])+1:max(volume_where_threshhold[1]),
-                               min(volume_where_threshhold[2])+1:max(volume_where_threshhold[2])]
+        volume_where_threshhold = np.where(volume_dt >  ExperimentSettings().border_distance)
+        volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
+                               min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
+                               min(volume_where_threshhold[2]):max(volume_where_threshhold[2])]
 
         #for counting and debugging purposes
         len_uniq=len(np.unique(seg))-1
 
         #parallelized path computation
-        parallel_array = Parallel(n_jobs=-1)\
+        parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
             (delayed(parallel_wrapper)(seg, dt, [],
                                        anisotropy, label,
                                        len_uniq, volume_dt_boundaries,
@@ -181,17 +180,16 @@ def extract_paths_and_labels_from_segmentation(
 
         # threshhold for distance transform for picking terminal
         # points near boundary
-        threshhold_boundary = 30
-        volume_where_threshhold = np.where(volume_dt < threshhold_boundary)
-        volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]) + 1:max(volume_where_threshhold[0]),
-                               min(volume_where_threshhold[1]) + 1:max(volume_where_threshhold[1]),
-                               min(volume_where_threshhold[2]) + 1:max(volume_where_threshhold[2])]
+        volume_where_threshhold = np.where(volume_dt > ExperimentSettings().border_distance)
+        volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
+                               min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
+                               min(volume_where_threshhold[2]):max(volume_where_threshhold[2])]
 
         # for counting and debugging purposes
         len_uniq = len(np.unique(seg)) - 1
 
         #parallelized path computation
-        parallel_array = Parallel(n_jobs=-1)\
+        parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
             (delayed(parallel_wrapper)(seg, dt, gt,
                                        anisotropy, label, len_uniq,
                                        volume_dt_boundaries)

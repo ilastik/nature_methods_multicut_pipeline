@@ -4,6 +4,8 @@ from Queue import LifoQueue, Queue
 import numpy as np
 from copy import deepcopy,copy
 from skimage.morphology import skeletonize_3d
+from ..ExperimentSettings import ExperimentSettings
+
 
 
 
@@ -449,7 +451,7 @@ def terminal_func(start_queue,g,finished_dict,node_dict,main_dict,edges,nodes_li
 
 
 #TODO check whether edgelist and termlist is ok (because of -1)
-def graph_pruning(g,term_list,edges,nodes_list,pruning_threshhold):
+def graph_pruning(g,term_list,edges,nodes_list):
 
     finished_dict={}
     node_dict={}
@@ -464,7 +466,7 @@ def graph_pruning(g,term_list,edges,nodes_list,pruning_threshhold):
         start_queue.put([term_point,term_point])
 
     #TODO implement clean case for 3 or 2 term_points
-    if start_queue.qsize()>4:
+    if start_queue.qsize()<4:
         return np.array([])
 
     queue,finished_dict,node_dict,main_dict = \
@@ -595,7 +597,7 @@ def graph_pruning(g,term_list,edges,nodes_list,pruning_threshhold):
     #This is the pruning
     pruned_term_list = np.array(
         [key for key in finished_dict.keys() if
-         finished_dict[key][1] / finished_dict[key][4] > pruning_threshhold])
+         finished_dict[key][1] / finished_dict[key][4] > ExperimentSettings().pruning_factor])
 
 
     return pruned_term_list
@@ -750,9 +752,6 @@ def compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries):
     skel_img=skeletonize_3d(img)
 
 
-    print "deleting img..."
-    del img
-
     nodes, edges_and_lens, term_list, is_node_map, loop_list = \
         skeleton_to_graph(skel_img, dt, anisotropy,volume_dt_boundaries)
 
@@ -782,7 +781,7 @@ def compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries):
     #
     #
     # pruned_term_list = graph_pruning\
-    #     (g, term_list, edges_and_lens, nodes, 4)
+    #     (g, term_list, edges_and_lens, nodes)
     # ##########################################
 
     #TODO cores global
@@ -810,6 +809,9 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
     img[seg==label]=1
 
     paths = compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries)
+
+    print "deleting img..."
+    del img
 
     if mode=="with_labels":
 

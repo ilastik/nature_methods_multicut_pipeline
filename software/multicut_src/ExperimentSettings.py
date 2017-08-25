@@ -39,6 +39,11 @@ class ExperimentSettings(object):
         # 2 -> accumulate values only from z + 1
         self.affinity_z_direction = 0
 
+        # parameter for pruning
+        self.pruning_factor = 4
+        # parameter for path-computation (border distance)
+        self.border_distance = 30
+
         # paramter for groundtruth projection and learning
         # flag to activate learning only from the xy-edges (for ISBI12)
         self.learn_2d = False
