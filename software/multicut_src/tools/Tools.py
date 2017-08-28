@@ -67,8 +67,7 @@ def cacher_hdf5(folder="dset_folder", cache_edgefeats=False, ignoreNumpyArrays=F
             filepath = cache_name(fname, _folder, ignoreNumpyArrays, _cache_edgefeats, *args)
             fkey  = "data"
             if not os.path.isfile(filepath):
-                print "Computing: ", function.__name__, "with args:"
-                print args[1:]
+                print "Computing: ", function.__name__
                 print "Results will be written in ", filepath, fkey
                 _res = function(*args)
                 if compress:

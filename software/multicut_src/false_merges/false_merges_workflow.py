@@ -167,7 +167,7 @@ def extract_paths_and_labels_from_segmentation(
 
     # otherwise compute paths
     else:
-        dt = ds.inp(ds.n_inp - 1)
+        dt = ds.inp(2)
         all_paths = []
         paths_to_objs = []
         path_classes = []
@@ -327,11 +327,11 @@ def train_random_forest_for_merges(
                 dt  = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
 
                 # NOTE IMPORTANT:
-                # We assume that the distance transform always has the last inp_id and
+                # We assume that the distance transform always has the inp_id=2
                 # that a (dummy) dt was already added in the beginning
-                current_ds.replace_inp_from_data(current_ds.n_inp - 1, dt, clear_cache=False)
+                current_ds.replace_inp_from_data(2, dt, clear_cache=False)
                 # we delete all filters based on the distance transform
-                current_ds.clear_filters(current_ds.n_inp - 1)
+                current_ds.clear_filters(2)
 
                 # Compute the paths
                 paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
@@ -345,7 +345,7 @@ def train_random_forest_for_merges(
 
                 if paths.size:
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
-                    features_train.append(path_feature_aggregator(current_ds, paths))
+                    features_train.append(path_feature_aggregator(current_ds, paths, mc_segmentation_name='train_beta_no_{}'.format(seg_path_id)))
                     labels_train.append(path_classes)
 
                 else:
@@ -420,7 +420,7 @@ def compute_false_merges(
     if ds_test.n_inp < 3:
         ds_test.add_input_from_data(dt)
     else:
-        ds_test.replace_inp_from_data(ds_test.n_inp - 1, dt, clear_cache=False)
+        ds_test.replace_inp_from_data(2, dt, clear_cache=False)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
@@ -431,7 +431,7 @@ def compute_false_merges(
 
     assert len(paths_test) == len(paths_to_objs_test)
 
-    features_test = path_feature_aggregator(ds_test, paths_test)
+    features_test = path_feature_aggregator(ds_test, paths_test, mc_segmentation_name='test_seg')
     assert features_test.shape[0] == len(paths_test)
     features_test = np.nan_to_num(features_test)
 
@@ -603,7 +603,7 @@ def resolve_merges_with_lifted_edges(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -680,7 +680,7 @@ def resolve_merges_with_lifted_edges(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj)
+        features = path_feature_aggregator(ds, paths_obj, mc_segmentation_name='resolving')
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO disabled for now
@@ -750,7 +750,7 @@ def resolve_merges_with_lifted_edges_global(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process

@@ -10,6 +10,8 @@ from ..ExperimentSettings import ExperimentSettings
 from ..MCSolverImpl import multicut_exact, weight_z_edges, weight_all_edges, weight_xyz_edges
 from ..tools import find_matching_row_indices
 
+from ..tools import cacher_hdf5
+
 # if build from source and not a conda pkg, we assume that we have cplex
 try:
     import nifty
@@ -116,21 +118,22 @@ def shortest_paths(
 # convenience function to combine path features
 # TODO code different features with some keys
 # TODO include seg_id
-def path_feature_aggregator(ds, paths):
+def path_feature_aggregator(ds, paths, mc_segmentation_name=None):
     anisotropy_factor = ExperimentSettings().anisotropy_factor
     return np.concatenate([
-        path_features_from_feature_images(ds, 0, paths, anisotropy_factor),
-        path_features_from_feature_images(ds, 1, paths, anisotropy_factor),
+        path_features_from_feature_images(ds, 0, paths, anisotropy_factor, mc_segmentation_name),
+        path_features_from_feature_images(ds, 1, paths, anisotropy_factor, mc_segmentation_name),
         # we assume that the distance transform is added as inp_id 2
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor),
-        compute_path_lengths(paths, [anisotropy_factor, 1., 1.])],
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor, mc_segmentation_name),
+        compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.], mc_segmentation_name)],
         axis=1
     )
 
 
 # TODO this could be parallelized over the paths
 # compute the path lens for all paths
-def compute_path_lengths(paths, anisotropy):
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
+def compute_path_lengths(ds, paths, anisotropy, append_to_cache_name):
     """
     Computes the length of a path
 
@@ -170,11 +173,14 @@ def python_region_features_extractor_2_mc(single_vals):
     return np.array(path_features)
 
 # don't cache for now
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def path_features_from_feature_images(
         ds,
         inp_id,
         paths,
-        anisotropy_factor):
+        anisotropy_factor,
+        append_to_cache_name
+):
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
@@ -205,6 +211,8 @@ def path_features_from_feature_images(
     # load features in global boundng box
     feature_volumes = []
     import h5py
+    print "loading h5py..."
+    time_a=time()
     for path in feat_paths:
         with h5py.File(path) as f:
             feat_shape = f['data'].shape
@@ -213,45 +221,47 @@ def path_features_from_feature_images(
                 feature_volumes.append(f['data'][roi][..., None])
             else:
                 feature_volumes.append(f['data'][roi])
-    stats = ExperimentSettings().feature_stats
+    time_b=time()
+    print "loading h5py took ",time_b-time_a," secs"
+    # stats = ExperimentSettings().feature_stats
 
-    def extract_features_for_path(path):
-
-        # calculate the local path bounding box
-        min_coords = np.min(path, axis=0)
-        max_coords = np.max(path, axis=0)
-        max_coords += 1
-        shape = tuple(max_coords - min_coords)
-        path_image = np.zeros(shape, dtype='uint32')
-        path -= min_coords
-        # we swapaxes to properly index the image properly
-        path_sa = np.swapaxes(path, 0, 1)
-        path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
-
-        path_features = []
-        for feature_volume in feature_volumes:
-            for c in range(feature_volume.shape[-1]):
-                path_roi = np.s_[
-                           min_coords[0]:max_coords[0],
-                           min_coords[1]:max_coords[1],
-                           min_coords[2]:max_coords[2],
-                           c  # wee need to also add the channel to the slicing
-                           ]
-                feat_tmp = feature_volume[path_roi]
-                assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
-                extractor = vigra.analysis.extractRegionFeatures(
-                    feat_tmp,
-                    path_image,
-                    ignoreLabel=0,
-                    features=stats
-                )
-                # TODO make sure that dimensions match for more that 1d stats!
-                path_features.extend(
-                    [extractor[stat][1] for stat in stats]
-                )
-        # ret = np.array(path_features)[:,None]
-        # print ret.shape
-        return np.array(path_features)[None, :]
+    # def extract_features_for_path(path):
+    #
+    #     # calculate the local path bounding box
+    #     min_coords = np.min(path, axis=0)
+    #     max_coords = np.max(path, axis=0)
+    #     max_coords += 1
+    #     shape = tuple(max_coords - min_coords)
+    #     path_image = np.zeros(shape, dtype='uint32')
+    #     path -= min_coords
+    #     # we swapaxes to properly index the image properly
+    #     path_sa = np.swapaxes(path, 0, 1)
+    #     path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
+    #
+    #     path_features = []
+    #     for feature_volume in feature_volumes:
+    #         for c in range(feature_volume.shape[-1]):
+    #             path_roi = np.s_[
+    #                        min_coords[0]:max_coords[0],
+    #                        min_coords[1]:max_coords[1],
+    #                        min_coords[2]:max_coords[2],
+    #                        c  # wee need to also add the channel to the slicing
+    #                        ]
+    #             feat_tmp = feature_volume[path_roi]
+    #             assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
+    #             extractor = vigra.analysis.extractRegionFeatures(
+    #                 feat_tmp,
+    #                 path_image,
+    #                 ignoreLabel=0,
+    #                 features=stats
+    #             )
+    #             # TODO make sure that dimensions match for more that 1d stats!
+    #             path_features.extend(
+    #                 [extractor[stat][1] for stat in stats]
+    #             )
+    #     # ret = np.array(path_features)[:,None]
+    #     # print ret.shape
+    #     return np.array(path_features)[None, :]
 
 
 
