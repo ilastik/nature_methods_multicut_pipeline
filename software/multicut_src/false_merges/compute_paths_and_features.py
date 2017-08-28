@@ -122,7 +122,8 @@ def shortest_paths(
 def path_feature_aggregator(
         ds, paths,
         feature_list=None,
-        mc_segmentation=None, paths_to_objs=None, train_sets=None,
+        mc_segmentation=None, mc_segmentation_name=None,  # mc_segmentation_name is a dummy string for the cacher
+        paths_to_objs=None, train_sets=None,
         path_to_edge_features = None
 ):
 
@@ -158,10 +159,10 @@ def path_feature_aggregator(
 
             logger.debug('Computing path features ...')
 
-            feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor))
-            feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor))
+            feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor, mc_segmentation_name))
+            feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor, mc_segmentation_name))
             # we assume that the distance transform is added as inp_id 2
-            feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor))
+            feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor, mc_segmentation_name))
 
             logger.debug('... done computing path features!')
 
@@ -169,7 +170,7 @@ def path_feature_aggregator(
 
             logger.debug('Computing path lengths ...')
 
-            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]))
+            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]), mc_segmentation_name)
 
             logger.debug('... done computing path lengths!')
 
@@ -204,7 +205,7 @@ def path_feature_aggregator(
                 seg_id,
                 mc_segmentation,
                 objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-                edge_probabilities
+                edge_probabilities, mc_segmentation_name
             ))
 
             logger.debug('... done computing multicut path features!')
@@ -240,7 +241,7 @@ def path_feature_aggregator(
                 edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
                 ['raw', 'prob', 'distance_transform'],
-                'watershed'
+                'watershed', mc_segmentation_name
             ))
 
             logger.debug('... done computing cut features!')
@@ -276,7 +277,7 @@ def path_feature_aggregator(
                 edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
                 ['raw', 'prob', 'distance_transform'],
-                'watershed'
+                'watershed', mc_segmentation_name
             ))
 
             logger.debug('... done computing cut features!')
@@ -288,8 +289,8 @@ def path_feature_aggregator(
 
 # TODO this could be parallelized over the paths
 # compute the path lens for all paths
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
-def compute_path_lengths(ds, paths, anisotropy):
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
+def compute_path_lengths(ds, paths, anisotropy, append_to_cache_name):
     """
     Computes the length of a path
 
@@ -316,12 +317,14 @@ def compute_path_lengths(ds, paths, anisotropy):
 
 
 # don't cache for now
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def path_features_from_feature_images(
         ds,
         inp_id,
         paths,
-        anisotropy_factor):
+        anisotropy_factor,
+        append_to_cache_name
+):
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
@@ -474,13 +477,14 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
 
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def multicut_path_features(
         ds,
         seg_id,
         mc_segmentation,
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-        edge_probabilities
+        edge_probabilities,
+        append_to_cache_name
 ):
 
     logger.debug('ds.ds_name = {}'.format(ds.ds_name))
@@ -724,7 +728,7 @@ def cut_seeded_agglomeration(graph, weights, source, sink):
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features(
         ds,
         seg_id,
@@ -733,7 +737,8 @@ def cut_features(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:
@@ -1032,7 +1037,7 @@ def cut_features(
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features_with_region(
         ds,
         seg_id,
@@ -1041,7 +1046,8 @@ def cut_features_with_region(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:
@@ -1359,7 +1365,7 @@ def cut_features_with_region(
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features_with_region_whole_plane(
         ds,
         seg_id,
@@ -1368,7 +1374,8 @@ def cut_features_with_region_whole_plane(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:

@@ -356,10 +356,10 @@ def train_random_forest_for_merges(
                             current_ds,
                             paths,
                             ExperimentSettings().path_features,
-                            mc_segmentation=seg,
+                            mc_segmentation=seg, mc_segmentation_name='train_beta_no_{}'.format(seg_path_id),
                             paths_to_objs=paths_to_objs,
                             train_sets=current_trainsets,
-                            path_to_edge_features=path_to_edge_features,
+                            path_to_edge_features=path_to_edge_features
                         )
                     )
                     labels_train.append(path_classes)
@@ -464,7 +464,7 @@ def compute_false_merges(
         ds_test,
         paths_test,
         ExperimentSettings().path_features,
-        mc_segmentation=seg,
+        mc_segmentation=seg, mc_segmentation_name='test_seg',
         paths_to_objs=paths_to_objs_test,
         train_sets=trainsets,
         path_to_edge_features=path_to_edge_features
