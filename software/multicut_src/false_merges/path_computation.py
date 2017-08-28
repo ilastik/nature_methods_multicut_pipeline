@@ -220,6 +220,7 @@ def stage_two(is_node_map, list_term, edges, dt):
 def form_term_list(is_term_map,volume_dt_boundaries):
     """returns list of terminal points taken from an image"""
 
+    #remove when enable pruning, otherwise assertion error
     is_term_map[volume_dt_boundaries]=0
 
     term_where = np.array(np.where(is_term_map)).transpose()

@@ -81,6 +81,7 @@ def extract_paths_from_segmentation(
 
         #threshhold for distance transform for picking terminal
         #points near boundary
+        print "Computing paths with border distance: ", ExperimentSettings().border_distance
         volume_where_threshhold = np.where(volume_dt >  ExperimentSettings().border_distance)
         volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
                                min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
@@ -180,6 +181,7 @@ def extract_paths_and_labels_from_segmentation(
 
         # threshhold for distance transform for picking terminal
         # points near boundary
+        print "Computing paths with border distance: ", ExperimentSettings().border_distance
         volume_where_threshhold = np.where(volume_dt > ExperimentSettings().border_distance)
         volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
                                min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
