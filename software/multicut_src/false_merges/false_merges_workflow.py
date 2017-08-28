@@ -64,7 +64,7 @@ def extract_paths_from_segmentation(
         # TODO we don't remove small objects for now, because this would relabel the segmentation,
         # which we don't want in this case
         seg = vigra.readHDF5(seg_path, key)
-        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
+        dt = ds.inp(2)  # we assume that the last input is the distance transform
 
         # Compute path end pairs
         # TODO debug the new border contact computation, which is much faster
@@ -162,7 +162,7 @@ def extract_paths_and_labels_from_segmentation(
     # otherwise compute paths
     else:
         assert seg.shape == gt.shape
-        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
+        dt = ds.inp(2)  # we assume that the second input is the distance transform
 
         # Compute path end pairs
         # TODO debug the new border contact computation, which is much faster
@@ -640,7 +640,7 @@ def resolve_merges_with_lifted_edges(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -793,7 +793,7 @@ def resolve_merges_with_lifted_edges_global(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
