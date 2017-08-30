@@ -38,12 +38,11 @@ import os
 import vigra
 import numpy as np
 
-# watershed on distance transform
-from wsdt_impl import compute_wsdt_segmentation
-
 from multicut_src import DataSet, load_dataset
 from multicut_src import multicut_workflow, lifted_multicut_workflow
 from multicut_src import ExperimentSettings
+from multicut_src import compute_wsdt_segmentation
+
 
 def process_command_line():
 

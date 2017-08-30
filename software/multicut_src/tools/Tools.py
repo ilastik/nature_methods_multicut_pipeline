@@ -24,31 +24,46 @@ except ImportError:
 def cache_name(fname, folder_str, ignoreNp, edge_feat_cache, *args):
     self = args[0]
     arg_id = 1
-    for arg in args[1:]:
+    arg_str = ''
+    for arg_id, arg in enumerate(args[1:]):
+
         # for the edgefeats we have to clip the anisotropy
         # factor if it is larger than max. aniso factor
         if edge_feat_cache and arg_id == 3:
             if arg >= ExperimentSettings().aniso_max:
                 arg = ExperimentSettings().aniso_max
+
         if isinstance(arg, np.ndarray) and not ignoreNp:
-            fname += "_" + str(arg)
+            arg_str += "_" + str(arg)
+
         elif isinstance(arg, np.ndarray):
             pass
+
         # need to make tuples and lists cacheable
-        elif isinstance(arg, list) or isinstance(arg, tuple):
+        elif isinstance(arg, (list, tuple)):
             for elem in arg:
-                fname += "_" + str(elem) + "_"
+                arg_str += "_" + str(elem) + "_"
+
+        # strip strings of /
+        elif isinstance(arg, str):
+            arg_str += arg.replace('/', '')
+
         else:
-            fname += "_" + str(arg)
-        arg_id += 1
+            arg_str += "_" + str(arg)
+
     fname += ".h5"
+    if (len(fname) + len(arg_str) + 3) > 255:
+        arg_str = str(hash(arg_str))
+    save_name = fname + arg_str + '.h5'
+
     if folder_str == "dset_folder":
         save_folder = self.cache_folder
     elif folder_str == "feature_folder":
         save_folder = os.path.join(self.cache_folder, "features")
     if not os.path.exists(save_folder):
         os.mkdir(save_folder)
-    return os.path.join(save_folder, fname)
+
+    return os.path.join(save_folder, save_name)
 
 
 # TODO check for arguments too long for caching

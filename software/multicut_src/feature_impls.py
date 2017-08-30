@@ -33,7 +33,6 @@ def topo_feats_slice(seg, uv_ids):
     # to a consecutive labeling starting from 1
     seg_z, _, mapping = vigra.analysis.relabelConsecutive(
         seg,
-        keep_zeros=False,
         start_label=1
     )
     reverse_mapping = {new: old for old, new in mapping.items()}

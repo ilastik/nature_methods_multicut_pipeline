@@ -52,7 +52,7 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
 
     # we dont want zero as a segmentation result
     # because it is the ignore label in many settings
-    mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label=1, keep_zeros=False)
+    mc_node, _, _ = vigra.analysis.relabelConsecutive(mc_node, start_label=1)
     assert len(mc_node) == n_var, "%i, %i" % (len(mc_node), n_var)
     return mc_node, mc_edges, mc_energy, t_inf
 

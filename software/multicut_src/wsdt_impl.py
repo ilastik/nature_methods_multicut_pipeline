@@ -2,6 +2,7 @@ import numpy as np
 
 from scipy.ndimage.morphology import distance_transform_edt
 import vigra
+from concurrent import futures
 
 
 # wrap vigra local maxima properly
@@ -91,6 +92,94 @@ def iterative_watershed(hmap, seeds, min_segment_size):
         seg, _ = vigra.analysis.watershedsNew(hmap, seeds=seg)
 
         # remove gaps in the list of label values.
-        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0, keep_zeros=False)
+        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0)
+
+    return seg
+
+
+def compute_stacked_wsdt(
+    probability_map,
+    threshold,
+    sigma_seeds,
+    min_segment_size=0,
+    preserve_membrane=True
+):
+    seg = np.zeros_like(probability_map, dtype='uint32')
+
+    def wsdt_z(z):
+        ws, ws_max = compute_wsdt_segmentation(
+            probability_map[z],
+            threshold,
+            sigma_seeds,
+            min_segment_size=min_segment_size,
+            preserve_membrane=preserve_membrane
+        )
+        seg[z] = ws
+        return ws_max
+
+    with futures.ThreadPoolExecutor(max_workers=8) as tp:
+        tasks = [tp.submit(wsdt_z, z) for z in range(seg.shape[0])]
+        offsets = [t.result() for t in tasks]
+
+    offsets = np.roll(offsets, 1)
+    offsets[0] = 0
+    offsets = np.cumsum(offsets).astype(seg.dtype)
+
+    seg += offsets[:, None, None]
+
+    return seg
+
+
+# FIXME this does not work yet, what we actually want is support for masked_arrays
+def compute_wsdt_segmentation_with_mask(
+    probability_map,
+    mask,
+    threshold,
+    sigma_seeds,
+    min_segment_size=0,
+    preserve_membrane=True
+):
+    assert probability_map.shape == mask.shape
+    seg = np.zeros_like(probability_map, dtype='uint32')
+    seg_, seg_max = compute_wsdt_segmentation(
+        probability_map[mask], threshold, sigma_seeds, min_segment_size, preserve_membrane
+    )
+    seg[mask] = (seg_ + 1)
+    return seg, seg_max + 1
+
+
+def compute_stacked_wsdt_with_mask(
+    probability_map,
+    mask,
+    threshold,
+    sigma_seeds,
+    min_segment_size=0,
+    preserve_membrane=True
+):
+    assert mask.shape == probability_map.shape
+    seg = np.zeros_like(probability_map, dtype='uint32')
+
+    def wsdt_z(z):
+        ws, ws_max = compute_wsdt_segmentation_with_mask(
+            probability_map[z],
+            mask[z],
+            threshold,
+            sigma_seeds,
+            min_segment_size=min_segment_size,
+            preserve_membrane=preserve_membrane
+        )
+        seg[z] = ws
+        return ws_max
+
+    with futures.ThreadPoolExecutor(max_workers=8) as tp:
+        tasks = [tp.submit(wsdt_z, z) for z in range(seg.shape[0])]
+        offsets = [t.result() for t in tasks]
+
+    offsets = np.roll(offsets, 1)
+    offsets[0] = 0
+    offsets = np.cumsum(offsets).astype(seg.dtype)
+
+    for z in range(seg.shape[0]):
+        seg[z][mask[z]] += offsets[z]
 
     return seg

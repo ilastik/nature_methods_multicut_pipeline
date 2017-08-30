@@ -11,7 +11,7 @@ import pickle
 
 from .tools import cacher_hdf5, cache_name
 from .tools import edges_to_volume_from_uvs_in_plane, edges_to_volume_from_uvs_between_plane
-from .tools import edges_to_volumes_for_skip_edges, edges_to_volume
+from .tools import edges_to_volumes_for_skip_edges, edges_to_volume, relabel_consecutive
 
 from .defect_handling import modified_edge_indications, modified_adjacency
 from .defect_handling import modified_edge_gt, modified_edge_gt_fuzzy
@@ -123,7 +123,7 @@ def connected_components_with_ignore_mask(seg):
         else:
             seg_cc[ignore_mask] = 0
 
-        seg_cc, seg_max, _ = vigra.analysis.relabelConsecutive(seg_cc, keep_zeros=True, start_label=1)
+        seg_cc, seg_max, _ = relabel_consecutive(seg_cc, keep_zeros=True, start_label=1)
         seg_new[z] = seg_cc
         return seg_max + 1
 
@@ -135,7 +135,7 @@ def connected_components_with_ignore_mask(seg):
     # add offsets to the slices
     offsets = np.roll(offsets, 1)
     offsets[0] = 0
-    offsets = np.cumsum(offsets)
+    offsets = np.cumsum(offsets).astype(seg_new.dtype)
 
     for z in range(seg.shape[0]):
         seg_new[z][seg_new[z] != ExperimentSettings().ignore_seg_value] += offsets[z]
@@ -772,7 +772,11 @@ class DataSet(object):
         sigmas=[1.6, 4.2, 8.3]
     ):
 
-        import fastfilters  # very weird, if we built nifty with debug, this causes a segfault
+        # FIXME local fastfilter build is broken
+        try:
+            import fastfilters as ff  # very weird, if we built nifty with debug, this causes a segfault
+        except ImportError as e:
+            import vigra.filters as ff
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
         print("Calculating filters for input id:", inp_id)
@@ -804,7 +808,7 @@ class DataSet(object):
             print("Using vigra filters instead.")
             filter_names = [".".join(("vigra.filters", filtname)) for filtname in filter_names]
         else:
-            filter_names = [".".join(("fastfilters", filtname)) for filtname in filter_names]
+            filter_names = [".".join(("ff", filtname)) for filtname in filter_names]
 
         # update the filter folder to the input
         filter_folder = os.path.join(filter_folder, input_name)

@@ -49,8 +49,7 @@ def extract_local_graph_from_segmentation(
     # map the extracted seg_ids to consecutive labels
     seg_ids_local, _, mapping = vigra.analysis.relabelConsecutive(
         seg_ids,
-        start_label=0,
-        keep_zeros=False
+        start_label=0
     )
     # mapping = old to new,
     # reverse = new to old

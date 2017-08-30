@@ -694,7 +694,7 @@ def resolve_merges_with_lifted_edges(
                 lifted_weights
             )
 
-            resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
+            resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0)
             # project back to global node ids and save
             resolved_objs[merge_id] = {reverse_mapping[i]: node_res for i, node_res in enumerate(resolved_nodes)}
 
@@ -828,7 +828,7 @@ def resolve_merges_with_lifted_edges_global(
         lifted_weights
     )
 
-    resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0, keep_zeros=False)
+    resolved_nodes, _, _ = vigra.analysis.relabelConsecutive(resolved_nodes, start_label=0)
     assert len(resolved_nodes) == uv_ids.max() + 1
     return resolved_nodes
 
@@ -858,5 +858,5 @@ def project_resolved_objects_to_segmentation(
         new_label_offset += np.max(resolved_nodes.values()) + 1
 
     # make consecutive and project back to segmentation
-    mc_labeling = vigra.analysis.relabelConsecutive(mc_labeling, start_label=1, keep_zeros=False)
+    mc_labeling = vigra.analysis.relabelConsecutive(mc_labeling, start_label=1)
     return nrag.projectScalarNodeDataToPixels(rag, mc_labeling, n_threads)

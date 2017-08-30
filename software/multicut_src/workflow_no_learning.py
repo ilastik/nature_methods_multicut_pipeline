@@ -388,5 +388,5 @@ def mala_clustering_workflow(
 
     # get the node results and relabel it consecutively
     nodes = clustering.result()
-    nodes, _, _ = vigra.analysis.relabelConsecutive(nodes, start_label=0, keep_zeros=False)
+    nodes, _, _ = vigra.analysis.relabelConsecutive(nodes, start_label=0)
     return nodes

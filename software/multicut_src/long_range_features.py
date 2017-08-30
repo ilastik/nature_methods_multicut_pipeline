@@ -32,17 +32,19 @@ def long_range_adjacency(ds, seg_id, long_range):
     save_path = os.path.join(ds.cache_folder, 'long_range_adjacency_%i_%i.h5' % (seg_id, long_range))
     if os.path.exists(save_path):
         serialization = vigra.readHDF5(save_path, 'data')
-        adjacency = nlr.long_range_adjacency(seg, serialization=serialization)
+        adjacency = nlr.longRangeAdjacency(seg, long_range, serialization=serialization)
     else:
-        adjacency = nlr.longRangeAdjacency(seg, long_range, numberOfThreads=ExperimentSettings().n_threads)
+        ignore_label = ds.has_seg_mask
+        # FIXME multi-threading + ingore label is broken in nifty
+        adjacency = nlr.longRangeAdjacency(
+            seg, long_range, ignoreLabel=ignore_label, numberOfThreads=1#ExperimentSettings().n_threads
+        )
+        if ds.has_seg_mask:
+            where_ignore = (adjacency.uvIds() != ExperimentSettings().ignore_seg_value)
+            #print(adjacency.uvIds()[np.logical_not(where_ignore)])
+            assert where_ignore.all(), "%i, %i" % (np.sum(where_ignore), where_ignore.size)
         vigra.writeHDF5(adjacency.serialize(), save_path, 'data')
     return adjacency
-
-
-@cacher_hdf5()
-def long_range_uv_ids(ds, seg_id, long_range):
-    adjacency = long_range_adjacency(ds, seg_id, long_range)
-    return adjacency.uvIds()
 
 
 # get features of the long range z-adjacency from affinity maps
@@ -54,37 +56,44 @@ def get_long_range_features(ds, seg_id, affinity_map_path, affinity_map_key, lon
         affinity_maps = f[affinity_map_key]
         # if this is a cutout, we only load the relevant part of the affinity maps
         if isinstance(ds, Cutout):
-            affinity_maps = affinity_maps[ds.bb]
+            bb = (slice(None),) + ds.bb
+            affinity_maps = affinity_maps[bb]
         else:
             affinity_maps = affinity_maps[:]
 
     # some consistency checks
     # this assumes affinity channel as last channel
     assert affinity_maps.ndim == 4
-    assert affinity_maps.shape[-1] == long_range
-    assert affinity_maps.shape[:-1] == ds.shape
+    assert affinity_maps.shape[0] == long_range - 1, '%i, %i' % (affinity_maps.shape[0], long_range - 1)
+    assert affinity_maps.shape[1:] == ds.shape
 
     adjacency = long_range_adjacency(ds, seg_id, long_range)
     seg = ds.seg(seg_id)
+
+    z_direction = ExperimentSettings().affinity_z_direction
+    assert z_direction in (1, 2), str(z_direction)
 
     long_range_feats = nlr.longRangeFeatures(
         adjacency,
         seg,
         affinity_maps,
-        ExperimentSettings().affinity_z_direction,
-        numberOfThreads=ExperimentSettings().n_threads
+        z_direction,
+        1
+        #numberOfThreads=ExperimentSettings().n_threads
     )
     return np.nan_to_num(long_range_feats)
 
 
 # match the standard lifted neighborhood (lifted-nh) to the z-adjacency (lifted-range)
-def match_to_lifted_nh(ds, seg_id, lifted_nh, long_range):
+@cacher_hdf5()
+def match_to_lifted_nh(ds, seg_id, lifted_nh, long_range, with_defects=False):
     assert lifted_nh >= long_range
-    uv_lifted = compute_and_save_lifted_nh(ds, seg_id, lifted_nh)
-    uv_long_range = long_range_uv_ids(ds, seg_id, long_range)
+    uv_lifted = compute_and_save_lifted_nh(ds, seg_id, lifted_nh, with_defects)
+    adjacency = long_range_adjacency(ds, seg_id, long_range)
+    uv_long_range = adjacency.uvIds()
     # match
-    matches = find_matching_row_indices(uv_long_range, uv_lifted)[:, 0]
-    assert len(matches) == len(uv_long_range)
+    matches = find_matching_row_indices(uv_long_range, uv_lifted)
+    assert len(matches) <= len(uv_long_range), "%i, %i" % (len(matches), len(uv_long_range))
     return matches
 
 
@@ -170,11 +179,17 @@ def learn_long_range_rf(
 
         to_lifted_nh = match_to_lifted_nh(
             train_cut,
+            seg_id,
             ExperimentSettings().lifted_neighborhood,
-            ExperimentSettings().long_range
+            ExperimentSettings().long_range,
+            with_defects
         )
-        f_train = np.concatenate([f_train[labeled], long_range_feats], axis=1)
-        labels, labeled = labels[to_lifted_nh], labeled[to_lifted_nh]
+        lifted_to_long_range = to_lifted_nh[:, 1]
+        long_range_to_lifted = to_lifted_nh[:, 0]
+        f_train = np.concatenate(
+            [f_train[lifted_to_long_range], long_range_feats[long_range_to_lifted]], axis=1
+        )
+        labels, labeled = labels[lifted_to_long_range], labeled[lifted_to_long_range]
 
         features_train.append(f_train[labeled])
         labels_train.append(labels[labeled])
@@ -197,7 +212,6 @@ def learn_long_range_rf(
     return rf
 
 
-# TODO
 # learn lifted rf with long ange features
 def learn_and_predict_long_range_rf(
     trainsets,
@@ -240,13 +254,6 @@ def learn_and_predict_long_range_rf(
     teststr  = ds_test.ds_name + "_" + str(seg_id_test)
     trainstr = "_".join([ds.ds_name for ds in trainsets]) + "_" + str(seg_id_train)
 
-    to_lifted_nh = match_to_lifted_nh(
-        ds_test,
-        seg_id_test,
-        ExperimentSettings().lifted_neighborhood,
-        ExperimentSettings().long_range
-    )
-
     # check if rf is already cached, if we use caching for random forests ( == rf_cache folder is not None )
     # we cache predictions in the ds_train cache folder
     if ExperimentSettings().rf_cache_folder is not None:
@@ -256,7 +263,7 @@ def learn_and_predict_long_range_rf(
         pred_path = os.path.join(ds_test.cache_folder, pred_name)
         # see if the rf is already learned and predicted, otherwise learn it
         if os.path.exists(pred_path):
-            return vigra.readHDF5(pred_path, 'data'), to_lifted_nh
+            return vigra.readHDF5(pred_path, 'data')
 
     uv_ids_test = compute_and_save_lifted_nh(
         ds_test,
@@ -297,6 +304,7 @@ def learn_and_predict_long_range_rf(
         seg_id_test,
         with_defects
     )
+
     long_range_features = get_long_range_features(
         ds_test,
         seg_id_test,
@@ -304,14 +312,27 @@ def learn_and_predict_long_range_rf(
         affinity_map_key_test,
         ExperimentSettings().long_range
     )
-    features_test = np.concatenate([features_test[to_lifted_nh], long_range_features], axis=1)
+
+    to_lifted_nh = match_to_lifted_nh(
+        ds_test,
+        seg_id_test,
+        ExperimentSettings().lifted_neighborhood,
+        ExperimentSettings().long_range,
+        with_defects
+    )
+    lifted_to_long_range = to_lifted_nh[:, 1]
+    long_range_to_lifted = to_lifted_nh[:, 0]
+
+    features_test = np.concatenate(
+        [features_test[lifted_to_long_range], long_range_features[long_range_to_lifted]], axis=1
+    )
 
     print("Start prediction long-range random forest")
     p_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
     if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 
-    return p_test, to_lifted_nh
+    return p_test
 
 
 def long_range_multicut_wokflow(
@@ -321,7 +342,7 @@ def long_range_multicut_wokflow(
     seg_id_test,
     feature_list_local,
     feature_list_lifted,
-    feature_list_long_range,
+    #feature_list_long_range,
     affinity_map_paths_train,
     affinity_map_keys_train,
     affinity_map_path_test,
@@ -355,13 +376,14 @@ def long_range_multicut_wokflow(
     )
 
     # get the long range lifted prediction
-    p_test_long_range, to_lifted_nh = learn_and_predict_long_range_rf(
+    p_test_long_range = learn_and_predict_long_range_rf(
         trainsets,
         ds_test,
         seg_id_train,
         seg_id_test,
-        feature_list_long_range,
+        feature_list_lifted,
         feature_list_local,
+        #feature_list_long_range,
         affinity_map_paths_train,
         affinity_map_keys_train,
         affinity_map_path_test,
@@ -423,6 +445,14 @@ def long_range_multicut_wokflow(
     costs_local  /= costs_local.shape[0]
     costs_lifted /= costs_lifted.shape[0]
     costs_long_range /= costs_long_range.shape[0]
+
+    to_lifted_nh = match_to_lifted_nh(
+        ds_test,
+        seg_id_test,
+        ExperimentSettings().lifted_neighborhood,
+        ExperimentSettings().long_range,
+        False
+    )[:, 1]
 
     # combine lifted and long range costs
     costs_lifted[to_lifted_nh] = costs_long_range

@@ -651,8 +651,8 @@ def learn_and_predict_lifted_rf(
     with_defects=False
 ):
 
-    assert isinstance(trainsets, (DataSet, list, tuple), type(trainsets)
-    if not isinstance(trainsets, (list, tuple)):
+    assert isinstance(trainsets, (DataSet, list, tuple)), type(trainsets)
+    if isinstance(trainsets, DataSet):
         trainsets = [trainsets]
 
     # strings for caching

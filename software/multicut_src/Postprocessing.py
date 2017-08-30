@@ -112,7 +112,7 @@ def merge_small_segments(mc_seg, min_seg_size):
     merged_nodes = ufd.elementLabeling()
 
     # make consecutive, starting from the original min val and make segmentation
-    merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min, keep_zeros=False)
+    merged_nodes, _, _ = vigra.analysis.relabelConsecutive(merged_nodes, start_label=seg_min)
     return nrag.projectScalarNodeDataToPixels(rag, merged_nodes, n_threads)
 
 
@@ -149,7 +149,7 @@ def postprocess_with_watershed(ds, mc_segmentation, inp_id, size_threshold=500, 
         tasks = [tp.submit(pp_z, z) for z in range(postprocessed.shape[0])]
         [t.result() for t in tasks]
 
-    postprocessed, _, _ = vigra.analysis.relabelConsecutive(postprocessed, start_label=1, keep_zeros=False)
+    postprocessed, _, _ = vigra.analysis.relabelConsecutive(postprocessed, start_label=1)
     return postprocessed
 
 
