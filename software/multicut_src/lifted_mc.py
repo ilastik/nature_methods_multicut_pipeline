@@ -8,7 +8,7 @@ from concurrent import futures
 
 from DataSet import DataSet
 from MCSolverImpl import multicut_fusionmoves
-from tools import cacher_hdf5, find_matching_indices, find_matching_row_indices
+from tools import cacher_hdf5, find_matching_indices, find_matching_row_indices,get_unique_rows
 from EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from ExperimentSettings import ExperimentSettings
@@ -728,6 +728,8 @@ def optimize_lifted(
         starting_point=None
 ):
     print "Optimizing lifted model"
+
+    print "assert?: ",uvs_lifted.shape[0],", ",costs_lifted.shape[0]
 
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"

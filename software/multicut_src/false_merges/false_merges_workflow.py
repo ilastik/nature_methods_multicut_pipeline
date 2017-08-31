@@ -16,7 +16,7 @@ from ..Postprocessing import remove_small_segments
 from ..lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh
 from ..EdgeRF import RandomForest
 from ..ExperimentSettings import ExperimentSettings
-from ..tools import find_matching_row_indices
+from ..tools import find_matching_row_indices,get_unique_rows
 
 # imports from this dir
 from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, \
@@ -38,6 +38,8 @@ except ImportError:
             import nifty_with_gurobi.graph.rag as nrag
         except ImportError:
             raise ImportError("No valid nifty version was found.")
+
+
 
 
 def extract_paths_from_segmentation(
@@ -81,7 +83,7 @@ def extract_paths_from_segmentation(
 
         #threshhold for distance transform for picking terminal
         #points near boundary
-        print "Computing paths with border distance: ", ExperimentSettings().border_distance
+        print "Computing training paths with border distance: ", ExperimentSettings().border_distance
         volume_where_threshhold = np.where(volume_dt >  ExperimentSettings().border_distance)
         volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
                                min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
@@ -107,7 +109,7 @@ def extract_paths_from_segmentation(
           for path_to_obj in seg_array[1] if seg_array!=[]]
             for seg_array in parallel_array]
 
-        # all_paths=np.array(all_paths)
+        all_paths=np.array(all_paths)
         paths_to_objs=np.array(paths_to_objs, dtype="float64")
 
         if paths_cache_folder is not None:
@@ -210,11 +212,11 @@ def extract_paths_and_labels_from_segmentation(
             for seg_array in parallel_array]
 
 
-        print "finished appending"
+        # print "finished appending"
         all_paths = np.array(all_paths)
         paths_to_objs = np.array(paths_to_objs, dtype="float64")
         path_classes = np.array(path_classes)
-        print "finished numpying"
+        # print "finished computing"
 
         # if caching is enabled, write the results to cache
         if paths_cache_folder is not None:
@@ -586,6 +588,28 @@ def combine_paths(
     else:
         return extra_paths, extra_path_uvs
 
+def mean_over_energies(uv_ids_paths,path_weights):
+
+    uv_ids_paths_unique,indexes_unique,reverse_ids,counts=get_unique_rows(uv_ids_paths,True,True,True)
+
+    path_weights_unique=path_weights[indexes_unique]
+
+    where=np.where(counts>1)[0]
+
+    identical_ids=[np.where(reverse_ids==idx)[0] for idx in where]
+
+    for identical_ids_single in identical_ids:
+        where_in_idx_unique = np.where(indexes_unique == identical_ids_single[0])[0][0]
+
+        path_weights_unique[where_in_idx_unique]=np.mean(path_weights[identical_ids_single])
+
+
+        pass
+
+
+    return uv_ids_paths_unique, path_weights_unique
+
+
 
 # resolve each potential false merge individually with lifted edges
 def resolve_merges_with_lifted_edges(
@@ -646,10 +670,14 @@ def resolve_merges_with_lifted_edges(
         # extract local uv ids and corresponding weights
         uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
         mc_weights     = mc_weights_all[local_uv_mask]
+        if len(uv_local)==0:
+            continue
 
         # extract the lifted uv ids and corresponding weights
         uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
+
         lifted_weights = lifted_weights_all[lifted_uv_mask]
+        print "uv_local_lifted.shape: ", uv_local_lifted.shape
 
         # FIXME somthing goes wrong here, but what? merge_id = 75
         # FIXME ecc_centers_seg still doesn't have switched dimensions!!! -> Old cache or in computation?
@@ -664,6 +692,7 @@ def resolve_merges_with_lifted_edges(
             ecc_centers_seg,
             reverse_mapping
         )
+        print "paths_obj.shape before combine_paths: ", paths_obj.shape
 
         # Map to local uvs
         uv_ids_paths_min_nh = np.array([[mapping[u] for u in uv] for uv in uv_ids_paths_min_nh])
@@ -675,13 +704,15 @@ def resolve_merges_with_lifted_edges(
             uv_ids_paths_min_nh,
             seg,
             mapping)
+        print "paths_obj.shape after combine_paths: ", paths_obj.shape
 
         if not paths_obj.size:
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj, mc_segmentation_name='resolving')
+        features = path_feature_aggregator(ds, paths_obj, mc_segmentation_name='resolving_{}'.format(merge_id))
         features = np.nan_to_num(features)
+        print "features.shape: ", features.shape
 
         # Cache features for debug purpose # TODO disabled for now
         # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
@@ -690,9 +721,19 @@ def resolve_merges_with_lifted_edges(
         # compute the lifted weights from rf probabilities
         # FIXME TODO - not caching this for now -> should not be performance relevant
         lifted_path_weights = path_rf.predict_probabilities(features)[:, 1]
-
+        print "lifted_path_weights.shape: ", lifted_path_weights.shape
         # Class 1: contain a merge
         # Class 0: don't contain a merge
+
+
+        # Mean of path weights of paths between same superpixels
+        uv_ids_paths_min_nh,lifted_path_weights=\
+            mean_over_energies(uv_ids_paths_min_nh, lifted_path_weights)
+
+        # TODO Exclude non-lifted edges
+        # lifted edge candidates: uv_ids_paths_min_nh
+        # local edges: uv_local
+        # Exclude all uv_local in uv_ids_path_min_nh
 
         # scale the probabilities
         p_min = 0.001

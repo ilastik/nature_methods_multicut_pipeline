@@ -5,9 +5,19 @@ import numpy as np
 # make the rows of array unique
 # see http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
 # TODO this could also be done in place
-def get_unique_rows(array, return_index=False, return_inverse=False):
+def get_unique_rows(array, return_index=False, return_inverse=False,return_counts=False):
+
+    #make sure its a numpy array for operations
+    if type(array)!=np.ndarray:
+        array=np.array(array)
+
     array_view = np.ascontiguousarray(array).view(np.dtype((np.void, array.dtype.itemsize * array.shape[1])))
-    if return_inverse:
+
+    if return_inverse and return_counts:
+        _, idx, inverse_idx,counts = np.unique(array_view, return_index=True, return_inverse=True,return_counts=True)
+    elif return_counts:
+        _, idx, counts = np.unique(array_view, return_index=True, return_counts=True)
+    elif return_inverse:
         _, idx, inverse_idx = np.unique(array_view, return_index=True, return_inverse=True)
     else:
         _, idx = np.unique(array_view, return_index=True)
@@ -17,6 +27,8 @@ def get_unique_rows(array, return_index=False, return_inverse=False):
         return_vals += (idx,)
     if return_inverse:
         return_vals += (inverse_idx,)
+    if return_counts:
+        return_vals += (counts,)
     return return_vals
 
 

@@ -239,7 +239,7 @@ def skeleton_to_graph(skel_img, dt, anisotropy,volume_dt_boundaries):
     is_node_map, is_term_map, is_branch_map, nodes, edges_and_lens, loop_list = \
         stage_one(skel_img, dt, anisotropy)
 
-    print "deleting skel_img..."
+    # print "deleting skel_img..."
     del skel_img
 
 
@@ -702,7 +702,7 @@ def check_edge_paths(edge_paths, node_list):
     for pair in edge_paths:
         assert pair in pair_list
 
-    print "passed"
+    # print "passed"
 
 
 
@@ -799,11 +799,11 @@ def compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries):
 def parallel_wrapper(seg, dt, gt, anisotropy,
                       label, len_uniq,volume_dt_boundaries, mode="with_labels"):
 
-    if mode == "with_labels":
-        print "Label ", label, " of ", len_uniq
+    # if mode == "with_labels":
+    #     print "Label ", label, " of ", len_uniq
 
-    if mode == "only_paths":
-        print "Number ", label, " without labels of ", len_uniq
+    # if mode == "only_paths":
+    #     print "Number ", label, " without labels of ", len_uniq
 
     # masking volume
     img=np.zeros(seg.shape)
@@ -811,7 +811,7 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
 
     paths = compute_graph_and_paths(img, dt, anisotropy,volume_dt_boundaries)
 
-    print "deleting img..."
+    # print "deleting img..."
     del img
 
     if mode=="with_labels":

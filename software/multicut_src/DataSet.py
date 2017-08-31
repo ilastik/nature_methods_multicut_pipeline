@@ -541,7 +541,7 @@ class DataSet(object):
             seg = connected_components_with_ignore_mask(seg)
 
         else:
-            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype('uint32')
+            seg = nseg.connectedComponents(seg, ignoreBackground=False).astype(seg.dtype)
 
         return seg
 
@@ -736,12 +736,15 @@ class DataSet(object):
                 min_label = seg_z.min()
                 # eccentricity centers expect a consecutive labeling -> we only return the relevant part
                 centers = vigra.filters.eccentricityCenters(seg_z)[min_label:]
-                return [cent + (z,) for cent in centers]  # extend by z coordinate
+                return [(z,) + cent for cent in centers]  # extend by z coordinate
 
-            with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
-                tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[0])]
-                centers = [t.result() for t in tasks]
-                # return flattened list
+            # with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
+            #     tasks = [executor.submit(centers_2d, z) for z in xrange(seg.shape[0])]
+            #     centers = [t.result() for t in tasks]
+            #     # return flattened list
+
+            centers = [centers_2d(z) for z in xrange(seg.shape[0])]
+
             centers_list = list(itertools.chain(*centers))
             n_segs = seg.max() + 1
             assert len(centers_list) == n_segs, "%i, %i" % (len(centers_list), n_segs)

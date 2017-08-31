@@ -218,9 +218,9 @@ def path_features_from_feature_images(
             feat_shape = f['data'].shape
             # we add a singleton dimension to single channel features to loop over channel later
             if len(feat_shape) == 3:
-                feature_volumes.append(f['data'][roi][..., None])
+                feature_volumes.append(np.float64(f['data'][roi][..., None]))
             else:
-                feature_volumes.append(f['data'][roi])
+                feature_volumes.append(np.float64(f['data'][roi]))
     time_b=time()
     print "loading h5py took ",time_b-time_a," secs"
     # stats = ExperimentSettings().feature_stats
