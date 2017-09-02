@@ -70,7 +70,7 @@ def extract_paths_from_segmentation(
     # otherwise compute the paths
     else:
         seg = vigra.readHDF5(seg_path, key)
-        dt = ds.inp(ds.n_inp - 1)
+        dt = ds.inp(2)
         all_paths = []
         paths_to_objs = []
 

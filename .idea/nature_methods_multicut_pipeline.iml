@@ -3,7 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
     <content url="file://$MODULE_DIR$/../skeleton_to_graph/workflow/pipeline" />
-    <orderEntry type="jdk" jdkName="Remote Python 2.7.13 (ssh://amatskev@slimchicken:22/export/home/amatskev/miniconda2/envs/multicut-software/bin/python2.7)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 2.7.13 (~/miniconda2/envs/multicut-software/bin/python2.7)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TestRunnerService">
