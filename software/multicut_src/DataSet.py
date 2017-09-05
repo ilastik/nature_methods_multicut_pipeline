@@ -1200,7 +1200,12 @@ class DataSet(object):
     @cacher_hdf5()
     def node_z_coord(self, seg_id):
         seg = self.seg(seg_id)
-        nz = np.zeros(seg.max() + 1, dtype='uint32')
+        print 'type(seg) = {}'.format(type(seg))
+        print 'seg.dtype = {}'.format(seg.dtype)
+        print 'seg.max() = {}'.format(seg.max() + 1)
+        print np.zeros(int(seg.max() + 1))
+        nz = np.zeros(int(seg.max() + 1), dtype='uint32')
+        print 'test'
         for z in xrange(seg.shape[0]):
             lz = seg[z]
             nz[lz] = z

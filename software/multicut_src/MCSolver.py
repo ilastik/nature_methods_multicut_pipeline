@@ -181,6 +181,7 @@ def lifted_multicut_workflow(
 
     # ) step one, train a random forest
     print "Start learning"
+    print 'RF for lifted MC'
 
     p_test_lifted, uv_ids_lifted, nzTest = learn_and_predict_lifted_rf(
         trainsets,
@@ -192,6 +193,7 @@ def lifted_multicut_workflow(
     )
 
     # get edge probabilities from random forest on the complete training set
+    print "RF for MC"
     p_test_local = learn_and_predict_rf_from_gt(
         trainsets,
         ds_test,
@@ -203,6 +205,7 @@ def lifted_multicut_workflow(
     )
 
     # energies for the multicut
+    print "Compute energies"
     edge_energies_local = probs_to_energies(
         ds_test,
         p_test_local,

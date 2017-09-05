@@ -712,8 +712,44 @@ def learn_and_predict_lifted_rf(
         with_defects
     )
 
-    print "Start prediction lifted random forest"
-    p_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
+    if ExperimentSettings().rf_batch_size > 0:
+
+        print "Start prediction lifted random forest"
+        print "With feature matrix of shape {}".format(features_test.shape)
+
+        feats_len = features_test.shape[0]
+        start = 0
+        step = ExperimentSettings().rf_batch_size
+        stop = feats_len
+
+        split_points = range(start, stop, step)
+        if split_points[-1] < feats_len:
+            split_points.append(feats_len)
+        print split_points
+
+        p_test = []
+
+        for idx in xrange(len(split_points)-1):
+            print '{}, {}'.format(split_points[idx], split_points[idx+1])
+            features_in = features_test[split_points[idx]:split_points[idx+1]]
+            # print features_in.shape
+            p_test.append(
+                rf.predict_probabilities(features_in.astype('float32'))[:, 1]
+            )
+
+        p_test = np.concatenate(p_test)
+
+        print p_test
+
+        print "Finished prediction lifted random forest"
+
+    else:
+
+        print "Start prediction lifted random forest"
+        print "With feature matrix of shape {}".format(features_test.shape)
+        p_test = rf.predict_probabilities(features_test.astype('float32'))[:, 1]
+        print "Finished prediction lifted random forest"
+
     if ExperimentSettings().rf_cache_folder is not None:
         vigra.writeHDF5(p_test, pred_path, 'data')
 

@@ -347,7 +347,8 @@ def train_random_forest_for_merges(
                         # FIXME replace this by the acutal cached function call
                         # Add for test set (current_ds)
                         path_to_edge_features = os.path.join(
-                            current_ds.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+                            current_ds.cache_folder, 'features',
+                            'edge_features_0_1_{}.h5'.format(ExperimentSettings().anisotropy_factor)
                         )
 
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
