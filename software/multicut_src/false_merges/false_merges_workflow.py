@@ -282,10 +282,6 @@ def train_random_forest_for_merges(
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
-            # # FIXME delete this!
-            # if ds_id == 0:
-            #     continue
-
             logger.debug('----------')
             logger.debug('ds_id = {}'.format(ds_id))
 
@@ -302,7 +298,6 @@ def train_random_forest_for_merges(
             gt = current_ds.gt()
             # add a fake distance transform
             # we need this to safely replace this with the actual distance transforms later
-            # FIXME: Check the condition
             if current_ds.n_inp < 3:
                 current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
 
@@ -347,7 +342,8 @@ def train_random_forest_for_merges(
                         # FIXME replace this by the acutal cached function call
                         # Add for test set (current_ds)
                         path_to_edge_features = os.path.join(
-                            current_ds.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+                            current_ds.cache_folder, 'features',
+                            'edge_features_0_1_{}.h5'.format(ExperimentSettings().anisotropy_factor)
                         )
 
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
@@ -457,7 +453,8 @@ def compute_false_merges(
         # FIXME replace this by the acutal cached function call
         # Add for test set (current_ds)
         path_to_edge_features = os.path.join(
-            ds_test.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+            ds_test.cache_folder, 'features',
+            'edge_features_0_1_{}.h5'.format(ExperimentSettings().anisotropy_factor)
         )
 
     features_test = path_feature_aggregator(
