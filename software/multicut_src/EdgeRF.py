@@ -60,7 +60,9 @@ class RandomForest(object):
                 rf = pickle.load(f)
             self.n_trees = rf.n_estimators
         else:
-            save_path = file_path + ".h5"
+            save_path = file_path
+            print save_path
+            print key
             rf = RFType(save_path, key)
             self.n_trees = rf.treeCount()
         self.rf = rf
