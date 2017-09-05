@@ -170,7 +170,7 @@ def path_feature_aggregator(
 
             logger.debug('Computing path lengths ...')
 
-            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]), mc_segmentation_name)
+            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.], mc_segmentation_name))
 
             logger.debug('... done computing path lengths!')
 
