@@ -64,7 +64,7 @@ def extract_paths_from_segmentation(
         # TODO we don't remove small objects for now, because this would relabel the segmentation,
         # which we don't want in this case
         seg = vigra.readHDF5(seg_path, key)
-        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
+        dt = ds.inp(2)  # we assume that the last input is the distance transform
 
         # Compute path end pairs
         # TODO debug the new border contact computation, which is much faster
@@ -162,7 +162,7 @@ def extract_paths_and_labels_from_segmentation(
     # otherwise compute paths
     else:
         assert seg.shape == gt.shape
-        dt = ds.inp(ds.n_inp - 1)  # we assume that the last input is the distance transform
+        dt = ds.inp(2)  # we assume that the second input is the distance transform
 
         # Compute path end pairs
         # TODO debug the new border contact computation, which is much faster
@@ -323,11 +323,11 @@ def train_random_forest_for_merges(
                 dt  = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
 
                 # NOTE IMPORTANT:
-                # We assume that the distance transform always has the last inp_id and
+                # We assume that the distance transform always has the inp_id=2
                 # that a (dummy) dt was already added in the beginning
-                current_ds.replace_inp_from_data(current_ds.n_inp - 1, dt, clear_cache=False)
+                current_ds.replace_inp_from_data(2, dt, clear_cache=False)
                 # we delete all filters based on the distance transform
-                current_ds.clear_filters(current_ds.n_inp - 1)
+                current_ds.clear_filters(2)
 
                 # Compute the paths
                 paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
@@ -357,10 +357,10 @@ def train_random_forest_for_merges(
                             current_ds,
                             paths,
                             ExperimentSettings().path_features,
-                            mc_segmentation=seg,
+                            mc_segmentation=seg, mc_segmentation_name='train_beta_no_{}'.format(seg_path_id),
                             paths_to_objs=paths_to_objs,
                             train_sets=current_trainsets,
-                            path_to_edge_features=path_to_edge_features,
+                            path_to_edge_features=path_to_edge_features
                         )
                     )
                     labels_train.append(path_classes)
@@ -439,7 +439,10 @@ def compute_false_merges(
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
-    ds_test.add_input_from_data(dt)
+    if ds_test.n_inp < 3:
+        ds_test.add_input_from_data(dt)
+    else:
+        ds_test.replace_inp_from_data(2, dt, clear_cache=False)
 
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
@@ -462,7 +465,7 @@ def compute_false_merges(
         ds_test,
         paths_test,
         ExperimentSettings().path_features,
-        mc_segmentation=seg,
+        mc_segmentation=seg, mc_segmentation_name='test_seg',
         paths_to_objs=paths_to_objs_test,
         train_sets=trainsets,
         path_to_edge_features=path_to_edge_features
@@ -638,7 +641,7 @@ def resolve_merges_with_lifted_edges(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process
@@ -717,7 +720,7 @@ def resolve_merges_with_lifted_edges(
         # Compute the path features
         features = path_feature_aggregator(
             ds, paths_obj, feature_list=ExperimentSettings().path_features,
-            mc_segmentation=mc_segmentation,
+            mc_segmentation=mc_segmentation, mc_segmentation_name='resolving_{}'.format(merge_id),
             paths_to_objs=[merge_id] * len(paths_obj),  # FIXME is this correct?
             train_sets=train_sets,
             edge_weights=mc_weights_all
@@ -791,7 +794,7 @@ def resolve_merges_with_lifted_edges_global(
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
-    disttransf = ds.inp(ds.n_inp - 1)
+    disttransf = ds.inp(2)
     # Pre-processing of the distance transform
     # a) Invert: the lowest values (i.e. the lowest penalty for the shortest path
     #    detection) should be at the center of the current process

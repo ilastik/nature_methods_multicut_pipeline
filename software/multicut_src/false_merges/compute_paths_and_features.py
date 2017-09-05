@@ -122,7 +122,8 @@ def shortest_paths(
 def path_feature_aggregator(
         ds, paths,
         feature_list=None,
-        mc_segmentation=None, paths_to_objs=None, train_sets=None,
+        mc_segmentation=None, mc_segmentation_name=None,  # mc_segmentation_name is a dummy string for the cacher
+        paths_to_objs=None, train_sets=None,
         path_to_edge_features = None
 ):
 
@@ -158,10 +159,10 @@ def path_feature_aggregator(
 
             logger.debug('Computing path features ...')
 
-            feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor))
-            feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor))
+            feature_space.append(path_features_from_feature_images(ds, 0, paths, anisotropy_factor, mc_segmentation_name))
+            feature_space.append(path_features_from_feature_images(ds, 1, paths, anisotropy_factor, mc_segmentation_name))
             # we assume that the distance transform is added as inp_id 2
-            feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor))
+            feature_space.append(path_features_from_feature_images(ds, 2, paths, anisotropy_factor, mc_segmentation_name))
 
             logger.debug('... done computing path features!')
 
@@ -169,7 +170,7 @@ def path_feature_aggregator(
 
             logger.debug('Computing path lengths ...')
 
-            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]))
+            feature_space.append(compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.]), mc_segmentation_name)
 
             logger.debug('... done computing path lengths!')
 
@@ -204,7 +205,7 @@ def path_feature_aggregator(
                 seg_id,
                 mc_segmentation,
                 objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-                edge_probabilities
+                edge_probabilities, mc_segmentation_name
             ))
 
             logger.debug('... done computing multicut path features!')
@@ -240,7 +241,7 @@ def path_feature_aggregator(
                 edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
                 ['raw', 'prob', 'distance_transform'],
-                'watershed'
+                'watershed', mc_segmentation_name
             ))
 
             logger.debug('... done computing cut features!')
@@ -276,7 +277,7 @@ def path_feature_aggregator(
                 edge_probabilities,
                 ExperimentSettings().anisotropy_factor,
                 ['raw', 'prob', 'distance_transform'],
-                'watershed'
+                'watershed', mc_segmentation_name
             ))
 
             logger.debug('... done computing cut features!')
@@ -288,8 +289,8 @@ def path_feature_aggregator(
 
 # TODO this could be parallelized over the paths
 # compute the path lens for all paths
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
-def compute_path_lengths(ds, paths, anisotropy):
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
+def compute_path_lengths(ds, paths, anisotropy, append_to_cache_name):
     """
     Computes the length of a path
 
@@ -316,12 +317,14 @@ def compute_path_lengths(ds, paths, anisotropy):
 
 
 # don't cache for now
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def path_features_from_feature_images(
         ds,
         inp_id,
         paths,
-        anisotropy_factor):
+        anisotropy_factor,
+        append_to_cache_name
+):
 
     # FIXME for now we don't use fastfilters here
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
@@ -448,7 +451,10 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     local_uv_mask = local_uv_mask.reshape(uv_ids.shape).all(axis=1)
 
     uv_local = np.array([[mapping[u] for u in uv] for uv in uv_ids[local_uv_mask]])
-    n_var = uv_local.max() + 1
+    if uv_local.any():
+        n_var = uv_local.max() + 1
+    else:
+        n_var = 0
 
     return local_uv_mask, mapping, uv_local, n_var
     #
@@ -471,13 +477,14 @@ def make_local_uv(seg, mc_segmentation, uv_ids, obj_id):
     # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
 
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def multicut_path_features(
         ds,
         seg_id,
         mc_segmentation,
         objs_to_paths,  # dict[merge_ids : dict[path_ids : paths]]
-        edge_probabilities
+        edge_probabilities,
+        append_to_cache_name
 ):
 
     logger.debug('ds.ds_name = {}'.format(ds.ds_name))
@@ -613,16 +620,20 @@ def multicut_path_features(
             # FIXME This takes forever for some objects
             # node_labels, _, _ = multicut_exact(n_var, uv_local, weights)
             # FIXME Use this instead?
-            node_labels, _, _ = multicut_fusionmoves(
-                n_var,
-                uv_local,
-                weights,
-                n_threads=ExperimentSettings().n_threads,
-                solver_backend='kl'
-            )
-            cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
+            if n_var:
+                node_labels, _, _ = multicut_fusionmoves(
+                    n_var,
+                    uv_local,
+                    weights,
+                    n_threads=ExperimentSettings().n_threads,
+                    solver_backend='kl'
+                )
+                cut_edges = node_labels[[uv_local[:, 0]]] != node_labels[[uv_local[:, 1]]]
 
-            cut_edges_s[ii] = cut_edges
+                cut_edges_s[ii] = cut_edges
+
+            else:
+                cut_edges_s[ii] = np.array([], dtype=bool)
 
             # # TODO: For debug purposes:
             # # TODO: Restore the segmentation and save it as volume
@@ -637,6 +648,7 @@ def multicut_path_features(
             # vigra.writeHDF5(split_obj_im, save_filepath, 'data', compression='gzip')
 
         return cut_edges_s
+
 
     # if ExperimentSettings().n_threads == 1:
     if True:
@@ -683,20 +695,27 @@ def multicut_path_features(
 
 def cut_watershed(graph, weights, source, sink):
 
-    # TODO I don't know if this is the correct way to do this
-    # make the seeds from source and sink
-    seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
-    seeds[source] = 1
-    seeds[sink] = 2
-    node_labeling = nifty.graph.edgeWeightedWatershedsSegmentation(
-        graph,
-        seeds,
-        weights
-    )
+    if source != sink:
+        # TODO I don't know if this is the correct way to do this
+        # make the seeds from source and sink
+        seeds = np.zeros(graph.numberOfNodes, dtype='uint64')
+        seeds[source] = 1
+        seeds[sink] = 2
+        node_labeling = nifty.graph.edgeWeightedWatershedsSegmentation(
+            graph,
+            seeds,
+            weights
+        )
 
-    uvs = graph.uvIds()
+        uvs = graph.uvIds()
+
+        cut_edges = node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]]
+
+    else:
+        node_labeling = np.ones((graph.numberOfNodes,), dtype='uint64')
+        cut_edges = np.zeros((graph.numberOfEdges,)).astype('bool')
     # return the edge labels (cut or not cut for each edge)
-    return node_labeling[uvs[:, 0]] != node_labeling[uvs[:, 1]], node_labeling
+    return cut_edges, node_labeling
 
 
 def cut_graphcut(graph, weights, source, sink):
@@ -709,7 +728,7 @@ def cut_seeded_agglomeration(graph, weights, source, sink):
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features(
         ds,
         seg_id,
@@ -718,7 +737,8 @@ def cut_features(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:
@@ -1017,7 +1037,7 @@ def cut_features(
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features_with_region(
         ds,
         seg_id,
@@ -1026,7 +1046,8 @@ def cut_features_with_region(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:
@@ -1149,7 +1170,8 @@ def cut_features_with_region(
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
         graph_local = nifty.graph.UndirectedGraph(n_var)
-        graph_local.insertEdges(uv_local)
+        if uv_local.any():
+            graph_local.insertEdges(uv_local)
 
         return weights_local, graph_local
 
@@ -1273,7 +1295,7 @@ def cut_features_with_region(
             #   3. Make sure small paths are not computed in the first place
             #       a) Merge close border contacts if they belong to the same object
             #       b) Do not compute a path if it would start and end in the same superpixel
-            if not local_two_coloring.max():
+            if not local_two_coloring.any():
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
@@ -1343,7 +1365,7 @@ def cut_features_with_region(
 
 # features based on most likely cut along path (via graphcut)
 # return edge features of corresponding cut, depending on feature list
-@cacher_hdf5("feature_folder", ignoreNumpyArrays=False)
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def cut_features_with_region_whole_plane(
         ds,
         seg_id,
@@ -1352,7 +1374,8 @@ def cut_features_with_region_whole_plane(
         edge_probabilities,
         anisotropy_factor,
         feat_list,
-        cut_method
+        cut_method,
+        append_to_cache_name
 ):
 
     if feat_list is None:
@@ -1442,7 +1465,8 @@ def cut_features_with_region_whole_plane(
         # local weights and graph for the cutter
         weights_local = edge_weights[local_uv_mask]
         graph_local = nifty.graph.UndirectedGraph(n_var)
-        graph_local.insertEdges(uv_local)
+        if uv_local.any():
+            graph_local.insertEdges(uv_local)
 
         return weights_local, graph_local
 
@@ -1575,7 +1599,7 @@ def cut_features_with_region_whole_plane(
             #   3. Make sure small paths are not computed in the first place
             #       a) Merge close border contacts if they belong to the same object
             #       b) Do not compute a path if it would start and end in the same superpixel
-            if not local_two_coloring.max():
+            if not local_two_coloring.any():
 
                 # Probably boundary intersection point calculation failed yielding a path starting
                 # and ending in [40, 0, 0] -> corner of the image
