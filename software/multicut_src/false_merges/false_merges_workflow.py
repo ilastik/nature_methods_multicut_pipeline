@@ -719,7 +719,7 @@ def resolve_merges_with_lifted_edges(
         # Compute the path features
         features = path_feature_aggregator(
             ds, paths_obj, feature_list=ExperimentSettings().path_features,
-            mc_segmentation=mc_segmentation, mc_segmentation_name='resolving'
+            mc_segmentation=mc_segmentation, mc_segmentation_name='resolving_{}'.format(merge_id),
             paths_to_objs=[merge_id] * len(paths_obj),  # FIXME is this correct?
             train_sets=train_sets,
             edge_weights=mc_weights_all
