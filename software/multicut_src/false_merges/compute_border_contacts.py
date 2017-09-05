@@ -428,16 +428,29 @@ def translate_centroids_to_volume(centroids, volume_shape):
 
 def compute_border_contacts_old(
         segmentation,
-        disttransf
+        disttransf,
+        return_image=True,
+        return_coordinates=False
 ):
-
+    print "starting computing_border_contacts_old..."
     faces_seg, bounds = get_faces_with_neighbors(segmentation)
+    print "get_faces_with_neighbors(segmentation) finished"
     faces_dt, _ = get_faces_with_neighbors(disttransf)
+    print "get_faces_with_neighbors(disttransf) finished"
 
-    centroids = {key: find_centroids(val, faces_dt[key], bounds[key]) for key, val in faces_seg.iteritems()}
-    centroids = translate_centroids_to_volume(centroids, segmentation.shape)
+    centroids_coords = {key: find_centroids(val, faces_dt[key], bounds[key]) for key, val in faces_seg.iteritems()}
+    print "finished computing_border_contacts_old"
 
-    return centroids
+    if return_coordinates and return_image==False:
+        return centroids_coords
+
+    centroids = translate_centroids_to_volume(centroids_coords, segmentation.shape)
+
+    if return_image and return_coordinates:
+        return centroids,centroids_coords
+
+    else:
+        return centroids
 
 
 ####################################

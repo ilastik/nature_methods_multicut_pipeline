@@ -39,10 +39,7 @@ class ExperimentSettings(object):
         # 2 -> accumulate values only from z + 1
         self.affinity_z_direction = 0
 
-        # parameter for pruning
-        self.pruning_factor = 4
-        # parameter for path-computation (border distance)
-        self.border_distance = 30
+
 
         # paramter for groundtruth projection and learning
         # flag to activate learning only from the xy-edges (for ISBI12)
@@ -104,3 +101,9 @@ class ExperimentSettings(object):
         self.max_sample_size = 20
         self.paths_penalty_power = 10
         self.lifted_path_weights_factor = 1.
+
+
+        # parameter for pruning
+        self.pruning_factor = 4
+        # parameter for path-computation (border distance)
+        self.border_distance = 30
