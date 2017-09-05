@@ -118,14 +118,16 @@ def shortest_paths(
 # convenience function to combine path features
 # TODO code different features with some keys
 # TODO include seg_id
-def path_feature_aggregator(ds, paths, mc_segmentation_name=None):
-    anisotropy_factor = ExperimentSettings().anisotropy_factor
+def path_feature_aggregator(ds, paths, feature_volumes_0,
+                            feature_volumes_1,
+                            feature_volumes_2, mc_segmentation_name=None):
     return np.concatenate([
-        path_features_from_feature_images(ds, 0, paths, anisotropy_factor, mc_segmentation_name),
-        path_features_from_feature_images(ds, 1, paths, anisotropy_factor, mc_segmentation_name),
+        path_features_from_feature_images(paths, 0,feature_volumes_0, mc_segmentation_name),
+        path_features_from_feature_images(paths, 1, feature_volumes_1, mc_segmentation_name),
         # we assume that the distance transform is added as inp_id 2
-        path_features_from_feature_images(ds, 2, paths, anisotropy_factor, mc_segmentation_name),
-        compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.], mc_segmentation_name)],
+        path_features_from_feature_images(paths, 2,feature_volumes_2, mc_segmentation_name),
+        compute_path_lengths(ds, paths, [ExperimentSettings().anisotropy_factor, 1., 1.],
+                             mc_segmentation_name)],
         axis=1
     )
 
@@ -175,93 +177,12 @@ def python_region_features_extractor_2_mc(single_vals):
 # don't cache for now
 @cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def path_features_from_feature_images(
-        ds,
-        inp_id,
         paths,
-        anisotropy_factor,
-        append_to_cache_name
+        ds_inp,
+        feature_volumes,
+        mc_segmentation_name
+
 ):
-
-    # FIXME for now we don't use fastfilters here
-    feat_paths = ds.make_filters(inp_id, anisotropy_factor)
-    # print feat_paths
-    # TODO sort the feat_path correctly
-    # load the feature images ->
-    # FIXME this might be too memory hungry if we have a large global bounding box
-
-    # compute the global bounding box
-    # global_min = np.min(
-    #     np.concatenate([np.min(path, axis=0)[None, :] for path in paths], axis=0),
-    #     axis=0
-    # )
-    # global_max = np.max(
-    #     np.concatenate([np.max(path, axis=0)[None, :] for path in paths], axis=0),
-    #     axis=0
-    # ) + 1
-    # # substract min coords from all paths to bring them to new coordinates
-    # paths_in_roi = [path - global_min for path in paths]
-
-
-    roi = np.s_[
-        0:ds.shape[0],
-        0:ds.shape[1],
-        0:ds.shape[2]
-    ]
-
-    # load features in global boundng box
-    feature_volumes = []
-    import h5py
-    print "loading h5py..."
-    time_a=time()
-    for path in feat_paths:
-        with h5py.File(path) as f:
-            feat_shape = f['data'].shape
-            # we add a singleton dimension to single channel features to loop over channel later
-            if len(feat_shape) == 3:
-                feature_volumes.append(np.float64(f['data'][roi][..., None]))
-            else:
-                feature_volumes.append(np.float64(f['data'][roi]))
-    time_b=time()
-    print "loading h5py took ",time_b-time_a," secs"
-    # stats = ExperimentSettings().feature_stats
-
-    # def extract_features_for_path(path):
-    #
-    #     # calculate the local path bounding box
-    #     min_coords = np.min(path, axis=0)
-    #     max_coords = np.max(path, axis=0)
-    #     max_coords += 1
-    #     shape = tuple(max_coords - min_coords)
-    #     path_image = np.zeros(shape, dtype='uint32')
-    #     path -= min_coords
-    #     # we swapaxes to properly index the image properly
-    #     path_sa = np.swapaxes(path, 0, 1)
-    #     path_image[path_sa[0], path_sa[1], path_sa[2]] = 1
-    #
-    #     path_features = []
-    #     for feature_volume in feature_volumes:
-    #         for c in range(feature_volume.shape[-1]):
-    #             path_roi = np.s_[
-    #                        min_coords[0]:max_coords[0],
-    #                        min_coords[1]:max_coords[1],
-    #                        min_coords[2]:max_coords[2],
-    #                        c  # wee need to also add the channel to the slicing
-    #                        ]
-    #             feat_tmp = feature_volume[path_roi]
-    #             assert feat_tmp.shape == path_image.shape, str(feat_tmp.ndim)
-    #             extractor = vigra.analysis.extractRegionFeatures(
-    #                 feat_tmp,
-    #                 path_image,
-    #                 ignoreLabel=0,
-    #                 features=stats
-    #             )
-    #             # TODO make sure that dimensions match for more that 1d stats!
-    #             path_features.extend(
-    #                 [extractor[stat][1] for stat in stats]
-    #             )
-    #     # ret = np.array(path_features)[:,None]
-    #     # print ret.shape
-    #     return np.array(path_features)[None, :]
 
 
 
@@ -270,22 +191,15 @@ def path_features_from_feature_images(
         pixel_values = []
 
         for feature_volume in feature_volumes:
-            for c in range(feature_volume.shape[-1]):
                 pixel_values.extend([feature_volume[path[:, 0],
                                                     path[:, 1],
                                                     path[:, 2]]
-                                                    [:, c]])
+                                                    ])
 
         return np.array(pixel_values)
 
     if len(paths) > 1:
     # if False:
-
-        # We parallelize over the paths for now.
-        # TODO parallelizing over filters might in fact be much faster, because
-        # we avoid the single threaded i/o in the beginning!
-        # it also lessens memory requirements if we have less threads than filters
-        # parallel
         time1=time()
         pixel_values_all = [python_region_features_extractor_sc (path)
                               for idx,path in enumerate(paths)]
@@ -308,12 +222,6 @@ def path_features_from_feature_images(
                             for single_vals in pixel_values_all])
         time3 = time()
         print "filters took ", time3 - time2, " secs"
-
-    # serial for debugging
-    # out = []
-    # for p_id, path in enumerate(paths_in_roi):
-    #     out.append( extract_features_for_path(path) )
-    # out = np.concatenate(out, axis = 0)
 
     assert out.ndim == 2, str(out.shape)
     assert out.shape[0] == len(paths), str(out.shape)

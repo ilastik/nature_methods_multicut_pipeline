@@ -11,6 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 from joblib import Parallel,delayed
 from time import time
+import h5py
 
 # relative imports from top level dir
 from ..Postprocessing import remove_small_segments
@@ -616,6 +617,36 @@ def mean_over_energies(uv_ids_paths,path_weights):
     return uv_ids_paths_unique, path_weights_unique
 
 
+def load_feature_volumes_for_ds(ds,inp_id,
+                                anisotropy_factor =
+                                ExperimentSettings().anisotropy_factor):
+    """load the feature volumes for ds_inp 0,1,2 for one ds"""
+
+    feat_paths = ds.make_filters(inp_id, anisotropy_factor)
+    roi = np.s_[
+        0:ds.shape[0],
+        0:ds.shape[1],
+        0:ds.shape[2]
+    ]
+
+    # load features in global boundng box
+    feature_volumes_unfinished = []
+    feature_volumes=[]
+    for path in feat_paths:
+        with h5py.File(path) as f:
+            feat_shape = f['data'].shape
+            # we add a singleton dimension to single channel features to loop over channel later
+            if len(feat_shape) == 3:
+                feature_volumes_unfinished.append(np.float64(f['data'][roi][..., None]))
+            else:
+                feature_volumes_unfinished.append(np.float64(f['data'][roi]))
+
+    for stack in feature_volumes_unfinished:
+        for idx in xrange(0,stack.shape[-1]):
+            feature_volumes.append(stack[:,:,:,idx])
+
+    return np.array(feature_volumes)
+
 
 # resolve each potential false merge individually with lifted edges
 def resolve_merges_with_lifted_edges(
@@ -630,6 +661,10 @@ def resolve_merges_with_lifted_edges(
         lifted_weights_all=None  # pre-computed lifted mc-weights
 ):
     assert isinstance(false_paths, dict)
+
+    feature_volumes_0=load_feature_volumes_for_ds(ds,0)
+    feature_volumes_1=load_feature_volumes_for_ds(ds,1)
+    feature_volumes_2=load_feature_volumes_for_ds(ds,2)
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
@@ -716,7 +751,11 @@ def resolve_merges_with_lifted_edges(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj, mc_segmentation_name='resolving_{}'.format(merge_id))
+        features = path_feature_aggregator(ds, paths_obj,
+                                           feature_volumes_0,
+                                           feature_volumes_1,
+                                           feature_volumes_2,
+                                           mc_segmentation_name='resolving_{}'.format(merge_id))
         features = np.nan_to_num(features)
         print "features.shape: ", features.shape
 
