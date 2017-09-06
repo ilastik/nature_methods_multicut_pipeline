@@ -617,11 +617,11 @@ def mean_over_energies(uv_ids_paths,path_weights):
     return uv_ids_paths_unique, path_weights_unique
 
 
-def load_feature_volumes_for_ds(ds,inp_id,
-                                anisotropy_factor =
-                                ExperimentSettings().anisotropy_factor):
+def load_feature_volumes_for_ds(ds,inp_id):
     """load the feature volumes for ds_inp 0,1,2 for one ds"""
 
+    anisotropy_factor = ExperimentSettings().anisotropy_factor
+    print "anisotropy = ",anisotropy_factor
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
     roi = np.s_[
         0:ds.shape[0],
