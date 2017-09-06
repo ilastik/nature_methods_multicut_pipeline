@@ -9,10 +9,10 @@ from ..ExperimentSettings import ExperimentSettings
 
 
 
-def norm3d(point1,point2,
-           anisotropy=[ExperimentSettings().anisotropy_factor,1,1]
+def norm3d(point1,point2
 ):
 
+    anisotropy = [ExperimentSettings().anisotropy_factor, 1, 1]
     return sqrt(((point1[0] - point2[0])* anisotropy[0])*((point1[0] - point2[0])* anisotropy[0])+
                  ((point1[1] - point2[1])*anisotropy[1])*((point1[1] - point2[1])*anisotropy[1])+
                  ((point1[2] - point2[2]) * anisotropy[2])*((point1[2] - point2[2]) * anisotropy[2]))
