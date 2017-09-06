@@ -662,9 +662,11 @@ def resolve_merges_with_lifted_edges(
 ):
     assert isinstance(false_paths, dict)
 
+    print "Loading feature volumes..."
     feature_volumes_0=load_feature_volumes_for_ds(ds,0)
     feature_volumes_1=load_feature_volumes_for_ds(ds,1)
     feature_volumes_2=load_feature_volumes_for_ds(ds,2)
+    print "Feature volumes loaded!"
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation

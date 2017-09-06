@@ -219,7 +219,7 @@ def stage_two(is_node_map, list_term, edges, dt):
 
 
 
-def form_term_list(is_term_map,border_points):
+def form_term_list_with_cents(is_term_map, border_points, mode):
     """returns list of terminal points taken from an image"""
 
     border_distance=ExperimentSettings().border_distance
@@ -227,25 +227,51 @@ def form_term_list(is_term_map,border_points):
 
     dict_border_points = {key: [] for key in xrange(0, len(border_points))}
 
-    for term_point in term_where:
+    if mode=="only_paths":
 
-        comparison_array=[]
+        for idx, cent_point in enumerate(border_points):
+            comparison_array = []
 
-        [comparison_array.append(norm3d(term_point, cent_point))
-         for cent_point in border_points]
+            [comparison_array.append(norm3d(term_point, cent_point))
+             for term_point in term_where]
 
-        min_index = np.argmin(comparison_array)
-        # print comparison_array[min_index]
-        if comparison_array[min_index]<=border_distance:
+            min_index = np.argmin(comparison_array)
 
-            dict_border_points[min_index].append(
-                is_term_map[term_point[0], term_point[1], term_point[2]]-1)
+            if comparison_array[min_index] <= border_distance:
+                dict_border_points[idx].append(
+                    is_term_map[term_where[min_index][0],
+                                term_where[min_index][1],
+                                term_where[min_index][2]]-1)
+
+                del term_where[min_index]
+
+
+
+
+
+    else:
+
+        for term_point in term_where:
+
+            comparison_array=[]
+
+            [comparison_array.append(norm3d(term_point, cent_point))
+             for cent_point in border_points]
+
+            min_index = np.argmin(comparison_array)
+            # print comparison_array[min_index]
+            if comparison_array[min_index]<=border_distance:
+
+                dict_border_points[min_index].append(
+                    is_term_map[term_point[0], term_point[1], term_point[2]]-1)
 
 
     return dict_border_points
 
 
-def skeleton_to_graph(skel_img, dt, anisotropy,border_points):
+
+
+def skeleton_to_graph(skel_img, dt, anisotropy):
     """main function, wraps up stage one and two"""
 
     is_node_map, is_term_map, is_branch_map, nodes, edges_and_lens, loop_list = \
@@ -261,13 +287,12 @@ def skeleton_to_graph(skel_img, dt, anisotropy,border_points):
 
     edges_and_lens = [[val1, val2, val3, max(val4)] for val1, val2, val3, val4 in edges_and_lens]
 
-    dict_border_points = form_term_list(is_term_map, border_points)
     # term_list -= 1
 
 
 
     # loop_list -= 1
-    return nodes, np.array(edges_and_lens), dict_border_points, is_node_map, loop_list
+    return nodes, np.array(edges_and_lens), is_term_map, loop_list
 
 
 def get_unique_rows(array, return_index=False):
@@ -685,22 +710,22 @@ def check_edge_paths_for_list(edge_paths, node_list):
 
     # print "passed"
 
-def check_edge_paths_for_dict(edge_paths, term_dict):
-    """checks edge paths (constantin)"""
-
-    from itertools import combinations
-    pairs = combinations(node_list, 2)
-    pair_list = [pair for pair in pairs]
-
-    # make sure that we have all combination in the edge_paths
-    for pair in pair_list:
-        assert pair in edge_paths
-
-    # make sure that we don't have any spurious pairs in edge_paths
-    for pair in edge_paths:
-        assert pair in pair_list
-
-    # print "passed"
+# def check_edge_paths_for_dict(edge_paths, term_dict):
+#     """checks edge paths (constantin)"""
+#
+#     from itertools import combinations
+#     pairs = combinations(node_list, 2)
+#     pair_list = [pair for pair in pairs]
+#
+#     # make sure that we have all combination in the edge_paths
+#     for pair in pair_list:
+#         assert pair in edge_paths
+#
+#     # make sure that we don't have any spurious pairs in edge_paths
+#     for pair in edge_paths:
+#         assert pair in pair_list
+#
+#     # print "passed"
 
 def build_paths_from_edges(edge_paths,edges):
     """Builds paths from edges """
@@ -741,7 +766,7 @@ def build_paths_from_edges(edge_paths,edges):
 
 
 def compute_graph_and_paths(img, dt, anisotropy,
-                            border_points):
+                            border_points, mode):
     """ overall wrapper for all functions, input: label image; output: paths
         sampled from skeleton
     """
@@ -750,8 +775,15 @@ def compute_graph_and_paths(img, dt, anisotropy,
     skel_img=skeletonize_3d(img)
 
 
-    nodes, edges_and_lens, dict_border_points, is_node_map, loop_list = \
-        skeleton_to_graph(skel_img, dt, anisotropy,border_points)
+    nodes, edges_and_lens, dict_border_points, is_term_map, loop_list = \
+        skeleton_to_graph(skel_img, dt, anisotropy)
+
+
+
+    dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
+
+
+
 
     # print "deleting skel_img..."
     del skel_img
@@ -818,7 +850,7 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
     img[seg==label]=1
 
     paths = compute_graph_and_paths(img, dt, anisotropy,
-                                    border_points)
+                                    border_points, mode)
 
     # print "deleting img..."
     del img

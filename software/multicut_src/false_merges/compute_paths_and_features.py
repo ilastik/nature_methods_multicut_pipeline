@@ -122,10 +122,10 @@ def path_feature_aggregator(ds, paths, feature_volumes_0,
                             feature_volumes_1,
                             feature_volumes_2, mc_segmentation_name=None):
     return np.concatenate([
-        path_features_from_feature_images(paths, 0,feature_volumes_0, mc_segmentation_name),
+        path_features_from_feature_images(paths, 0, feature_volumes_0, mc_segmentation_name),
         path_features_from_feature_images(paths, 1, feature_volumes_1, mc_segmentation_name),
         # we assume that the distance transform is added as inp_id 2
-        path_features_from_feature_images(paths, 2,feature_volumes_2, mc_segmentation_name),
+        path_features_from_feature_images(paths, 2, feature_volumes_2, mc_segmentation_name),
         compute_path_lengths(ds, paths, [ExperimentSettings().anisotropy_factor, 1., 1.],
                              mc_segmentation_name)],
         axis=1
