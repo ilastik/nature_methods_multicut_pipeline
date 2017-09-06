@@ -9,8 +9,7 @@ from ..ExperimentSettings import ExperimentSettings
 
 
 
-def norm3d(point1,point2
-):
+def norm3d(point1,point2):
 
     anisotropy = [ExperimentSettings().anisotropy_factor, 1, 1]
     return sqrt(((point1[0] - point2[0])* anisotropy[0])*((point1[0] - point2[0])* anisotropy[0])+
@@ -775,7 +774,7 @@ def compute_graph_and_paths(img, dt, anisotropy,
     skel_img=skeletonize_3d(img)
 
 
-    nodes, edges_and_lens, dict_border_points, is_term_map, loop_list = \
+    nodes, edges_and_lens, is_term_map, loop_list = \
         skeleton_to_graph(skel_img, dt, anisotropy)
 
 
