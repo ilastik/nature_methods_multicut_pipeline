@@ -282,10 +282,6 @@ def train_random_forest_for_merges(
         # loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
-            # # FIXME delete this!
-            # if ds_id == 0:
-            #     continue
-
             logger.debug('----------')
             logger.debug('ds_id = {}'.format(ds_id))
 
@@ -302,7 +298,6 @@ def train_random_forest_for_merges(
             gt = current_ds.gt()
             # add a fake distance transform
             # we need this to safely replace this with the actual distance transforms later
-            # FIXME: Check the condition
             if current_ds.n_inp < 3:
                 current_ds.add_input_from_data(np.zeros_like(gt, dtype='float32'))
 
