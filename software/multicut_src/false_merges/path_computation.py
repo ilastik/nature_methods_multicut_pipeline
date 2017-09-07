@@ -226,7 +226,25 @@ def form_term_list_with_cents(is_term_map, border_points, mode):
 
     dict_border_points = {key: [] for key in xrange(0, len(border_points))}
 
-    if mode=="only_paths":
+    if mode=="testing":
+
+        for idx, cent_point in enumerate(border_points):
+            comparison_array = []
+
+            [comparison_array.append(norm3d(term_point, cent_point))
+             for term_point in term_where]
+
+            min_index = np.argmin(comparison_array)
+
+            dict_border_points[idx]=[
+                    is_term_map[term_where[min_index][0],
+                                term_where[min_index][1],
+                                term_where[min_index][2]]-1]
+
+            term_where = np.delete(term_where, min_index, axis=0)
+
+
+    else:
 
         for idx, cent_point in enumerate(border_points):
             comparison_array = []
@@ -237,32 +255,18 @@ def form_term_list_with_cents(is_term_map, border_points, mode):
             min_index = np.argmin(comparison_array)
 
             if comparison_array[min_index] <= border_distance:
-                dict_border_points[idx].append(
-                    is_term_map[term_where[min_index][0],
+                dict_border_points[idx]=[is_term_map[term_where[index][0],
+                                term_where[index][1],
+                                term_where[index][2]]-1
+                                         for index, val in enumerate(comparison_array)
+                                         if val<=border_distance]
+
+
+            else:
+                dict_border_points[idx]=[is_term_map[term_where[min_index][0],
                                 term_where[min_index][1],
-                                term_where[min_index][2]]-1)
+                                term_where[min_index][2]]-1]
 
-                del term_where[min_index]
-
-
-
-
-
-    else:
-
-        for term_point in term_where:
-
-            comparison_array=[]
-
-            [comparison_array.append(norm3d(term_point, cent_point))
-             for cent_point in border_points]
-
-            min_index = np.argmin(comparison_array)
-            # print comparison_array[min_index]
-            if comparison_array[min_index]<=border_distance:
-
-                dict_border_points[min_index].append(
-                    is_term_map[term_point[0], term_point[1], term_point[2]]-1)
 
 
     return dict_border_points
@@ -661,32 +665,51 @@ def edge_paths_and_counts_for_nodes(g, weights, dict_border_points, n_threads=8)
 
     # build the nifty shortest path object
     path_finder = nifty.graph.ShortestPathDijkstra(g)
-    dict_border_keys=dict_border_points.keys()
-    for idx,key in enumerate(dict_border_keys[:-1]):
-
-        target_nodes=np.concatenate([dict_border_points[left_key]
-                                     for left_key in dict_border_keys[idx + 1:]])
 
 
-        # iterate over the source nodes
-        # we don't need to go to the last node, because it won't have any more targets
-        for ii, u in enumerate(dict_border_points[key]):
+    if dict_border_points is not None:
 
-            # find the shortest path from source node u to the target nodes
-            shortest_paths = path_finder.runSingleSourceMultiTarget(
-                    weights.tolist(),
-                    int(u),
-                    np.uint32(target_nodes),
-                    returnNodes=False
-            )
-            assert len(shortest_paths) == len(target_nodes)
+        dict_border_keys=dict_border_points.keys()
 
-            # extract the shortest path for each node pair and
-            # increase the edge counts
-            for jj, sp in enumerate(shortest_paths):
-                v = target_nodes[jj]
-                edge_paths[(u, v)] = sp
-                edge_counts[sp] += 1
+
+        if len(dict_border_keys)>1:
+            for idx,key in enumerate(dict_border_keys[:-1]):
+
+                target_nodes=np.concatenate([dict_border_points[left_key]
+                                             for left_key in dict_border_keys[idx + 1:]])
+
+
+                # iterate over the source nodes
+                # we don't need to go to the last node, because it won't have any more targets
+                for ii, u in enumerate(dict_border_points[key]):
+
+                    # find the shortest path from source node u to the target nodes
+                    shortest_paths = path_finder.runSingleSourceMultiTarget(
+                            weights.tolist(),
+                            int(u),
+                            np.uint32(target_nodes),
+                            returnNodes=False
+                    )
+                    assert len(shortest_paths) == len(target_nodes)
+
+                    # extract the shortest path for each node pair and
+                    # increase the edge counts
+                    for jj, sp in enumerate(shortest_paths):
+                        v = target_nodes[jj]
+                        edge_paths[(u, v)] = sp
+                        edge_counts[sp] += 1
+
+        # if we only have one central point
+        else:
+            pass
+
+    # if we have no central points: build paths from pruning
+    else:
+        # only build one path
+        if mode == "only_paths":
+            pass
+
+
 
 
     return edge_paths, edge_counts
@@ -765,7 +788,7 @@ def build_paths_from_edges(edge_paths,edges):
 
 
 def compute_graph_and_paths(img, dt, anisotropy,
-                            border_points, mode):
+                            border_points, mode, dict_border_points=None):
     """ overall wrapper for all functions, input: label image; output: paths
         sampled from skeleton
     """
@@ -777,23 +800,17 @@ def compute_graph_and_paths(img, dt, anisotropy,
     nodes, edges_and_lens, is_term_map, loop_list = \
         skeleton_to_graph(skel_img, dt, anisotropy)
 
-
-
-    dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
-
-
-
-
     # print "deleting skel_img..."
     del skel_img
 
-    # making sure we can actually compute some paths
-    counter_for_term_dict=0
-    for key in dict_border_points.keys():
-        if len(dict_border_points[key])>0:
-            counter_for_term_dict += 1
-    if counter_for_term_dict<2:
-        return []
+
+    if len(border_points)>0:
+        dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
+
+        # making sure we can actually compute some paths
+        for key in dict_border_points.keys():
+            assert(len(dict_border_points[key])>0)
+
 
     if len(nodes) < 2:
         return []
@@ -824,7 +841,7 @@ def compute_graph_and_paths(img, dt, anisotropy,
     #TODO cores global
     edge_paths, edge_counts = \
         edge_paths_and_counts_for_nodes\
-            (g,edge_lens,dict_border_points, 1)
+            (g,edge_lens,dict_border_points, mode, 1)
 
     # check_edge_paths_for_list(edge_paths, term_list)
     # check_edge_paths_for_dict(edge_paths, dict_border_points)
@@ -836,12 +853,12 @@ def compute_graph_and_paths(img, dt, anisotropy,
 
 def parallel_wrapper(seg, dt, gt, anisotropy,
                       label, len_uniq,
-                     border_points=[], mode="with_labels"):
+                     border_points=[], mode="training"):
 
-    # if mode == "with_labels":
+    # if mode == "testing":
     #     print "Label ", label, " of ", len_uniq
 
-    # if mode == "only_paths":
+    # else:
     #     print "Number ", label, " without labels of ", len_uniq
 
     # masking volume
@@ -854,7 +871,17 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
     # print "deleting img..."
     del img
 
-    if mode=="with_labels":
+    if mode=="testing":
+
+        if len(paths) == 0:
+            return [],[]
+
+        all_paths_single=[np.array(path) for path in paths]
+        paths_to_objs_single=[label for path in paths]
+
+        return all_paths_single, paths_to_objs_single
+
+    else:
 
         if len(paths) == 0:
             return [],[],[]
@@ -865,15 +892,9 @@ def parallel_wrapper(seg, dt, gt, anisotropy,
 
         return all_paths_single, paths_to_objs_single, path_classes_single
 
-    elif mode=="only_paths":
 
-        if len(paths) == 0:
-            return [],[]
 
-        all_paths_single=[np.array(path) for path in paths]
-        paths_to_objs_single=[label for path in paths]
 
-        return all_paths_single, paths_to_objs_single
 
 
 

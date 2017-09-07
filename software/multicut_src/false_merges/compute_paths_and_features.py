@@ -115,21 +115,34 @@ def shortest_paths(
     return paths
 
 
+def path_feature_aggregator(ds, paths, mc_segmentation_name=None):
+    anisotropy_factor = ExperimentSettings().anisotropy_factor
+    return np.concatenate([
+        path_features_from_feature_images(ds, 0, paths, anisotropy_factor, mc_segmentation_name),
+        path_features_from_feature_images(ds, 1, paths, anisotropy_factor, mc_segmentation_name),
+        # we assume that the distance transform is added as inp_id 2
+        path_features_from_feature_images(ds, 2, paths, anisotropy_factor, mc_segmentation_name),
+        compute_path_lengths(ds, paths, [anisotropy_factor, 1., 1.], mc_segmentation_name)],
+        axis=1
+    )
+
+
 # convenience function to combine path features
 # TODO code different features with some keys
 # TODO include seg_id
-def path_feature_aggregator(ds, paths, feature_volumes_0,
+def path_feature_aggregator_for_resolving(ds, paths, feature_volumes_0,
                             feature_volumes_1,
                             feature_volumes_2, mc_segmentation_name=None):
     return np.concatenate([
-        path_features_from_feature_images(ds, paths, 0, feature_volumes_0, mc_segmentation_name),
-        path_features_from_feature_images(ds, paths, 1, feature_volumes_1, mc_segmentation_name),
+        path_features_from_feature_images_for_resolving(paths, 0, feature_volumes_0, mc_segmentation_name),
+        path_features_from_feature_images_for_resolving(paths, 1, feature_volumes_1, mc_segmentation_name),
         # we assume that the distance transform is added as inp_id 2
-        path_features_from_feature_images(ds, paths, 2, feature_volumes_2, mc_segmentation_name),
+        path_features_from_feature_images_for_resolving(paths, 2, feature_volumes_2, mc_segmentation_name),
         compute_path_lengths(ds, paths, [ExperimentSettings().anisotropy_factor, 1., 1.],
                              mc_segmentation_name)],
         axis=1
     )
+
 
 
 # TODO this could be parallelized over the paths
@@ -178,10 +191,88 @@ def python_region_features_extractor_2_mc(single_vals):
 @cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
 def path_features_from_feature_images(
         ds,
+        inp_id,
+        paths,
+        anisotropy_factor,
+        append_to_cache_name
+):
+
+    # FIXME for now we don't use fastfilters here
+    feat_paths = ds.make_filters(inp_id, anisotropy_factor)
+
+    roi = np.s_[
+        0:ds.shape[0],
+        0:ds.shape[1],
+        0:ds.shape[2]
+    ]
+
+    # load features in global boundng box
+    feature_volumes = []
+    import h5py
+    print "loading h5py..."
+    time_a=time()
+    for path in feat_paths:
+        with h5py.File(path) as f:
+            feat_shape = f['data'].shape
+            # we add a singleton dimension to single channel features to loop over channel later
+            if len(feat_shape) == 3:
+                feature_volumes.append(np.float64(f['data'][roi][..., None]))
+            else:
+                feature_volumes.append(np.float64(f['data'][roi]))
+    time_b=time()
+    print "loading h5py took ",time_b-time_a," secs"
+
+    def python_region_features_extractor_sc(path):
+
+        pixel_values = []
+
+        for feature_volume in feature_volumes:
+            for c in range(feature_volume.shape[-1]):
+                pixel_values.extend([feature_volume[path[:, 0],
+                                                    path[:, 1],
+                                                    path[:, 2]]
+                                                    [:, c]])
+
+        return np.array(pixel_values)
+
+    if len(paths) > 1:
+
+        time1=time()
+        pixel_values_all = [python_region_features_extractor_sc (path)
+                              for idx,path in enumerate(paths)]
+        time2 = time()
+        print "pixel values took ",time2-time1," secs"
+        out = np.array(Parallel(n_jobs=ExperimentSettings().n_threads) \
+            (delayed(python_region_features_extractor_2_mc)(single_vals)
+             for single_vals in pixel_values_all ))
+        time3 = time()
+        print "filters took ", time3 - time2, " secs"
+
+
+    else:
+        time1=time()
+        pixel_values_all = [python_region_features_extractor_sc (path)
+                              for idx,path in enumerate(paths)]
+        time2 = time()
+        print "pixel values took ",time2-time1," secs"
+        out=np.array([python_region_features_extractor_2_mc(single_vals)
+                            for single_vals in pixel_values_all])
+        time3 = time()
+        print "filters took ", time3 - time2, " secs"
+
+    assert out.ndim == 2, str(out.shape)
+    assert out.shape[0] == len(paths), str(out.shape)
+    # TODO checkfor correct number of features
+
+    return out
+
+# don't cache for now
+@cacher_hdf5("feature_folder", ignoreNumpyArrays=True)
+def path_features_from_feature_images_for_resolving(
         paths,
         ds_inp,
         feature_volumes,
-        mc_segmentation_name
+        merge_id
 
 ):
 

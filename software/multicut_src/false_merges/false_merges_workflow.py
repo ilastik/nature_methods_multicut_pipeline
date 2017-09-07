@@ -22,7 +22,7 @@ from ..tools import find_matching_row_indices,get_unique_rows
 
 # imports from this dir
 from .compute_paths_and_features import shortest_paths, distance_transform, path_feature_aggregator, \
-    extract_local_graph_from_segmentation
+    extract_local_graph_from_segmentation,path_feature_aggregator_for_resolving
 from .compute_border_contacts import compute_path_end_pairs, compute_path_end_pairs_and_labels, \
     compute_border_contacts_old  # , compute_border_contacts
 
@@ -101,7 +101,7 @@ def extract_paths_from_segmentation(
             (delayed(parallel_wrapper)(seg, dt, [],
                                        anisotropy, key,
                                        len_uniq, centres_dict[key],
-                                       "only_paths")
+                                       "testing")
              for key in centres_dict.keys() if len(centres_dict[key]) > 1)
 
 
@@ -619,7 +619,6 @@ def mean_over_energies(uv_ids_paths,path_weights):
 
 def load_feature_volumes_for_ds(ds,inp_id):
     """load the feature volumes for ds_inp 0,1,2 for one ds"""
-
     anisotropy_factor = ExperimentSettings().anisotropy_factor
     print "anisotropy = ",anisotropy_factor
     feat_paths = ds.make_filters(inp_id, anisotropy_factor)
@@ -753,11 +752,11 @@ def resolve_merges_with_lifted_edges(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj,
+        features = path_feature_aggregator_for_resolving(ds, paths_obj,
                                            feature_volumes_0,
                                            feature_volumes_1,
                                            feature_volumes_2,
-                                           mc_segmentation_name='resolving_{}'.format(merge_id))
+                                           merge_id)
         features = np.nan_to_num(features)
         print "features.shape: ", features.shape
 
@@ -836,6 +835,12 @@ def resolve_merges_with_lifted_edges_global(
 ):
     assert isinstance(false_paths, dict)
 
+
+    print "Loading feature volumes..."
+    feature_volumes_0=load_feature_volumes_for_ds(ds,0)
+    feature_volumes_1=load_feature_volumes_for_ds(ds,1)
+    feature_volumes_2=load_feature_volumes_for_ds(ds,2)
+    print "Feature volumes loaded!"
     # NOTE: We assume that the dataset already has a distance transform added as last input
     # This should work out, because we have already detected false merge paths for this segmentation
     disttransf = ds.inp(2)
@@ -902,7 +907,12 @@ def resolve_merges_with_lifted_edges_global(
             continue
 
         # Compute the path features
-        features = path_feature_aggregator(ds, paths_obj)
+        # Compute the path features
+        features = path_feature_aggregator_for_resolving(ds, paths_obj,
+                                           feature_volumes_0,
+                                           feature_volumes_1,
+                                           feature_volumes_2,
+                                           merge_id)
         features = np.nan_to_num(features)
 
         # Cache features for debug purpose # TODO not caching for now
