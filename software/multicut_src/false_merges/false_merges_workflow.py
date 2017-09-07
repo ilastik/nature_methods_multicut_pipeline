@@ -458,7 +458,8 @@ def compute_false_merges(
         # FIXME replace this by the acutal cached function call
         # Add for test set (current_ds)
         path_to_edge_features = os.path.join(
-            ds_test.cache_folder, 'features', 'edge_features_0_1_10.0.h5'
+            ds_test.cache_folder, 'features',
+            'edge_features_0_1_{}.h5'.format(ExperimentSettings().anisotropy_factor)
         )
 
     features_test = path_feature_aggregator(
@@ -656,7 +657,7 @@ def resolve_merges_with_lifted_edges(
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
 
     # I have moved this to the dataset to have it cached
-    ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
+    ecc_centers_seg = ds.eccentricity_centers(seg_id, ExperimentSettings().stacked_eccentricity_centers)
 
     # get local and lifted uv ids
     uv_ids = ds.uv_ids(seg_id)
@@ -809,7 +810,7 @@ def resolve_merges_with_lifted_edges_global(
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
 
     # I have moved this to the dataset to have it cached
-    ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
+    ecc_centers_seg = ds.eccentricity_centers(seg_id, ExperimentSettings().stacked_eccentricity_centers)
 
     # get local and lifted uv ids
     uv_ids = ds.uv_ids(seg_id)

@@ -1099,7 +1099,7 @@ def cut_features_with_region(
         uvs_p_local = np.sort(np.concatenate((us_p_local[:, None], vs_p_local[:, None]), axis=1), axis=1)
 
         if uvs_p.any():
-            edge_ids = find_matching_row_indices_fast(uv_ids, uvs_p)
+            edge_ids = find_matching_row_indices_fast(uv_ids.astype('uint64'), uvs_p.astype('uint64'))
             edge_ids_local = find_matching_row_indices_fast(uvs_local, uvs_p_local)
         else:
             edge_ids = np.array([])

@@ -727,7 +727,7 @@ class DataSet(object):
     # calculates the eccentricity centers for given seg_id
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
-        seg = self.seg(seg_id)
+        seg = self.seg(seg_id).astype('uint32')
         if is_2d_stacked:  # if we have a stacked segmentation, we can parallelize over the slices
 
             # calculate the centers for a 2d slice
