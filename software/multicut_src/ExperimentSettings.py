@@ -107,3 +107,5 @@ class ExperimentSettings(object):
         self.pruning_factor = 4
         # parameter for path-computation (border distance)
         self.border_distance = 30
+        # for training on labels without border contacts
+        self.max_number_of_paths =2

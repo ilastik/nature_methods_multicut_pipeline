@@ -272,6 +272,18 @@ def form_term_list_with_cents(is_term_map, border_points, mode):
     return dict_border_points
 
 
+def form_term_list(is_term_map):
+    """returns list of terminal points taken from an image"""
+
+
+    term_where = np.array(np.where(is_term_map)).transpose()
+
+    term_list = []
+    for point in term_where:
+        term_list.extend([is_term_map[point[0], point[1], point[2]]])
+    term_list = np.array([term for term in term_list])
+
+    return term_list
 
 
 def skeleton_to_graph(skel_img, dt, anisotropy):
@@ -490,7 +502,7 @@ def terminal_func(start_queue,g,finished_dict,node_dict,main_dict,edges,nodes_li
 
 
 #TODO check whether edgelist and termlist is ok (because of -1)
-def graph_pruning(g,term_list,edges,nodes_list):
+def graph_pruning(g,term_list,edges,nodes_list, dict_border_points=None):
 
     finished_dict={}
     node_dict={}
@@ -639,10 +651,36 @@ def graph_pruning(g,term_list,edges,nodes_list):
          finished_dict[key][1] / finished_dict[key][4] > ExperimentSettings().pruning_factor])
 
 
+    safe_counter = 1
+    if dict_border_points!=None:
+
+        safe_counter=0
+        for pruned_point in pruned_term_list:
+            if pruned_point not in dict_border_points[0]:
+                safe_counter+=1
+
+
+    if len(pruned_term_list==0) or safe_counter==0:
+        pruned_term_list = np.array(
+            [key for key in finished_dict.keys()])
+
+    safe_counter = 1
+    if dict_border_points != None:
+
+        safe_counter = 0
+        for pruned_point in pruned_term_list:
+
+            if pruned_point not in dict_border_points[0]:
+                safe_counter += 1
+
+        if safe_counter==0:
+            return np.array([])
+
     return pruned_term_list
 
 
-def edge_paths_and_counts_for_nodes(g, weights, dict_border_points, n_threads=8):
+def edge_paths_and_counts_for_nodes(g, weights, dict_border_points,
+                                    pruned_term_list, mode, n_threads=8):
     """
     Returns the path of edges for all pairs of nodes in node list as
     well as the number of times each edge is included in a shortest path.
@@ -657,8 +695,7 @@ def edge_paths_and_counts_for_nodes(g, weights, dict_border_points, n_threads=8)
     edge_counts: np.array[int] : Array with number of times each edge was visited in a shortest path
     """
 
-
-
+    max_number_of_paths=ExperimentSettings().max_number_of_paths
 
     edge_paths = {}
     edge_counts = np.zeros(g.numberOfEdges, dtype='uint32')
@@ -666,13 +703,14 @@ def edge_paths_and_counts_for_nodes(g, weights, dict_border_points, n_threads=8)
     # build the nifty shortest path object
     path_finder = nifty.graph.ShortestPathDijkstra(g)
 
-
+    # if we have at least one central point
     if dict_border_points is not None:
 
         dict_border_keys=dict_border_points.keys()
 
 
         if len(dict_border_keys)>1:
+
             for idx,key in enumerate(dict_border_keys[:-1]):
 
                 target_nodes=np.concatenate([dict_border_points[left_key]
@@ -699,20 +737,131 @@ def edge_paths_and_counts_for_nodes(g, weights, dict_border_points, n_threads=8)
                         edge_paths[(u, v)] = sp
                         edge_counts[sp] += 1
 
+            edge_paths_finished=edge_paths
+
         # if we only have one central point
-        else:
-            pass
+        else :
+
+            target_nodes=pruned_term_list
+
+            #deleting the actual points from term_list if they are there
+            for single_point in dict_border_points[0]:
+                    if single_point in target_nodes:
+                        target_nodes=np.delete(
+                            target_nodes, np.where(target_nodes==single_point)[0][0])
+
+
+            for ii, u in enumerate(dict_border_points[0]):
+
+                # find the shortest path from source node u to the target nodes
+                shortest_paths = path_finder.runSingleSourceMultiTarget(
+                    weights.tolist(),
+                    int(u),
+                    np.uint32(target_nodes),
+                    returnNodes=False
+                )
+                assert len(shortest_paths) == len(target_nodes)
+
+                # extract the shortest path for each node pair and
+                # increase the edge counts
+                for jj, sp in enumerate(shortest_paths):
+                    v = target_nodes[jj]
+                    edge_paths[(u, v)] = sp
+                    edge_counts[sp] += 1
+
+            edge_paths_keys=edge_paths.keys()
+
+            max_sum=0
+            for key in edge_paths_keys:
+                sum_weights = sum(weights[edge_paths[key]])
+                if sum_weights>max_sum:
+                    max_sum=sum_weights
+                    counter = key
+
+
+            edge_paths_finished={}
+            edge_paths_finished[counter]=edge_paths[counter]
+
+
 
     # if we have no central points: build paths from pruning
-    else:
+    else :
+        if len(pruned_term_list)<2:
+            return None
+
         # only build one path
-        if mode == "only_paths":
-            pass
+        if mode == "testing":
+
+            for ii, u in enumerate(pruned_term_list[:-1]):
+
+                target_nodes = pruned_term_list[ii + 1:]
+
+                shortest_paths = path_finder.runSingleSourceMultiTarget(
+                    weights.tolist(),
+                    u,
+                    target_nodes,
+                    returnNodes=False
+                )
+                assert len(shortest_paths) == len(target_nodes)
+
+                for jj, sp in enumerate(shortest_paths):
+                    v = target_nodes[jj]
+                    edge_paths[(u, v)] = sp
+                    edge_counts[sp] += 1
+
+            edge_paths_keys = edge_paths.keys()
+
+            max_sum = 0
+            for key in edge_paths_keys:
+                sum_weights = sum(weights[edge_paths[key]])
+                print "key: ",key,", sum: ",sum_weights
+                if sum_weights > max_sum:
+                    max_sum = sum_weights
+                    counter = key
+
+            edge_paths_finished = {}
+            edge_paths_finished[counter] = edge_paths[counter]
+
+        # build many paths for training
+        else:
+
+            for ii, u in enumerate(pruned_term_list[:-1]):
+
+                target_nodes = pruned_term_list[ii + 1:]
+
+                shortest_paths = path_finder.runSingleSourceMultiTarget(
+                    weights.tolist(),
+                    u,
+                    target_nodes,
+                    returnNodes=False
+                )
+                assert len(shortest_paths) == len(target_nodes)
+
+                for jj, sp in enumerate(shortest_paths):
+                    v = target_nodes[jj]
+                    edge_paths[(u, v)] = sp
+                    edge_counts[sp] += 1
+
+            edge_paths_keys = edge_paths.keys()
+
+            sum_weights_keys_array=[[sum(weights[edge_paths[key]]),key]
+                                        for key in edge_paths_keys]
+
+            only_weights_sum=np.array([weight for weight,key in sum_weights_keys_array])
+
+            sort_indexes_sum_weights_array= np.argsort(only_weights_sum)[::-1]
+
+            sorted_keys=[sum_weights_keys_array[index][1] for index in sort_indexes_sum_weights_array]
+
+            if len(edge_paths_keys)>=max_number_of_paths:
+
+                sorted_keys=sorted_keys[:20]
+
+            edge_paths_finished = {key:edge_paths[key] for key in sorted_keys}
 
 
 
-
-    return edge_paths, edge_counts
+    return edge_paths_finished
 
 
 def check_edge_paths_for_list(edge_paths, node_list):
@@ -804,14 +953,6 @@ def compute_graph_and_paths(img, dt, anisotropy,
     del skel_img
 
 
-    if len(border_points)>0:
-        dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
-
-        # making sure we can actually compute some paths
-        for key in dict_border_points.keys():
-            assert(len(dict_border_points[key])>0)
-
-
     if len(nodes) < 2:
         return []
     g, edge_lens, edges_and_lens = \
@@ -820,31 +961,82 @@ def compute_graph_and_paths(img, dt, anisotropy,
     for_building=deepcopy(edges_and_lens)
     check_connected_components(g)
 
-    # #FOR PRUNING
-    # ##########################################
-    # loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
-    #
-    # for where in np.where(loop_nr > 1)[0]:
-    #
-    #     adjacency = np.array([[adj_node, adj_edge]
-    #                           for adj_node, adj_edge
-    #                           in g.nodeAdjacency(loop_uniq[where] - 1)])
-    #
-    #     if (len(adjacency)) == 1:
-    #         term_list = np.append(term_list, loop_uniq[where] - 1)
-    #
-    #
-    # pruned_term_list = graph_pruning\
-    #     (g, term_list, edges_and_lens, nodes)
-    # ##########################################
+
+
+    if len(border_points)>1:
+        dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
+
+        # making sure we can actually compute some paths
+        for key in dict_border_points.keys():
+            assert(len(dict_border_points[key])>0)
+        pruned_term_list=None
+
+    elif len(border_points) == 1 :
+
+        term_list_before_copy=form_term_list(is_term_map)
+        term_list=deepcopy(term_list_before_copy)
+        term_list -= 1
+
+        dict_border_points = form_term_list_with_cents(is_term_map, border_points, mode)
+
+        # making sure we can actually compute some paths
+        for key in dict_border_points.keys():
+            assert(len(dict_border_points[key])>0)
+
+        #FOR PRUNING
+        ##########################################
+
+
+        loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
+
+        for where in np.where(loop_nr > 1)[0]:
+
+            adjacency = np.array([[adj_node, adj_edge]
+                                    for adj_node, adj_edge
+                                    in g.nodeAdjacency(loop_uniq[where] - 1)])
+
+            if (len(adjacency)) == 1:
+                term_list = np.append(term_list, loop_uniq[where] - 1)
+
+        pruned_term_list = graph_pruning\
+                (g, term_list, edges_and_lens, nodes, dict_border_points)
+            ##########################################
+
+        if len(pruned_term_list)==0:
+            return []
+    else:
+
+        term_list= form_term_list(is_term_map)
+        term_list -= 1
+
+        #FOR PRUNING
+        ##########################################
+
+
+        loop_uniq, loop_nr = np.unique(loop_list, return_counts=True)
+
+        for where in np.where(loop_nr > 1)[0]:
+
+            adjacency = np.array([[adj_node, adj_edge]
+                                    for adj_node, adj_edge
+                                    in g.nodeAdjacency(loop_uniq[where] - 1)])
+
+            if (len(adjacency)) == 1:
+                term_list = np.append(term_list, loop_uniq[where] - 1)
+
+        pruned_term_list = graph_pruning\
+                (g, term_list, edges_and_lens, nodes)
+            ##########################################
+
+        dict_border_points=None
 
     #TODO cores global
-    edge_paths, edge_counts = \
+    edge_paths = \
         edge_paths_and_counts_for_nodes\
-            (g,edge_lens,dict_border_points, mode, 1)
+            (g,edge_lens,dict_border_points,pruned_term_list, mode, 1)
 
-    # check_edge_paths_for_list(edge_paths, term_list)
-    # check_edge_paths_for_dict(edge_paths, dict_border_points)
+    if edge_paths==None:
+        return []
 
     finished_paths=build_paths_from_edges(edge_paths,for_building)
 
@@ -854,6 +1046,7 @@ def compute_graph_and_paths(img, dt, anisotropy,
 def parallel_wrapper(seg, dt, gt, anisotropy,
                       label, len_uniq,
                      border_points=[], mode="training"):
+    assert (mode=="testing" or mode=="training")
 
     # if mode == "testing":
     #     print "Label ", label, " of ", len_uniq

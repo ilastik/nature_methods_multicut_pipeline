@@ -102,7 +102,11 @@ def extract_paths_from_segmentation(
                                        anisotropy, key,
                                        len_uniq, centres_dict[key],
                                        "testing")
-             for key in centres_dict.keys() if len(centres_dict[key]) > 1)
+             if len(centres_dict[key]) > 0 else delayed(parallel_wrapper)(seg, dt, [],
+                                       anisotropy, key,
+                                       len_uniq, [],
+                                       "testing")
+            for key in centres_dict.keys())
 
 
         [[all_paths.append(path)
@@ -200,10 +204,13 @@ def extract_paths_and_labels_from_segmentation(
 
         #parallelized path computation
         parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
-            (delayed(parallel_wrapper)(seg, dt, gt,
-                                       anisotropy, key, len_uniq,
-                                       centres_dict[key])
-             for key in centres_dict.keys() if len(centres_dict[key])>1)
+            (delayed(parallel_wrapper)(seg, dt, [],
+                                       anisotropy, key,
+                                       len_uniq, centres_dict[key])
+             if len(centres_dict[key]) > 0 else delayed(parallel_wrapper)(seg, dt, [],
+                                       anisotropy, key,
+                                       len_uniq, [])
+            for key in centres_dict.keys())
 
 
         [[all_paths.append(path)
