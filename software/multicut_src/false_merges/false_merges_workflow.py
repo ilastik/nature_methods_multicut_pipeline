@@ -138,10 +138,26 @@ def extract_paths_and_labels_from_segmentation(
         paths_cache_folder=None
 ):
     """
-    params:
+    Computes paths inside objects between border intersection points and returns a class for each path:
+    True: Path crosses a false merge event
+    False: Path does not cross false merge event
+
+    :param ds: Training set containg ground truth
+    :param seg: Segmentation of the training set
+    :param seg_id: Isn't used, is it?
+    :param gt: Ground truth for the segmentation
+    :param correspondence_list: List of path end pairs (coordinates of path ends) that paths were already computed for
+        within another segmentation of the same dataset
+    :param paths_cache_folder: Paths cache folder
+    :return: all_paths, paths_to_objs, path_classes, correspondence_list
+        all_paths: List of paths within the segmentation
+        paths_to_objs: Mapping of paths to their respective object id
+        path_classes: See above
+        correspondence_list: Updated correspondence list as described for the input parameter
     """
     logger.debug('Extracting paths and labels from segmentation ...')
 
+    # Generate cache file name
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
             os.mkdir(paths_cache_folder)
@@ -149,7 +165,7 @@ def extract_paths_and_labels_from_segmentation(
     else:
         paths_save_file = ''
 
-    # if the cache exists, load paths from cache
+    # If the cache exists, load paths from cache
     if os.path.exists(paths_save_file):
         all_paths = vigra.readHDF5(paths_save_file, 'all_paths')
         # we need to reshape the paths again to revover the coordinates
@@ -159,7 +175,7 @@ def extract_paths_and_labels_from_segmentation(
         path_classes = vigra.readHDF5(paths_save_file, 'path_classes')
         correspondence_list = vigra.readHDF5(paths_save_file, 'correspondence_list').tolist()
 
-    # otherwise compute paths
+    # Otherwise compute paths
     else:
         assert seg.shape == gt.shape
         dt = ds.inp(2)  # we assume that the second input is the distance transform
@@ -176,6 +192,10 @@ def extract_paths_and_labels_from_segmentation(
         )
 
         # Invert the distance transform and take penalty power
+        # Penalty power: The inverted distance transform is used as distance between pixels for Dijkstra's algorithm.
+        #   To make sure the path doesn't take short cuts at turns the disctance is non-linearly increased towards the
+        #   border of an object. This is especially important for anisotropic data but a high value does no harm is
+        #   isotropic data either.
         dt = np.amax(dt) - dt
         dt = np.power(dt, ExperimentSettings().paths_penalty_power)
 
@@ -190,6 +210,7 @@ def extract_paths_and_labels_from_segmentation(
             # Take only the relevant path pairs
             pairs_in = path_pairs[paths_to_objs == obj]
 
+            # Find the shortest paths within the object that connect each pair of coordinates
             paths = shortest_paths(
                 masked_dt,
                 pairs_in,
@@ -198,14 +219,11 @@ def extract_paths_and_labels_from_segmentation(
             # paths is now a list of numpy arrays
             all_paths.extend(paths)
 
-        # TODO: Here we have to ensure that every path is actually computed
-        # TODO:  --> Throw not computed paths out of the lists
-
         # TODO: Remove paths under certain criteria
         # TODO: Do this only if GT is supplied
         # a) Class 'non-merged': Paths cross labels in GT multiple times
         # b) Class 'merged': Paths have to contain a certain amount of pixels in both GT classes
-        # TODO implement stuff here
+        # TODO: Set path to empty array if above criteria apply, this will lead to removal below
 
         # Remove all paths that are None, i.e. were initially not computed or were subsequently removed
         keep_mask = np.array([isinstance(x, np.ndarray) for x in all_paths], dtype=np.bool)
@@ -249,21 +267,38 @@ def train_random_forest_for_merges(
         mc_segs_train_keys,
         paths_cache_folder=None
 ):
+    """
+    Computes the random forest classifier used to determine false merge events along each path between two border
+    intersection points.
+
+    :param trainsets: List of datasets used for training (see description for trainsets in train_random_forest_for_merges)
+
+    :param mc_segs_train: List of segmentations for each dataset
+        mc_segs_train.shape = (len(trainsets), number_of_segmentations)
+
+    :param mc_segs_train_keys: Locations in h5 files
+
+    :param paths_cache_folder: paths cache folder
+
+    :return: rf
+    """
 
     logger.info('Training false merges random forest ...')
 
     rf_cache_folder = ExperimentSettings().rf_cache_folder
 
+    # Create the rf cache folder if it doesn't exist
     if rf_cache_folder is not None:
         if not os.path.exists(rf_cache_folder):
             os.mkdir(rf_cache_folder)
 
+    # Generate the cache name
     rf_save_path = '' if rf_cache_folder is None else os.path.join(
         rf_cache_folder,
         'rf_merges_%s' % '_'.join([ds.ds_name for ds in trainsets])
     )  # TODO more meaningful save name
 
-    # check if rf is already cached
+    # Check if rf is already cached
     if RandomForest.is_cached(rf_save_path):
 
         logger.info("Loading RF from: {}".format(rf_save_path))
@@ -274,12 +309,13 @@ def train_random_forest_for_merges(
 
         logger.info('RF was not cached and will be computed.')
 
+        # Initialize feature and label arrays
         features_train = []
         labels_train = []
 
         logger.debug('Looping over training sets:')
 
-        # loop over the training datasets
+        # Loop over the training datasets
         for ds_id, paths_to_betas in enumerate(mc_segs_train):
 
             logger.debug('----------')
@@ -292,6 +328,11 @@ def train_random_forest_for_merges(
             assert len(keys_to_betas) == len(paths_to_betas), "%i, %i" % (len(keys_to_betas), len(paths_to_betas))
 
             # For training of the training data split the trainsets again
+            # This is needed when multicut and cut features are used
+            #   and ExperimentSettings().use_probs_map_for_cut_features = False
+            #   otherwise current_trainsets is essentially unused.
+            # The list is empty if len(trainsets = 1),
+            #    and ExperimentSettings().use_probs_map_for_cut_features has to be set to True
             current_trainsets = np.delete(trainsets, ds_id, axis=0).tolist()
 
             # Load ground truth
@@ -324,7 +365,7 @@ def train_random_forest_for_merges(
                 # we delete all filters based on the distance transform
                 current_ds.clear_filters(2)
 
-                # Compute the paths
+                # Compute the paths with there labels, i.e., containing merge (True) or not (False)
                 paths, paths_to_objs, path_classes, correspondence_list = extract_paths_and_labels_from_segmentation(
                     current_ds,
                     seg,
@@ -335,7 +376,14 @@ def train_random_forest_for_merges(
                 )
 
                 if paths.size:
+                    # Paths have been computed
 
+                    # Originally, we used edge probabilities predicted by RF for computing features based on multicut
+                    #   and local two-coloring.
+                    #   This required multiple trainsets for training and, additionally,
+                    #   was very expensive in computation.
+                    #   So, we switched to using only the probability map values as found within edge_features (first column).
+                    #   All this remains a littly hacky and should probably be coded a little nicer in the future.
                     path_to_edge_features = None
                     if ExperimentSettings().use_probs_map_for_cut_features:
 
@@ -347,6 +395,7 @@ def train_random_forest_for_merges(
                         )
 
                     # TODO: decide which filters and sigmas to use here (needs to be exposed first)
+                    # Append features and labels list -> lists of np arrays which will be concatenated after the loop
                     features_train.append(
                         path_feature_aggregator(
                             current_ds,
@@ -361,19 +410,27 @@ def train_random_forest_for_merges(
                     labels_train.append(path_classes)
 
                 else:
-                    print "No paths found for seg_id = {}".format(seg_path_id)
+                    # No paths exist if the different segmentations of a dataset are similar such that
+                    #   paths for the respective objects have already been computed for a previous
+                    #   segmentation.
+                    logger.info("No paths found for seg_id = {}".format(seg_path_id))
                     continue
 
+        # Concatenate feature and labels list, list items originate from distinct segmentaitions of the supplied
+        #   training datasets
         features_train = np.concatenate(features_train, axis=0)
         labels_train = np.concatenate(labels_train, axis=0)
+        # Check that labels and features match
         assert features_train.shape[0] == labels_train.shape[0]
+        # RF doesn't cope with NaNs
         features_train = np.nan_to_num(features_train).astype('float32')
 
+        # For logging purpose: How many instances were found for each class?
         lbls, counts = np.unique(labels_train, return_counts=True)
-
         logger.info('Class labels: {}'.format(lbls))
         logger.info('Counts:       {}'.format(counts))
 
+        # Train the RF
         rf = RandomForest(
             features_train,
             labels_train,
@@ -381,7 +438,7 @@ def train_random_forest_for_merges(
             ExperimentSettings().n_threads
         )
 
-        # cache the rf if caching is enabled
+        # Cache the rf if caching is enabled
         if rf_cache_folder is not None:
             rf.write(rf_save_path, 'rf')
 
@@ -400,30 +457,50 @@ def compute_false_merges(
         train_paths_cache_folder=None
 ):
     """
-    Computes and returns false merge candidates
+    :param trainsets: array of N datasets with shape=(N, 1), representing N source images
+        Each trainset contains:
+        trainset.inp(0) := raw image
+        trainset.inp(1) := membrane probability map
+        trainset.gt() := ground truth segmentation
 
-    :param ds_train: Array of datasets representing multiple source images; [N x 1]
-        Has to contain:
-        ds_train.inp(0) := raw image
-        ds_train.inp(1) := probs image
-        ds_train.gt()   := groundtruth
-
-    :param ds_test:
-        Has to contain:
+    :param ds_test: Test dataset
         ds_test.inp(0) := raw image
-        ds_test.inp(1) := probs image
+        ds_test.inp(1) := membrane probability map
 
-    :param mc_segs_train: Multiple multicut segmentations on ds_train
-        Different betas for each ds_train; [N x len(betas)]
-    :param mc_seg_test: Multicut segmentation on ds_test (usually beta=0.5)
-    :return:
+    :param mc_segs_train: Array of strings representing the absolute filesystem location of multicut segmentations on
+        the train sets.
+        Note: Multiple segmentations for one trainset can be supplied,
+            e.g., computed by varying ExperimentSettings().beta_local
+        mc_segs_train.shape = (N, number_of_segmentations_per_trainset)
+
+    :param mc_segs_train_keys: Array of strings denoting the data locations within the h5 files
+        mc_segs_train_keys.shape = mc_segs_train.shape
+
+    :param mc_seg_test: String representing the absolute filesystem location of a multicut segmentation on ds_test
+
+    :param mc_seg_test_key: string denoting the data location within the h5 file
+
+    :param test_paths_cache_folder: String representing the absolute filesystem location of a cache folder used to
+        cache computed paths of ds_test
+
+    :param train_paths_cache_folder: String representing the absolute filesystem location of a cache folder used to
+        cache computed paths of all trainsets
+
+    :return: paths_test, false_merge_probabilities, paths_to_objs_test
+        paths_test: The computed paths of ds_test
+        false_merge_probabilities: probabilities of each path to contain a false merge
+        paths_to_objs_test: Mapping of the paths to objects in the initial segmentation (mc_seg_test)
+
     """
+
 
     logger.info('Begin of compute_false_merges ...')
 
     assert len(trainsets) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
     assert len(mc_segs_train_keys) == len(mc_segs_train), "we must have the same number of segmentation vectors as trainsets"
 
+    # Train a random forest classifier on paths obtained between border contact positions within each object in the
+    #   initial segmentation
     rf = train_random_forest_for_merges(
         trainsets,
         mc_segs_train,
@@ -432,13 +509,19 @@ def compute_false_merges(
     )
 
     # load the segmentation, compute distance transform and add it to the test dataset
+    #   load segmentation
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
+    #   compute distance transform
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
+    #   add or replace it in the dataset, depending whether ds_test.inp(2) already exists
     if ds_test.n_inp < 3:
         ds_test.add_input_from_data(dt)
     else:
         ds_test.replace_inp_from_data(2, dt, clear_cache=False)
 
+    # Compute paths between border contact positions within each object in the initial segmentation
+    # paths_test: The paths (coordinates of each position)
+    # paths_to_objs_test: Mapping of paths to their respective objects
     paths_test, paths_to_objs_test = extract_paths_from_segmentation(
         ds_test,
         mc_seg_test,
@@ -446,8 +529,16 @@ def compute_false_merges(
         test_paths_cache_folder
     )
 
+    # Just in case something went wrong...
     assert len(paths_test) == len(paths_to_objs_test)
 
+    # Depending on the path features that are activated we need different inputs for the aggregator
+    # Originally, we used edge probabilities predicted by RF for computing features based on multicut
+    #   and local two-coloring.
+    #   This required multiple trainsets for training (see within train_random_forest_for_merges) and, additionally,
+    #   was very expensive in computation.
+    #   So, we switched to using only the probability map values as found within edge_features (first column).
+    #   All this remains a littly hacky and should probably be coded a little nicer in the future.
     path_to_edge_features = None
     if ExperimentSettings().use_probs_map_for_cut_features:
         # FIXME replace this by the acutal cached function call
@@ -457,6 +548,7 @@ def compute_false_merges(
             'edge_features_0_1_{}.h5'.format(ExperimentSettings().anisotropy_factor)
         )
 
+    # Aggregating the path features for the test set
     features_test = path_feature_aggregator(
         ds_test,
         paths_test,
@@ -467,6 +559,7 @@ def compute_false_merges(
         path_to_edge_features=path_to_edge_features
     )
     assert features_test.shape[0] == len(paths_test)
+    # Nans cause the RF to fail
     features_test = np.nan_to_num(features_test)
 
     #  Cache features for debugging TODO deactivated for now
@@ -489,6 +582,23 @@ def sample_and_save_paths_from_lifted_edges(
         eccentricity_centers,
         reverse_mapping
 ):
+    """
+    Selects a random subset of superpixel pairs of an objects and
+    computes paths between the respective eccentricity centers
+
+    :param cache_folder: Where the paths will be cached
+
+    :param ds: Dataset
+    :param seg: An initial segmentation of the Dataset
+    :param obj_id: The label value which will be used for masking
+    :param uv_local: Graph edges of the graph representing the superpixel adjacencies of the current object
+    :param distance_transform: Boundary distance transform of the segmentation
+        (masking for the current object is done internally)
+    :param eccentricity_centers: Eccentricity centers of the superpixels
+    :param reverse_mapping: Mapping of the local superpixel edges to global uv IDs
+    :return paths_obj: Sampled paths within the current object representing lifted path edges
+    :return uv_ids_paths_min_nh: uv_ids of the lifted path edges
+    """
 
     if cache_folder is not None:
         if not os.path.exists(cache_folder):
@@ -626,13 +736,64 @@ def resolve_merges_with_lifted_edges(
         ds,
         train_sets,
         seg_id,
-        false_paths,  # dict(merge_ids : false_paths)
+        false_paths,  # dict(merge_ids : paths)
         path_rf,
         mc_segmentation,
         mc_weights_all,  # the precomputed mc-weights
         paths_cache_folder=None,
         lifted_weights_all=None  # pre-computed lifted mc-weights
 ):
+    """
+    Takes merge candidate objects and resolves them by lifted Multicut locally for each object individually
+
+    :param ds: Test dataset
+        ds_test.inp(0) := raw image
+        ds_test.inp(1) := membrane probability map
+
+    :param train_sets: array of N datasets with shape=(N, 1), representing N source images
+        Each trainset contains:
+        trainset.inp(0) := raw image
+        trainset.inp(1) := membrane probability map
+        trainset.gt() := ground truth segmentation
+
+    :param seg_id: Usually 0
+
+    :param false_paths: Dictionary with the form
+        false_paths = {merge_ids: paths}
+
+    :param path_rf: Random forest classifier generated within the merge detection step
+        Currently available with
+
+            rf_cache_name = 'rf_merges_%s' % '_'.join([ds.ds_name for ds in ds_train])
+            rf_filepath = os.path.join(rf_cache_folder, rf_cache_name)
+            path_rf = RandomForest.load_from_file(rf_filepath, 'rf', ExperimentSettings().n_threads)
+
+    :param mc_segmentation: np.array: Multicut segmentation on the test dataset (the previous segmentation)
+
+    :param mc_weights_all: Weights used by the Multicut that was used for generating the initial segmentation
+        Currently available with
+
+            weight_filepath = os.path.join(
+                ds_test_cache_folder,
+                'probs_to_energies_0_{}_16.0_0.5_rawprobreg.h5'.format(ExperimentSettings().weighting_scheme)
+            )
+            mc_weights_all = vigra.readHDF5(weight_filepath, "data")
+
+    :param paths_cache_folder: Same folder as supplied for compute_false_merges as test_paths_cache_folder
+
+    :param lifted_weights_all: Lifted weights used by the Multicut that was used for generating the initial segmentation
+        Currently availlable with
+
+            lifted_filepath = os.path.join(
+                meta_folder, ds_test_name,
+                'lifted_probs_to_energies_0_3_0.5_2.0.h5'
+            )
+            lifted_weights_all = vigra.readHDF5(lifted_filepath, "data")
+
+        Note: This currently has to be supplied, although in general the resolving should work without
+
+    :return: resolved_objs
+    """
     assert isinstance(false_paths, dict)
 
     # NOTE: We assume that the dataset already has a distance transform added as last input
@@ -685,8 +846,6 @@ def resolve_merges_with_lifted_edges(
         uv_local_lifted = np.array([[mapping[u] for u in uv] for uv in uv_ids_lifted[lifted_uv_mask]])
         lifted_weights = lifted_weights_all[lifted_uv_mask]
 
-        # FIXME somthing goes wrong here, but what? merge_id = 75
-        # FIXME ecc_centers_seg still doesn't have switched dimensions!!! -> Old cache or in computation?
         # sample new paths corresponding to lifted edges with min graph distance
         paths_obj, uv_ids_paths_min_nh = sample_and_save_paths_from_lifted_edges(
             paths_cache_folder,

@@ -80,9 +80,11 @@ def shortest_paths(
         n_threads=1
 ):
     """
-    This function was copied from processing_lib.py
-    :param indicator:
-    :return:
+    Compute shortest paths between coordinate pairs
+    :param indicator: Map of distances
+    :param pairs: Coordinate pairs
+    :param n_threads: Number of threads to use
+    :return: List of shortest paths with len = len(pairs)
     """
 
     gridgr         = graphs.gridGraph(indicator.shape)
@@ -126,6 +128,24 @@ def path_feature_aggregator(
         paths_to_objs=None, train_sets=None,
         path_to_edge_features = None
 ):
+    """
+    Aggregates features over paths corresponding to the segmentation of a dataset
+
+    :param ds: Dataset
+    :param paths: List of paths
+    :param feature_list: list of strings with following possible values:
+        'path_features': Statistical features along each path: min, max, std, ...
+        'lengths':
+        'multicuts':
+        'cut_features':
+        'cut_features_whole_plane':
+    :param mc_segmentation:
+    :param mc_segmentation_name:
+    :param paths_to_objs:
+    :param train_sets:
+    :param path_to_edge_features:
+    :return: feature_space: 2D array of features with shape=(len(paths), no_of_features)
+    """
 
 
     # FIXME
@@ -153,6 +173,7 @@ def path_feature_aggregator(
 
     feature_space = []
 
+    # Accumulate the desired features only
     for feature in feature_list:
 
         if feature == 'path_features':

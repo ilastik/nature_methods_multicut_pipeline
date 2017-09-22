@@ -30,6 +30,16 @@ def remove_small_segments(
     relabel=True,
     return_sizes=False
 ):
+    """
+    Removes small segments
+
+    :param segmentation: A segmentation
+    :param size_thresh: Everything smaller will be set to zero
+    :param relabel: Relabel consecutive
+    :param return_sizes: Returns sizes of each object
+    :return segmentation: The new segmentation with small segments set to zero
+    :return sizes: Sizes of the remaining segments
+    """
 
     # Make sure all objects have their individual label
     # NOTE this is very dangerous for sample C (black slices in groundtruth)

@@ -451,12 +451,30 @@ def compute_path_end_pairs_and_labels(
         gt,
         correspondence_list
 ):
+    """
+    Computes coordinate pairs of border contacts for each label
+
+    :param border_contacts: Dictionary composed as:
+        {label0: [[x_0, y_0, z_0], ..., [x_n, y_n, z_n]], ...}
+        Represents a list of border contact coordinates for each label found in the image
+    :param gt: Ground truth
+    :param correspondence_list: Path pairs that were already used previously and will be excluded
+
+    :return: pairs, objs_to_labels, classes, gt_labels, correspondence_list
+        pairs: List of coordinate pairs
+        objs_to_labels: Mapping to the respective objects
+        classes:
+            True: Pair starts and ends in different GT labels
+            False: Pair starts and ends in the same GT labell
+        gt_labels: Pairs of gt labels for each coordinate pair
+        correspondence_list: Updated input list
+    """
 
     # Convert border_contacts to path_end_pairs
 
     # TODO: Remove path end pairs under certain criteria
     # TODO: Do this only if GT is supplied
-    # a) All classes: GT label pair is already in correspondence table
+    # a) All classes: GT label pair is already in correspondence table -> already implemented
     # b) Class 'non-merged': Only take them for beta_0.5?
     # c) All classes: Too many pairs for one object
 
@@ -475,9 +493,6 @@ def compute_path_end_pairs_and_labels(
 
         # Pairs are found if the segmentation object has more than one path end
         if ps:
-
-            # # For debugging take just the first item
-            # ps = [ps[0]]
 
             # Determine the labels of both path ends
             label_pair = [sorted([gt[p[0], p[1], p[2]] for p in pair]) for pair in ps]
@@ -499,13 +514,13 @@ def compute_path_end_pairs_and_labels(
                 labels.extend([lbl] * len(ps))
                 classes.extend(new_classes)
                 gt_labels.extend(label_pair)
-                # pairs[lbl] = ps
 
     # Update the correspondence list
     correspondence_list.extend(gt_labels)
     correspondence_list = np.array(correspondence_list)
     # Only keep unique pairs
     if correspondence_list.size:
+        # FIXME I think the following functionality has been included to numpy_tools as get_unique_rows
         b = np.ascontiguousarray(correspondence_list).view(
             np.dtype((np.void, correspondence_list.dtype.itemsize * correspondence_list.shape[1])))
         uniques = np.unique(b)
