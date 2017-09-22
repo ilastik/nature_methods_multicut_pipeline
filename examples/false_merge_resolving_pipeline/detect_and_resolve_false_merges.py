@@ -19,6 +19,21 @@ def detect_false_merges(
         test_seg_path, test_seg_key,
         train_seg_paths, train_seg_keys
 ):
+
+    ExperimentSettings().anisotropy_factor = 1.
+    ExperimentSettings().n_threads = 40
+    ExperimentSettings().n_trees = 500
+    ExperimentSettings().rf_cache_folder = rf_cache_folder
+
+    # Set the path features that will be used
+    ExperimentSettings().path_features = ['path_features',
+                                          'lengths',
+                                          'multicuts',
+                                          'cut_features',
+                                          'cut_features_whole_plane']
+    # Within cut features
+    ExperimentSettings().use_probs_map_for_cut_features = True
+
     ds_train = load_dataset(meta_folder, ds_train_name)
     ds_test = load_dataset(meta_folder, ds_test_name)
 
@@ -26,9 +41,15 @@ def detect_false_merges(
     test_paths_cache_folder = os.path.join(meta_folder, ds_test_name, 'path_data')
     train_paths_cache_folder = os.path.join(meta_folder, 'train_path_data')
 
+    # Detect false merges
+    # Note that multiple train datasets and for each train dataset multiple segmentations can be added
+    #   This also means that trainsets is an array of datasets of shape = (N, 1) where N is the number of datasets and
+    #   the train segmentation paths have shape = (N, M) where M is the number of segmentations per trainset
+    #   Also refer to the function description
     _, false_merge_probs, _ = compute_false_merges(
-        ds_train, ds_test,
-        [train_seg_paths], [train_seg_keys],  # A list of train segmentations (and respective keys) can be added
+        [ds_train],  # Supply as list (see above)
+        ds_test,
+        [[train_seg_paths]], [[train_seg_keys]],  # 2D lists (see above)
         test_seg_path, test_seg_key,
         test_paths_cache_folder,
         train_paths_cache_folder
@@ -101,14 +122,17 @@ def resolve_false_merges(
         meta_folder, ds_test_name,
         'probs_to_energies_0_{}_16.0_0.5_rawprobreg.h5'.format(ExperimentSettings().weighting_scheme)
     )
-    lifted_filepath = os.path.join(meta_folder, ds_test_name,
-                                   'lifted_probs_to_energies_0_3_0.5_2.0.h5')
+    lifted_filepath = os.path.join(
+        meta_folder, ds_test_name,
+        'lifted_probs_to_energies_0_3_0.5_2.0.h5'
+    )
     mc_weights_all = vigra.readHDF5(weight_filepath, "data")
     lifted_weights_all = vigra.readHDF5(lifted_filepath, "data")
 
     # The resolving function
     new_node_labels = resolve_merges_with_lifted_edges(
-        ds_test, ds_train,
+        ds_test,
+        [ds_train],  # Trainsets are a list of shape=(N, 1) -> see explanation in detect_merges and function description
         seg_id,
         false_paths,
         path_rf,
