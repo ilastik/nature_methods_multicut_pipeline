@@ -33,7 +33,13 @@ def run_mc_solver(n_var, uv_ids, edge_energies):
     if ExperimentSettings().solver == "multicut_exact":
         mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_energies)
     elif ExperimentSettings().solver == "multicut_fusionmoves":
-        mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var, uv_ids, edge_energies, ExperimentSettings().n_threads)
+        n_threads_fm = ExperimentSettings().n_threads_fm
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(
+            n_var,
+            uv_ids,
+            edge_energies,
+            n_threads_fm if n_threads_fm > 0 else ExperimentSettings().n_threads
+        )
     elif ExperimentSettings().solver == "multicut_message_passing":
         print("WARNING: message passing multicut is experimental and not supported in conda version yet")
         mc_node, mc_energy, t_inf = multicut_message_passing(

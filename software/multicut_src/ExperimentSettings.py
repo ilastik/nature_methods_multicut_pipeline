@@ -74,6 +74,7 @@ class ExperimentSettings(metaclass=Singleton):
         self.seed_fraction = 0.001  # seed fraction for fusion moves
         self.num_it      = 3000     # total number of iterations for fusion moves
         self.num_it_stop = 20       # number of iterations without changes after which fusion moves stop
+        self.n_threads_fm = 0 # 0 is the default, which means that the global n-threads is used
 
         # lifted mc fusion settings
         self.sigma_lifted = 10.  # sigma for the watershed proposals
