@@ -60,7 +60,7 @@ class ExperimentSettings(metaclass=Singleton):
         # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves", "multicut_message_passing"
         self.solver = "multicut_exact"
         # lmc solver, possible values: "lifted_fm", "lifted_kl"
-        self.lifted_solver = "lifted_fusionmoves"
+        self.lifted_solver = "lifted_fm"
         # weighting scheme for edge energies, possible values "none", "xyz", "z", "all"
         self.weighting_scheme = "none"
         # weight for edge energies

@@ -973,6 +973,38 @@ class DataSet(object):
         assert edge_features.shape[0] == rag.numberOfEdges, "%i, %i" % (edge_features.shape[0], rag.numberOfEdges)
         return np.nan_to_num(edge_features)
 
+    # features directly from affinity maps for xy and z edges
+    # z-direction determines how the z features from z edges are accumulated:
+    # 0 -> features are accumulated both from z and z + 1
+    # 1 -> features are accumulated only from z
+    # 2 -> features are accumulated only from z + 1
+    @cacher_hdf5("feature_folder", cache_edgefeats=True)
+    def simple_edge_features_from_affinity_maps(self, seg_id, inp_ids, anisotropy_factor, z_direction):
+        assert z_direction in (0, 1, 2)
+        assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
+        assert anisotropy_factor >= 20., "Affinity map features only for 2d filters."
+
+        assert len(inp_ids) == 2
+        assert inp_ids[0] < self.n_inp
+        assert inp_ids[1] < self.n_inp
+
+        rag = self.rag(seg_id)
+
+        edge_indications = self.edge_indications(seg_id)
+
+        # accumulate over the xy-channel
+        print("computing XY from", path_xy)
+        feats, _ = self._accumulate_filter_over_edge(seg_id, self.inp(1), "", rag, z_direction)
+
+        # accumulate over the z channel
+        print("computing Z from", path_z)
+        featsZ, _  = self._accumulate_filter_over_edge(seg_id, self.inp(2), "", rag, z_direction)
+
+        # merge the feats
+        feats[edge_indications == 0] = featsZ[edge_indications == 0]
+        assert feats.shape[0] == rag.numberOfEdges, "%i, %i" % (feats.shape[0], rag.numberOfEdges)
+        return np.nan_to_num(feats)
+
     # Features from different filters, accumulated over the edges
     @cacher_hdf5("feature_folder", True)
     def edge_features(self, seg_id, inp_id, anisotropy_factor):
@@ -1194,7 +1226,6 @@ class DataSet(object):
 
     # get the names of the region features
     def region_features_names(self, seg_id, inp_id, lifted_nh):
-
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert inp_id < self.n_inp, str(inp_id) + " , " + str(self.n_inp)
         self.region_features(seg_id, inp_id)

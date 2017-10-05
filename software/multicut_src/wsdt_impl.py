@@ -92,7 +92,7 @@ def iterative_watershed(hmap, seeds, min_segment_size):
         seg, _ = vigra.analysis.watershedsNew(hmap, seeds=seg)
 
         # remove gaps in the list of label values.
-        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0)
+        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0, keep_zeros=False)
 
     return seg
 

@@ -730,7 +730,7 @@ def optimize_lifted(
 ):
     print("Optimizing lifted model")
     lifted_solver = ExperimentSettings().lifted_solver
-    assert lifted_solver in ('lifted_kl', 'lifted_fm')
+    assert lifted_solver in ('lifted_kl', 'lifted_fm'), lifted_solver
 
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"

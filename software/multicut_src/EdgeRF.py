@@ -142,17 +142,17 @@ class RandomForest(object):
 # "reg"  -> features from region statistics
 # "topo" -> topological features
 def local_feature_aggregator(
-        ds,
-        seg_id,
-        feature_list,
-        anisotropy_factor=1.,
-        use_2d=False
+    ds,
+    seg_id,
+    feature_list,
+    anisotropy_factor=1.,
+    use_2d=False
 ):
 
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
     assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
     for feat in feature_list:
-        assert feat in ("raw", "prob", "affinities", "extra_input", "reg", "topo"), feat
+        assert feat in ("raw", "prob", "affinities", "affinities_simple", "extra_input", "reg", "topo"), feat
     features = []
     if "raw" in feature_list:
         features.append(ds.edge_features(seg_id, 0, anisotropy_factor))
@@ -161,6 +161,11 @@ def local_feature_aggregator(
     if "affinities" in feature_list:
         features.append(
             ds.edge_features_from_affinity_maps(
+                seg_id, (1, 2), anisotropy_factor, ExperimentSettings().affinity_z_direction)
+        )
+    if "affinities_simple" in feature_list:
+        features.append(
+            ds.simple_edge_features_from_affinity_maps(
                 seg_id, (1, 2), anisotropy_factor, ExperimentSettings().affinity_z_direction)
         )
     if "extra_input" in feature_list:
@@ -182,11 +187,11 @@ def local_feature_aggregator(
 # "reg"  -> features from region statistics
 # "topo" -> topological features
 def local_feature_aggregator_with_defects(
-        ds,
-        seg_id,
-        feature_list,
-        anisotropy_factor=1.,
-        use_2d=False
+    ds,
+    seg_id,
+    feature_list,
+    anisotropy_factor=1.,
+    use_2d=False
 ):
 
     assert seg_id < ds.n_seg, str(seg_id) + " , " + str(ds.n_seg)
@@ -221,11 +226,11 @@ def local_feature_aggregator_with_defects(
 # edge masking:
 # we set all labels that are going to be ignored to 0.5
 def mask_edges(
-        ds,
-        seg_id,
-        labels,
-        uv_ids,
-        with_defects
+    ds,
+    seg_id,
+    labels,
+    uv_ids,
+    with_defects
 ):
 
     labeled = np.ones_like(labels, dtype=bool)
@@ -259,15 +264,15 @@ def mask_edges(
 # if features should differ for the edge types (e.g. affinities), these need to be
 # already merged in the feature computation
 def _learn_seperate_rfs(
-        trainsets,
-        seg_id,
-        features,
-        labels,
-        labeled,
-        rf_path,
-        features_skip=None,
-        labels_skip=None,
-        with_defects=False
+    trainsets,
+    seg_id,
+    features,
+    labels,
+    labeled,
+    rf_path,
+    features_skip=None,
+    labels_skip=None,
+    with_defects=False
 ):
 
     assert len(trainsets) == len(features)
@@ -344,12 +349,12 @@ def _learn_seperate_rfs(
 
 
 def _learn_single_rfs(
-        features,
-        labels,
-        rf_path,
-        features_skip=None,
-        labels_skip=None,
-        with_defects=False
+    features,
+    labels,
+    rf_path,
+    features_skip=None,
+    labels_skip=None,
+    with_defects=False
 ):
 
     features = np.concatenate(features)
@@ -388,13 +393,13 @@ def _learn_single_rfs(
 
 
 def learn_rf(
-        trainsets,
-        seg_id,
-        feature_aggregator,
-        trainstr,
-        paramstr,
-        with_defects=False,
-        use_2rfs=False
+    trainsets,
+    seg_id,
+    feature_aggregator,
+    trainstr,
+    paramstr,
+    with_defects=False,
+    use_2rfs=False
 ):
 
     cache_folder = ExperimentSettings().rf_cache_folder
@@ -535,17 +540,17 @@ def learn_rf(
 
 # set cache folder to None if you dont want to cache the resulting rf
 def learn_and_predict_rf_from_gt(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list,
-        with_defects=False,
-        use_2rfs=False
+    trainsets,
+    ds_test,
+    seg_id_train,
+    seg_id_test,
+    feature_list,
+    with_defects=False,
+    use_2rfs=False
 ):
 
     # for only a single ds, put it in a list
-    if not isinstance(trainsets, list):
+    if not isinstance(trainsets, (list, tuple)):
         trainsets = [trainsets]
 
     if with_defects:
