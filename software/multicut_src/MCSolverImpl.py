@@ -131,7 +131,7 @@ def nifty_objective(n_var, uv_ids, edge_energies):
     g.insertEdges(uv_ids)
     assert g.numberOfEdges == edge_energies.shape[0], "%i , %i" % (g.numberOfEdges, edge_energies.shape[0])
     assert g.numberOfEdges == uv_ids.shape[0], "%i, %i" % (g.numberOfEdges, uv_ids.shape[0])
-    return nifty.graph.optimization.multicut.multicutObjective(g, edge_energies)
+    return nifty.graph.opt.multicut.multicutObjective(g, edge_energies)
 
 
 def multicut_exact(
@@ -212,15 +212,13 @@ def multicut_fusionmoves(
     #    addOnlyViolatedThreeCyclesConstraints=True
     #)
 
-    fm_factory = obj.fusionMoveBasedFactory(
-        verbose=0,
+    fm_factory = obj.ccFusionMoveBasedFactory(
         fusionMove=obj.fusionMoveSettings(mcFactory=kl_factory),
-        proposalGen=obj.watershedProposals(sigma=10, seedFraction=ExperimentSettings().seed_fraction),
+        proposalGenerator=obj.watershedCcProposals(sigma=10,
+                                                   numberOfSeeds=ExperimentSettings().seed_fraction),
         numberOfIterations=ExperimentSettings().num_it,
-        numberOfParallelProposals=2 * n_threads,
         numberOfThreads=n_threads,
-        stopIfNoImprovement=ExperimentSettings().num_it_stop,
-        fuseN=2,
+        stopIfNoImprovement=ExperimentSettings().num_it_stop
     )
 
     factory = obj.chainedSolversFactory([kl_factory, fm_factory])
