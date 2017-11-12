@@ -2,6 +2,7 @@
 from .DataSet import DataSet, load_dataset
 
 from .MCSolver import multicut_workflow, lifted_multicut_workflow, multicut_workflow_with_defect_correction, lifted_multicut_workflow_with_defect_correction
+from .MCSolver import run_mc_solver
 from .ExperimentSettings import ExperimentSettings
 from .Postprocessing import merge_small_segments, remove_small_segments, postprocess_with_watershed, merge_fully_enclosed
 from .lifted_mc import compute_and_save_long_range_nh, optimize_lifted, compute_and_save_lifted_nh

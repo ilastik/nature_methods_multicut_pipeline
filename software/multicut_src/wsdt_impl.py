@@ -115,7 +115,7 @@ def compute_stacked_wsdt(
             preserve_membrane=preserve_membrane
         )
         seg[z] = ws
-        return ws_max
+        return ws_max + 1
 
     with futures.ThreadPoolExecutor(max_workers=8) as tp:
         tasks = [tp.submit(wsdt_z, z) for z in range(seg.shape[0])]
