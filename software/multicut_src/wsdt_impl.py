@@ -17,13 +17,11 @@ def local_maxima(image, *args, **kwargs):
 # watershed on distance transform:
 # seeds are generated on the inverted distance transform
 # the probability map is used for growing
-def compute_wsdt_segmentation(
-    probability_map,
-    threshold,
-    sigma_seeds,
-    min_segment_size=0,
-    preserve_membrane=True
-):
+def compute_wsdt_segmentation(probability_map,
+                              threshold,
+                              sigma_seeds,
+                              min_segment_size=0,
+                              preserve_membrane=True):
 
     # first, we compute the signed distance transform
     dt = signed_distance_transform(probability_map, threshold, preserve_membrane)
@@ -34,6 +32,22 @@ def compute_wsdt_segmentation(
 
     # run watershed on the pmaps with dt seeds
     segmentation = iterative_watershed(probability_map.astype('float32'), seeds, min_segment_size)
+    return segmentation, segmentation.max()
+
+
+def compute_ws_segmentation(probability_map,
+                            sigma_seeds,
+                            min_segment_size=0):
+    seed_map = vigra.filters.gaussianSmoothing(probability_map, sigma_seeds)
+    seeds = local_maxima(seed_map,
+                         allowPlateaus=True,
+                         allowAtBorder=True,
+                         marker=np.nan)
+    seeds = np.isnan(seeds).astype('uint32')
+    seeds = vigra.analysis.labelMultiArrayWithBackground(seeds)
+    segmentation = iterative_watershed(seed_map,
+                                       seeds,
+                                       min_segment_size)
     return segmentation, segmentation.max()
 
 
@@ -78,22 +92,15 @@ def seeds_from_distance_transform(distance_transform, sigma_seeds):
 
 
 def iterative_watershed(hmap, seeds, min_segment_size):
-
     seg, _ = vigra.analysis.watershedsNew(hmap, seeds=seeds)
-
     if min_segment_size:
-
         segments, counts = np.unique(seg, return_counts=True)
-
         # mask segments which are smaller than min_segment size
         mask = np.ma.masked_array(seg, np.in1d(seg, segments[counts < min_segment_size])).mask
         seg[mask] = 0
-
         seg, _ = vigra.analysis.watershedsNew(hmap, seeds=seg)
-
         # remove gaps in the list of label values.
-        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0, keep_zeros=False)
-
+        seg, _, _ = vigra.analysis.relabelConsecutive(seg, start_label=0)  # , keep_zeros=False)
     return seg
 
 
@@ -127,6 +134,29 @@ def compute_stacked_wsdt(
 
     seg += offsets[:, None, None]
 
+    return seg
+
+
+def compute_stacked_ws(probability_map,
+                       sigma_seeds,
+                       min_segment_size=0):
+    seg = np.zeros_like(probability_map, dtype='uint32')
+
+    def ws_z(z):
+        ws, ws_max = compute_ws_segmentation(probability_map[z],
+                                             sigma_seeds,
+                                             min_segment_size=min_segment_size)
+        seg[z] = ws
+        return ws_max + 1
+
+    with futures.ThreadPoolExecutor(max_workers=8) as tp:
+        tasks = [tp.submit(ws_z, z) for z in range(seg.shape[0])]
+        offsets = [t.result() for t in tasks]
+
+    offsets = np.roll(offsets, 1)
+    offsets[0] = 0
+    offsets = np.cumsum(offsets).astype(seg.dtype)
+    seg += offsets[:, None, None]
     return seg
 
 
