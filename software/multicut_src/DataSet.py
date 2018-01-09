@@ -456,11 +456,10 @@ class DataSet(object):
     # Adding and loading external input data
     #
 
-    # FIXME: Doesn't work for internal paths as key (e.g., key = 'a/b/data')
     def _check_input(self, path, key):
         assert os.path.exists(path), path
-    #     with h5py.File(path) as f:
-    #         assert key in f.keys(), "%s, %s" % (key, f.keys())
+        with h5py.File(path, 'r') as f:
+            assert key in f, "%s, %s" % (key, f.keys())
 
     def _check_shape(self, path, key):
         with h5py.File(path) as f:
@@ -1359,7 +1358,7 @@ class DataSet(object):
 
         gt = self.gt()
         rag = self.rag(seg_id)
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
         uv_ids = rag.uvIds()
 
         ignore_mask = np.zeros(rag.numberOfEdges, dtype=bool)

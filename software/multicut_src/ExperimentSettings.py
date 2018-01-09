@@ -57,7 +57,8 @@ class ExperimentSettings(metaclass=Singleton):
         self.verbose = False
 
         # parameter for multicuts
-        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves", "multicut_message_passing"
+        # multicut solver, possible values: "multicut_exact", "multicut_fusionmoves", "multicut_message_passing",
+        # "multicut_kernighan_lin"
         self.solver = "multicut_exact"
         # lmc solver, possible values: "lifted_fm", "lifted_kl"
         self.lifted_solver = "lifted_fm"

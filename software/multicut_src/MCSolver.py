@@ -5,7 +5,8 @@ import vigra
 
 from .DataSet import DataSet
 from .ExperimentSettings import ExperimentSettings
-from .MCSolverImpl import probs_to_energies, multicut_exact, multicut_fusionmoves, multicut_message_passing
+from .MCSolverImpl import probs_to_energies, multicut_exact
+from .MCSolverImpl import multicut_fusionmoves, multicut_message_passing, multicut_kernighan_lin
 from .EdgeRF import learn_and_predict_rf_from_gt
 from .lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_probs_to_energies
 from .defect_handling import modified_adjacency, modified_probs_to_energies
@@ -27,29 +28,31 @@ def _get_feat_str(feature_list):
     return feat_str
 
 
-def run_mc_solver(n_var, uv_ids, edge_energies):
+def run_mc_solver(n_var, uv_ids, edge_costs):
 
     # solve the multicut witht the given solver
-    if ExperimentSettings().solver == "multicut_exact":
-        mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_energies)
-    elif ExperimentSettings().solver == "multicut_fusionmoves":
+    solver = ExperimentSettings().solver
+    if solver == "multicut_exact":
+        mc_node, mc_energy, t_inf = multicut_exact(n_var, uv_ids, edge_costs)
+    elif solver == "multicut_fusionmoves":
         n_threads_fm = ExperimentSettings().n_threads_fm
-        mc_node, mc_energy, t_inf = multicut_fusionmoves(
-            n_var,
-            uv_ids,
-            edge_energies,
-            n_threads_fm if n_threads_fm > 0 else ExperimentSettings().n_threads
-        )
-    elif ExperimentSettings().solver == "multicut_message_passing":
+        mc_node, mc_energy, t_inf = multicut_fusionmoves(n_var,
+                                                         uv_ids,
+                                                         edge_costs,
+                                                         n_threads_fm if n_threads_fm > 0
+                                                         else ExperimentSettings().n_threads)
+    elif solver == "multicut_message_passing":
         print("WARNING: message passing multicut is experimental and not supported in conda version yet")
-        mc_node, mc_energy, t_inf = multicut_message_passing(
-            n_var,
-            uv_ids,
-            edge_energies,
-            ExperimentSettings().n_threads
-        )
+        mc_node, mc_energy, t_inf = multicut_message_passing(n_var,
+                                                             uv_ids,
+                                                             edge_costs,
+                                                             ExperimentSettings().n_threads)
+    elif solver == "multicut_kernighan_lin":
+        mc_node, mc_energy, t_inf = multicut_kernighan_lin(n_var,
+                                                           uv_ids,
+                                                           edge_costs)
     else:
-        raise RuntimeError("Something went wrong, sovler " + ExperimentSettings().solver + ", not in valid solver.")
+        raise RuntimeError("Wrong sovler: " + solver + ", not in valid solver.")
 
     # get the result mapped to the edges
     ru = mc_node[uv_ids[:, 0]]
@@ -103,7 +106,7 @@ def multicut_workflow(
     uv_ids = ds_test.uv_ids(seg_id_test)
     assert n_var == uv_ids.max() + 1, "%i, %i" % (n_var, uv_ids.max() + 1)
     # energies for the multicut
-    edge_energies = probs_to_energies(
+    edge_costs = probs_to_energies(
         ds_test,
         edge_probs,
         seg_id_test,
@@ -112,7 +115,7 @@ def multicut_workflow(
         ExperimentSettings().beta_local,
         _get_feat_str(feature_list)
     )
-    return run_mc_solver(n_var, uv_ids, edge_energies)
+    return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
 # TODO with_defects as flag instead of code duplication
@@ -152,7 +155,7 @@ def multicut_workflow_with_defect_correction(
     n_var = uv_ids.max() + 1
 
     # energies for the multicut
-    edge_energies = modified_probs_to_energies(
+    edge_costs = modified_probs_to_energies(
         ds_test,
         edge_probs,
         seg_id_test,
@@ -162,7 +165,7 @@ def multicut_workflow_with_defect_correction(
         ExperimentSettings().beta_local,
         _get_feat_str(feature_list)
     )
-    return run_mc_solver(n_var, uv_ids, edge_energies)
+    return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
@@ -211,7 +214,7 @@ def lifted_multicut_workflow(
     )
 
     # energies for the multicut
-    edge_energies_local = probs_to_energies(
+    edge_costs_local = probs_to_energies(
         ds_test,
         p_test_local,
         seg_id_test,
@@ -229,7 +232,7 @@ def lifted_multicut_workflow(
     else:
         edge_z_distance = None
 
-    edge_energies_lifted = lifted_probs_to_energies(
+    edge_costs_lifted = lifted_probs_to_energies(
         ds_test,
         p_test_lifted,
         seg_id_test,
@@ -240,25 +243,25 @@ def lifted_multicut_workflow(
     )
 
     # weighting edges with their length for proper lifted to local scaling
-    edge_energies_local  /= edge_energies_local.shape[0]
-    edge_energies_lifted /= edge_energies_lifted.shape[0]
+    edge_costs_local  /= edge_costs_local.shape[0]
+    edge_costs_lifted /= edge_costs_lifted.shape[0]
     uvs_local = ds_test.uv_ids(seg_id_test)
 
-    # vigra.writeHDF5(edge_energies_local, './costs_local.h5', 'data')
-    # vigra.writeHDF5(edge_energies_lifted, './costs_lifted.h5', 'data')
+    # vigra.writeHDF5(edge_costs_local, './costs_local.h5', 'data')
+    # vigra.writeHDF5(edge_costs_lifted, './costs_lifted.h5', 'data')
 
     # warmstart with multicut result
     if warmstart:
         n_var = uvs_local.max() + 1
-        starting_point, _, _, _ = run_mc_solver(n_var, uvs_local, edge_energies_local)
+        starting_point, _, _, _ = run_mc_solver(n_var, uvs_local, edge_costs_local)
     else:
         starting_point = None
 
     node_labels, e_lifted, t_lifted = optimize_lifted(
         uvs_local,
         uv_ids_lifted,
-        edge_energies_local,
-        edge_energies_lifted,
+        edge_costs_local,
+        edge_costs_lifted,
         starting_point
     )
     edge_labels = node_labels[uvs_local[:, 0]] != node_labels[uvs_local[:, 1]]
@@ -312,7 +315,7 @@ def lifted_multicut_workflow_with_defect_correction(
     uv_ids_local = modified_adjacency(ds_test, seg_id_test)
 
     # energies for the multicut
-    edge_energies_local = modified_probs_to_energies(
+    edge_costs_local = modified_probs_to_energies(
         ds_test,
         p_test_local,
         seg_id_test,
@@ -322,7 +325,7 @@ def lifted_multicut_workflow_with_defect_correction(
         ExperimentSettings().beta_local,
         _get_feat_str(feature_list_local)
     )
-    assert not np.isnan(edge_energies_local).any()
+    assert not np.isnan(edge_costs_local).any()
 
     # lifted energies
     # calculate the z distance for edges if 'weight_z_lifted == True'
@@ -333,7 +336,7 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         edge_z_distance = None
 
-    edge_energies_lifted = lifted_probs_to_energies(
+    edge_costs_lifted = lifted_probs_to_energies(
         ds_test,
         p_test_lifted,
         seg_id_test,
@@ -343,24 +346,24 @@ def lifted_multicut_workflow_with_defect_correction(
         gamma,
         True
     )
-    assert not np.isnan(edge_energies_lifted).any()
+    assert not np.isnan(edge_costs_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling
-    edge_energies_local  /= edge_energies_local.shape[0]
-    edge_energies_lifted /= edge_energies_lifted.shape[0]
+    edge_costs_local  /= edge_costs_local.shape[0]
+    edge_costs_lifted /= edge_costs_lifted.shape[0]
 
     # warmstart with multicut result
     if warmstart:
         n_var = uv_ids_local.max() + 1
-        starting_point, _, _, _ = run_mc_solver(n_var, uv_ids_local, edge_energies_local)
+        starting_point, _, _, _ = run_mc_solver(n_var, uv_ids_local, edge_costs_local)
     else:
         starting_point = None
 
     node_labels, e_lifted, t_lifted = optimize_lifted(
         uv_ids_local,
         uv_ids_lifted,
-        edge_energies_local,
-        edge_energies_lifted,
+        edge_costs_local,
+        edge_costs_lifted,
         starting_point)
     edge_labels = node_labels[uv_ids_local[:, 0]] != node_labels[uv_ids_local[:, 1]]
     return node_labels, edge_labels, e_lifted, t_lifted
