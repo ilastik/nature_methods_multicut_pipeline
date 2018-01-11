@@ -14,6 +14,7 @@ from .tools import cacher_hdf5, find_matching_indices, find_matching_row_indices
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from .MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from .ExperimentSettings import ExperimentSettings
+from .sparse_lifted import mito_features
 
 from .defect_handling import defects_to_nodes, modified_adjacency
 from .defect_handling import modified_topology_features, modified_edge_indications, get_ignore_edge_ids
@@ -23,16 +24,19 @@ try:
     import nifty
     import nifty.graph.rag as nrag
     import nifty.ground_truth as ngt
+    import nifty.graph.opt.lifted_multicut as nlmc
 except ImportError:
     try:
         import nifty_with_cplex as nifty  # conda version build with cplex
         import nifty_with_cplex.graph.rag as nrag
         import nifty_with_cplex.ground_truth as ngt
+        import nifty_with_cplex.graph.opt.lifted_multicut as nlmc
     except ImportError:
         try:
             import nifty_with_gurobi as nifty  # conda version build with gurobi
             import nifty_with_gurobi.graph.rag as nrag
             import nifty_with_gurobi.ground_truth as ngt
+            import nifty_with_gurobi.graph.opt.lifted_multicut as nlmc
         except ImportError:
             raise ImportError("No valid nifty version was found.")
 
@@ -44,120 +48,52 @@ def lifted_ignore_ids(ds, seg_id, uv_ids):
     return find_matching_indices(uv_ids, defect_nodes)
 
 
-# TODO
-# TODO use nifty agglomertion
-# TODO
 @cacher_hdf5(ignoreNumpyArrays=True)
-def clusteringFeatures(
-        ds,
-        segId,
-        extraUV,
-        edgeIndicator,
-        liftedNeighborhood,
-        is_perturb_and_map=False,
-        with_defects=False
-):
+def clustering_features(ds,
+                        seg_id,
+                        extra_uv,
+                        edge_weights,
+                        lifted_nhood,
+                        is_perturb_and_map=False,
+                        with_defects=False):
 
-    # FIXME
-    import vigra.graphs as vgraph
-
-    print("Computing clustering features for lifted neighborhood", liftedNeighborhood)
+    print("Computing clustering features for lifted neighborhood", lifted_nhood)
     if is_perturb_and_map:
         print("For perturb and map")
     else:
         print("For normal clustering")
 
-    uvs_local = modified_adjacency(ds, segId) if (with_defects and ds.has_defects) else ds.uv_ids(segId)
+    uvs_local = modified_adjacency(ds, seg_id) if (with_defects and ds.has_defects) else ds.uv_ids(seg_id)
     n_nodes = uvs_local.max() + 1
 
     # if we have a segmentation mask, remove all the uv ids that link to the ignore segment (==0)
     if ds.has_seg_mask:
         where_uv_local = (uvs_local != ExperimentSettings().ignore_seg_value).all(axis=1)
         uvs_local      = uvs_local[where_uv_local]
-        edgeIndicator  = edgeIndicator[where_uv_local]
-        assert np.sum((extraUV == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
-    assert edgeIndicator.shape[0] == uvs_local.shape[0]
+        edge_weights  = edge_weights[where_uv_local]
+        assert np.sum((extra_uv == ExperimentSettings().ignore_seg_value).any(axis=1)) == 0
+    assert edge_weights.shape[0] == uvs_local.shape[0]
 
-    originalGraph = vgraph.listGraph(n_nodes)
-    originalGraph.addEdges(uvs_local)
+    graph = nifty.graph.UndirectedGraph(n_nodes)
+    graph.insertEdges(uvs_local)
 
-    extraUV = np.require(extraUV, dtype='uint32')
-    uvOriginal  = originalGraph.uvIds()
-    liftedGraph = vgraph.listGraph(originalGraph.nodeNum)
-    liftedGraph.addEdges(uvOriginal)
-    liftedGraph.addEdges(extraUV)
+    lifted_obj = nlmc.liftedMulticutObjective(graph)
+    # insert local and lifted edges with dummy costs
+    lifted_obj.setCosts(uvs_local, edge_weights)
+    lifted_obj.setCosts(extra_uv, np.zeros(len(extra_uv), dtype='float32'))
 
-    uvLifted = liftedGraph.uvIds()
-    foundEdges = originalGraph.findEdges(uvLifted)
-    foundEdges[foundEdges >= 0] = 0
-    foundEdges *= -1
+    node_sizes = ds.region_features(seg_id, 0, uvs_local, False)[:, 0].astype('float32', copy=False)
+    edge_sizes = ds.topology_features(seg_id, False)[:, 0].astype('float32', copy=False)
 
-    nAdditionalEdges = liftedGraph.edgeNum - originalGraph.edgeNum
-    whereLifted = np.where(foundEdges == 1)[0].astype('uint32')
-    assert len(whereLifted) == nAdditionalEdges
-    assert foundEdges.sum() == nAdditionalEdges
-
-    eLen = vgraph.getEdgeLengths(originalGraph)
-    nodeSizes_ = vgraph.getNodeSizes(originalGraph)
-
-    # FIXME GIL is not lifted for vigra function (probably cluster)
-    # TODO -> check GIL again once using nifty
     def cluster(wardness):
-
-        edgeLengthsNew = np.concatenate([eLen, np.zeros(nAdditionalEdges)]).astype('float32')
-        edgeIndicatorNew = np.concatenate([edgeIndicator, np.zeros(nAdditionalEdges)]).astype('float32')
-
-        nodeSizes = nodeSizes_.copy()
-        nodeLabels = vgraph.graphMap(originalGraph, 'node', dtype='uint32')
-
-        nodeFeatures = vgraph.graphMap(liftedGraph, 'node', addChannelDim=True)
-        nodeFeatures[:] = 0
-
-        outWeight = vgraph.graphMap(liftedGraph, item='edge', dtype=np.float32)
-
-        mg = vgraph.mergeGraph(liftedGraph)
-        clusterOp = vgraph.minEdgeWeightNodeDist(
-            mg,
-            edgeWeights=edgeIndicatorNew,
-            edgeLengths=edgeLengthsNew,
-            nodeFeatures=nodeFeatures,
-            nodeSizes=nodeSizes,
-            nodeLabels=nodeLabels,
-            beta=0.5,
-            metric='l1',
-            wardness=wardness,
-            outWeight=outWeight
-        )
-
-        clusterOp.setLiftedEdges(whereLifted)
-
-        hc = vgraph.hierarchicalClustering(clusterOp, nodeNumStopCond=1, buildMergeTreeEncoding=False)
-        hc.cluster()
-
-        assert mg.edgeNum == 0, str(mg.edgeNum)
-
-        # FIXME I am disabling these checks for now, but will need to investigate this further
-        # TODO -> check again once using nifty
-        # They can fail because with defects and seg mask we can get unconnected pieces in the graph
-
-        # if we have completely defected slcies, we get a non-connected merge graph
-        # TODO I don't know if this is a problem, if it is, we could first remove them
-        # and then add dummy values later
-        # if not with_defects:
-        #     assert mg.nodeNum == 1, str(mg.nodeNum)
-        # else:
-        #     # TODO need list of defected slices
-        #     # TODO test hypothesis
-        #     assert mg.nodeNum == len(defect_slices) + 1, "%i, %i" % (mg.nodeNum, len(defect_slices) + 1)
-
-        tweight = edgeIndicatorNew.copy()
-        hc.ucmTransform(tweight)
-
-        whereInLifted = liftedGraph.findEdges(extraUV)
-        assert whereInLifted.min() >= 0
-        feat = tweight[whereInLifted]
-        assert feat.shape[0] == extraUV.shape[0]
-        return feat[:, None]
+        feat = nlmc.liftedUcmFeatures(objective=lifted_obj,
+                                      edgeIndicators=edge_weights.astype('float32', copy=False),
+                                      edgeSizes=edge_sizes,
+                                      nodeSizes=node_sizes,
+                                      sizeRegularizers=[wardness]).transpose()
+        assert feat.shape[0] == extra_uv.shape[0]
+        assert feat.shape[1] == 2
+        return feat
 
     wardness_vals = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
     with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
@@ -167,10 +103,10 @@ def clusteringFeatures(
     weights = np.concatenate(allFeat, axis=1)
     mean = np.mean(weights, axis=1)[:, None]
     stddev = np.std(weights, axis=1)[:, None]
-    allFeat = np.nan_to_num(np.concatenate([weights, mean, stddev], axis=1))
-    allFeat = np.require(allFeat, dtype='float32')
-    assert allFeat.shape[0] == extraUV.shape[0]
-    return allFeat
+    feats = np.nan_to_num(np.concatenate([weights, mean, stddev], axis=1))
+    feats = np.require(allFeat, dtype='float32')
+    assert feats.shape[0] == extra_uv.shape[0]
+    return feats
 
 #
 # Features from ensembling over segmentations
@@ -180,14 +116,12 @@ def clusteringFeatures(
 # TODO adapt for defects
 # TODO also use similar feature for ucm
 # @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_mala_agglomeration(
-        ds,
-        seg_id,
-        inp_ids,
-        uv_ids_lifted,
-        lifted_nh,
-        with_defects=False
-):
+def compute_lifted_feature_mala_agglomeration(ds,
+                                              seg_id,
+                                              inp_ids,
+                                              uv_ids_lifted,
+                                              lifted_nh,
+                                              with_defects=False):
     from workflow_no_learning import accumulate_affinities_over_edges
 
     assert len(inp_ids) == 2
@@ -210,13 +144,12 @@ def compute_lifted_feature_mala_agglomeration(
         indicators[ignore_ids] = 0.
 
     def agglomerate(threshold, use_edge_len):
-        policy = nifty.graph.agglo.malaClusterPolicy(
-            graph=graph,
-            edgeIndicators=indicators,
-            edgeSizes=edge_lens if use_edge_len else np.ones(graph.numberOfEdges),
-            nodeSizes=np.ones(graph.numberOfNodes),
-            threshold=threshold
-        )
+        policy = nifty.graph.agglo.malaClusterPolicy(graph=graph,
+                                                     edgeIndicators=indicators,
+                                                     edgeSizes=edge_lens if use_edge_len else
+                                                     np.ones(graph.numberOfEdges),
+                                                     nodeSizes=np.ones(graph.numberOfNodes),
+                                                     threshold=threshold)
 
         clustering = nifty.graph.agglo.agglomerativeClustering(policy)
         clustering.run()
@@ -239,15 +172,13 @@ def compute_lifted_feature_mala_agglomeration(
 
 
 @cacher_hdf5(ignoreNumpyArrays=True)
-def compute_lifted_feature_multicut(
-        ds,
-        seg_id,
-        pmap_local,
-        weighting_scheme,
-        uv_ids_lifted,
-        lifted_nh,
-        with_defects=False
-):
+def compute_lifted_feature_multicut(ds,
+                                    seg_id,
+                                    pmap_local,
+                                    weighting_scheme,
+                                    uv_ids_lifted,
+                                    lifted_nh,
+                                    with_defects=False):
 
     print("Computing multicut features for lifted neighborhood", lifted_nh)
     # variables for the multicuts
@@ -320,22 +251,21 @@ def compute_lifted_feature_multicut(
     return np.concatenate([mc_states, state_sum[:, None]], axis=1)
 
 
-def lifted_feature_aggregator(
-        ds,
-        trainsets,
-        featureList,
-        featureListLocal,
-        pLocal,
-        uvIds,
-        segId,
-        with_defects=False):
+def lifted_feature_aggregator(ds,
+                              trainsets,
+                              featureList,
+                              featureListLocal,
+                              pLocal,
+                              uvIds,
+                              segId,
+                              with_defects=False):
 
     assert len(featureList) > 0
     # deprecated features
     # for feat in featureList:
     #     assert feat in ("mc", "cluster","reg","multiseg","perturb"), feat
     for feat in featureList:
-        assert feat in ("mc", "cluster", "reg", "mala"), feat
+        assert feat in ("mc", "cluster", "reg", "mala", "mito"), feat
 
     features = []
     if "mc" in featureList:
@@ -351,20 +281,20 @@ def lifted_feature_aggregator(
             )
         )
     # also not adjusted for defect pipeline yet
-    if "perturb" in featureList:  # Feature is currently deprecated and can't be used
-        features.append(
-            compute_lifted_feature_pmap_multicut(
-                ds,
-                segId,
-                pLocal,
-                uvIds,
-                ExperimentSettings().lifted_neighborhood,
-                with_defects
-            )
-        )
+    # if "perturb" in featureList:  # Feature is currently deprecated and can't be used
+    #     features.append(
+    #         compute_lifted_feature_pmap_multicut(
+    #             ds,
+    #             segId,
+    #             pLocal,
+    #             uvIds,
+    #             ExperimentSettings().lifted_neighborhood,
+    #             with_defects
+    #         )
+    #     )
     if "cluster" in featureList:
         features.append(
-            clusteringFeatures(
+            clustering_features(
                 ds,
                 segId,
                 uvIds,
@@ -385,16 +315,16 @@ def lifted_feature_aggregator(
             )
         )
     # also not adjusted for defect pipeline yet
-    if "multiseg" in featureList:  # Features is currently deprecated and can't be used
-        features.append(
-            compute_lifted_feature_multiple_segmentations(
-                ds,
-                trainsets,
-                segId,
-                featureListLocal,
-                uvIds
-            )
-        )
+    # if "multiseg" in featureList:  # Features is currently deprecated and can't be used
+    #     features.append(
+    #         compute_lifted_feature_multiple_segmentations(
+    #             ds,
+    #             trainsets,
+    #             segId,
+    #             featureListLocal,
+    #             uvIds
+    #         )
+    #     )
     if "mala" in featureList:  # TODO make defect proof
         features.append(
             compute_lifted_feature_mala_agglomeration(
@@ -406,6 +336,8 @@ def lifted_feature_aggregator(
                 with_defects
             )
         )
+    if "mito" in featureList:
+        features.append(mito_features(ds, segId, uvIds))
     if ExperimentSettings().use_2d:  # lfited distance as extra feature if we use extra features for 2d edges
         nz_train = ds.node_z_coord(segId)
         lifted_distance = np.abs(
@@ -420,12 +352,10 @@ def lifted_feature_aggregator(
 
 
 @cacher_hdf5()
-def compute_and_save_lifted_nh(
-        ds,
-        seg_id,
-        lifted_neighborhood,
-        with_defects=False
-):
+def compute_and_save_lifted_nh(ds,
+                               seg_id,
+                               lifted_neighborhood,
+                               with_defects=False):
 
     uvs_local = modified_adjacency(ds, seg_id) if (with_defects and ds.has_defects) else ds.uv_ids(seg_id)
     n_nodes = uvs_local.max() + 1
@@ -459,10 +389,8 @@ def compute_and_save_long_range_nh(uv_ids, min_range, max_sample_size=0):
     lifted_graph.insertLiftedEdgesBfs(min_range)
 
     # lifted and local edges -> short range lifted edges
-    uv_short_range = np.concatenate(
-        [uv_ids, lifted_graph.liftedUvIds()],
-        axis=0
-    )
+    uv_short_range = np.concatenate([uv_ids, lifted_graph.liftedUvIds()],
+                                    axis=0)
 
     # all lifted edges
     uv_long_range = np.array(
@@ -511,24 +439,20 @@ def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
     return labels
 
 
-def mask_lifted_edges(
-        ds,
-        seg_id,
-        labels,
-        uv_ids,
-        with_defects
-):
+def mask_lifted_edges(ds,
+                      seg_id,
+                      labels,
+                      uv_ids,
+                      with_defects):
 
     labeled = np.ones_like(labels, bool)
 
     # mask edges in ignore mask
     if ExperimentSettings().use_ignore_mask:
-        ignore_mask = ds.lifted_ignore_mask(
-            seg_id,
-            ExperimentSettings().lifted_neighborhood,
-            uv_ids,
-            with_defects
-        )
+        ignore_mask = ds.lifted_ignore_mask(seg_id,
+                                            ExperimentSettings().lifted_neighborhood,
+                                            uv_ids,
+                                            with_defects)
         labeled[ignore_mask] = False
 
     # check which of the edges is in plane and mask the others
@@ -721,13 +645,11 @@ def learn_and_predict_lifted_rf(
     return p_test, uv_ids_test
 
 
-def optimize_lifted(
-        uvs_local,
-        uvs_lifted,
-        costs_local,
-        costs_lifted,
-        starting_point=None
-):
+def optimize_lifted(uvs_local,
+                    uvs_lifted,
+                    costs_local,
+                    costs_lifted,
+                    starting_point=None):
     print("Optimizing lifted model")
     lifted_solver = ExperimentSettings().lifted_solver
     assert lifted_solver in ('lifted_kl', 'lifted_fm'), lifted_solver

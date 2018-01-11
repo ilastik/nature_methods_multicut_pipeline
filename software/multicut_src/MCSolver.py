@@ -67,13 +67,11 @@ def run_mc_solver(n_var, uv_ids, edge_costs):
 
 
 # multicut on the test dataset, weights learned with a rf on the train dataset
-def multicut_workflow(
-    trainsets,
-    ds_test,
-    seg_id_train,
-    seg_id_test,
-    feature_list
-):
+def multicut_workflow(trainsets,
+                      ds_test,
+                      seg_id_train,
+                      seg_id_test,
+                      feature_list):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, (DataSet, list, tuple))
@@ -120,13 +118,11 @@ def multicut_workflow(
 
 # TODO with_defects as flag instead of code duplication
 # multicut on the test dataset, weights learned with a rf on the train dataset
-def multicut_workflow_with_defect_correction(
-    trainsets,
-    ds_test,
-    seg_id_train,
-    seg_id_test,
-    feature_list
-):
+def multicut_workflow_with_defect_correction(trainsets,
+                                             ds_test,
+                                             seg_id_train,
+                                             seg_id_test,
+                                             feature_list):
 
     # this should also work for cutouts, because they inherit from dataset
     assert isinstance(trainsets, (DataSet, list, tuple))
@@ -169,17 +165,15 @@ def multicut_workflow_with_defect_correction(
 
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
-def lifted_multicut_workflow(
-    trainsets,
-    ds_test,
-    seg_id_train,
-    seg_id_test,
-    feature_list_local,
-    feature_list_lifted,
-    gamma=1.,
-    warmstart=False,
-    weight_z_lifted=True
-):
+def lifted_multicut_workflow(trainsets,
+                             ds_test,
+                             seg_id_train,
+                             seg_id_test,
+                             feature_list_local,
+                             feature_list_lifted,
+                             gamma=1.,
+                             warmstart=False,
+                             weight_z_lifted=True):
 
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, (DataSet, list, tuple))
