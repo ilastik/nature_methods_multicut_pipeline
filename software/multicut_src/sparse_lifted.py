@@ -1,4 +1,4 @@
-import np as np
+import numpy as np
 import vigra
 
 
@@ -62,3 +62,8 @@ def mito_features(ds, seg_id, extra_uv):
     mito_prob = ds.inp(3)
     feats = from_pixels_to_edges(extra_uv, mito_prob, seg)
     return feats
+
+
+# TODO implement workflow
+def sparse_lifted_workflow():
+    pass
