@@ -1,69 +1,108 @@
 import numpy as np
-import vigra
+
+from .DataSet import DataSet
+from .EdgeRF import learn_and_predict_rf_from_gt, learn_and_predict_lifted_rf, RandomForest
+from .ExperimentSettings import ExperimentSettings
+from .MCSolver import _get_feat_str
+from .MCSolverImpl import probs_to_energies
+from .lifted_mc import lifted_probs_to_energies, lifted_hard_gt, mask_lifted_edges, optimize_lifted
+from .sparse_lifted_features import sparse_lifted_edges_and_features
 
 
-def sparse_lifted_edges_and_features(ds, seg_id, prior_threshold=.5):
-    rag = ds.rag(seg_id)
-    n_nodes = rag.numberOfNodes
-    with_priors = np.zeros(n_nodes, dtype='bool')
+def learn_sparse_lifted_rf(trainsets, seg_id_train):
+    if isinstance(trainsets, DataSet):
+        trainsets = [trainsets]
 
-    pixel_features = [ds.inp(1), ds.inp(2)]
-    seg = ds.seg(seg_id)
+    features = []
+    labels = []
+    for ds_train in trainsets:
+        uvs, feats = sparse_lifted_edges_and_features(ds_train, seg_id_train)
+        labs = lifted_hard_gt(ds_train, seg_id_train, uvs)
+        mask = mask_lifted_edges(ds_train, seg_id_train, labs, uvs, with_defects=False)
+        features.append(feats[mask])
+        labels.append(labs[mask])
 
-    for pf in pixel_features:
-
-        # get segments that have a prior in this pixel feature
-        acc_feats = vigra.analysis.extractRegionFeatures(pf, seg, ["maximum"])
-        acc_max = acc_feats["maximum"]
-        indices = acc_max > prior_threshold
-
-        # matched = np.logical_and(with_priors, indices)
-        # if np.sum(matched) > 0:
-        #     print "have both priors:", np.sum(matched)
-
-        # add nodes to the priors
-        with_priors = np.logical_or(with_priors, indices)
-
-    # find all edges which have associated priors
-    prior_pairs = np.outer(with_priors, with_priors)
-    for i in range(n_nodes):
-        prior_pairs[i, i] = 0
-
-    # only take the edges, where both nodes have a high prior
-    chosen = np.where(prior_pairs > 0)
-    lifted_edges = np.zeros((len(chosen[0]), 2), dtype='uint64')
-    lifted_edges[:, 0] = chosen[0]
-    lifted_edges[:, 1] = chosen[1]
-    lifted_features = np.concatenate([from_pixels_to_edges(lifted_edges, pf, seg, prior_threshold=prior_threshold)
-                                      for pf in pixel_features],
-                                     axis=1)
-    # sanity check
-    assert lifted_features.shape[0] == lifted_edges.shape[0]
-    return lifted_edges, lifted_features
+    features = np.concatenate(features, axis=0)
+    labels = np.concatenate(labels, axis=0)
+    assert features.shape[0] == labels.shape[0]
+    rf = RandomForest(features, labels,
+                      n_trees=ExperimentSettings().n_trees,
+                      n_threads=ExperimentSettings().n_threads)
+    return rf
 
 
-def from_pixels_to_edges(uv, pf, seg):
-    stats = ['maximum', 'minimum', 'mean', 'variance', 'quantiles']
-    extractor = vigra.analysis.extractRegionFeatures(pf, seg, stats)
-    node_feats = np.concatenate([extractor[stat_name][:, None].astype('float32') if extractor[stat_name].ndim == 1
-                                 else extractor[stat_name].astype('float32') for stat_name in stats],
-                                axis=1)
-    u_feat = node_feats[uv[:, 0]]
-    v_feat = node_feats[uv[:, 1]]
-    edge_feats = np.concatenate([np.minimum(u_feat, v_feat),
-                                 np.maximum(u_feat, v_feat),
-                                 np.abs(u_feat, v_feat)],
-                                axis=1)
-    return edge_feats
+def learn_and_predict_sparse_lifted_rf(trainsets, ds_test,
+                                       seg_id_train, seg_id_test):
+    # learn rf from sparse features
+    rf = learn_sparse_lifted_rf(trainsets, seg_id_train)
+
+    # get test uv-ids and features
+    uvs_test, feats_test = sparse_lifted_edges_and_features(ds_test, seg_id_test)
+    # predict with rf
+    p_test = rf.predict_probabilities(feats_test)[:, 1]
+    return p_test, uvs_test
 
 
-def mito_features(ds, seg_id, extra_uv):
-    seg = ds.seg(seg_id)
-    mito_prob = ds.inp(3)
-    feats = from_pixels_to_edges(extra_uv, mito_prob, seg)
-    return feats
+def sparse_lifted_workflow(trainsets, ds_test,
+                           seg_id_train, seg_id_test,
+                           local_feature_list,
+                           lifted_feature_list=['mito'],
+                           w_sparse=1., w_lifted=1.):
+    assert isinstance(ds_test, DataSet)
+    assert isinstance(trainsets, (DataSet, list, tuple))
+    print("Running sparse lifted multicut on", ds_test.ds_name)
 
+    # probabilities and costs for local edges
+    p_local = learn_and_predict_rf_from_gt(trainsets, ds_test,
+                                           seg_id_train, seg_id_test,
+                                           local_feature_list,
+                                           with_defects=False,
+                                           use_2rfs=ExperimentSettings().use_2rfs)
+    edge_costs_local = probs_to_energies(ds_test, p_local, seg_id_test,
+                                         ExperimentSettings().weighting_scheme,
+                                         ExperimentSettings().weight,
+                                         ExperimentSettings().beta_local,
+                                         _get_feat_str(local_feature_list))
 
-# TODO implement workflow
-def sparse_lifted_workflow():
-    pass
+    # probabilities and costs for sparse lifted edges
+    p_test_sparse, uv_ids_sparse = learn_and_predict_sparse_lifted_rf()
+    edge_costs_sparse = lifted_probs_to_energies()
+
+    # probabilities and costs for default lifted edges (if given)
+    if lifted_feature_list:
+        p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(trainsets,
+                                                                   ds_test,
+                                                                   seg_id_train,
+                                                                   seg_id_test,
+                                                                   local_feature_list,
+                                                                   lifted_feature_list)
+        # TODO make weight_z_distance settable
+        edge_z_distance = None
+        edge_costs_lifted = lifted_probs_to_energies(ds_test, p_test_lifted,
+                                                     seg_id_test, edge_z_distance,
+                                                     ExperimentSettings().lifted_neighborhood,
+                                                     ExperimentSettings().beta_lifted,
+                                                     gamma=w_lifted)
+        edges_total = len(edge_costs_local) + len(edge_costs_sparse) + len(edge_costs_lifted)
+        # normalize all edges
+        edge_costs_local *= (edges_total / len(edge_costs_local))
+        edge_costs_sparse *= (edges_total / len(edge_costs_sparse))
+        edge_costs_lifted *= (edges_total / len(edge_costs_lifted))
+
+        # TODO TODO TODO
+        # TODO merge sparse and lifted edges:
+        # for duplicates, keep sparse edges
+    else:
+        edges_total = len(edge_costs_local) + len(edge_costs_sparse)
+        # normalize all edges
+        edge_costs_local *= (edges_total / len(edge_costs_local))
+        edge_costs_sparse *= (edges_total / len(edge_costs_sparse))
+
+    uvs_local = ds_test.uv_ids(seg_id_test)
+    node_labels, e_lifted, t_lifted = optimize_lifted(uvs_local,
+                                                      uv_ids_sparse,
+                                                      edge_costs_local,
+                                                      edge_costs_sparse,
+                                                      starting_point=None)
+    edge_labels = node_labels[uvs_local[:, 0]] != node_labels[uvs_local[:, 1]]
+    return node_labels, edge_labels, e_lifted, t_lifted

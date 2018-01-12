@@ -86,15 +86,13 @@ def multicut_workflow(trainsets,
 
     # get edge probabilities from random forest
     print("Learning random forests with", ExperimentSettings().n_trees, "trees")
-    edge_probs = learn_and_predict_rf_from_gt(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list,
-        with_defects=False,
-        use_2rfs=ExperimentSettings().use_2rfs
-    )
+    edge_probs = learn_and_predict_rf_from_gt(trainsets,
+                                              ds_test,
+                                              seg_id_train,
+                                              seg_id_test,
+                                              feature_list,
+                                              with_defects=False,
+                                              use_2rfs=ExperimentSettings().use_2rfs)
 
     # get all parameters for the multicut
     # number of variables = number of nodes
@@ -104,15 +102,13 @@ def multicut_workflow(trainsets,
     uv_ids = ds_test.uv_ids(seg_id_test)
     assert n_var == uv_ids.max() + 1, "%i, %i" % (n_var, uv_ids.max() + 1)
     # energies for the multicut
-    edge_costs = probs_to_energies(
-        ds_test,
-        edge_probs,
-        seg_id_test,
-        ExperimentSettings().weighting_scheme,
-        ExperimentSettings().weight,
-        ExperimentSettings().beta_local,
-        _get_feat_str(feature_list)
-    )
+    edge_costs = probs_to_energies(ds_test,
+                                   edge_probs,
+                                   seg_id_test,
+                                   ExperimentSettings().weighting_scheme,
+                                   ExperimentSettings().weight,
+                                   ExperimentSettings().beta_local,
+                                   _get_feat_str(feature_list))
     return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
@@ -136,31 +132,27 @@ def multicut_workflow_with_defect_correction(trainsets,
     print("with solver", ExperimentSettings().solver)
 
     # get edge probabilities from random forest
-    edge_probs = learn_and_predict_rf_from_gt(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list,
-        with_defects=True,
-        use_2rfs=ExperimentSettings().use_2rfs
-    )
+    edge_probs = learn_and_predict_rf_from_gt(trainsets,
+                                              ds_test,
+                                              seg_id_train,
+                                              seg_id_test,
+                                              feature_list,
+                                              with_defects=True,
+                                              use_2rfs=ExperimentSettings().use_2rfs)
 
     # get all parameters for the multicut
     uv_ids = modified_adjacency(ds_test, seg_id_test) if ds_test.has_defects else ds_test.uv_ids(seg_id_test)
     n_var = uv_ids.max() + 1
 
     # energies for the multicut
-    edge_costs = modified_probs_to_energies(
-        ds_test,
-        edge_probs,
-        seg_id_test,
-        uv_ids,
-        ExperimentSettings().weighting_scheme,
-        ExperimentSettings().weight,
-        ExperimentSettings().beta_local,
-        _get_feat_str(feature_list)
-    )
+    edge_costs = modified_probs_to_energies(ds_test,
+                                            edge_probs,
+                                            seg_id_test,
+                                            uv_ids,
+                                            ExperimentSettings().weighting_scheme,
+                                            ExperimentSettings().weight,
+                                            ExperimentSettings().beta_local,
+                                            _get_feat_str(feature_list))
     return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
@@ -187,36 +179,30 @@ def lifted_multicut_workflow(trainsets,
     # ) step one, train a random forest
     print("Start learning")
 
-    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_lifted,
-        feature_list_local
-    )
+    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(trainsets,
+                                                               ds_test,
+                                                               seg_id_train,
+                                                               seg_id_test,
+                                                               feature_list_lifted,
+                                                               feature_list_local)
 
     # get edge probabilities from random forest on the complete training set
-    p_test_local = learn_and_predict_rf_from_gt(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_local,
-        with_defects=False,
-        use_2rfs=ExperimentSettings().use_2rfs
-    )
+    p_test_local = learn_and_predict_rf_from_gt(trainsets,
+                                                ds_test,
+                                                seg_id_train,
+                                                seg_id_test,
+                                                feature_list_local,
+                                                with_defects=False,
+                                                use_2rfs=ExperimentSettings().use_2rfs)
 
     # energies for the multicut
-    edge_costs_local = probs_to_energies(
-        ds_test,
-        p_test_local,
-        seg_id_test,
-        ExperimentSettings().weighting_scheme,
-        ExperimentSettings().weight,
-        ExperimentSettings().beta_local,
-        _get_feat_str(feature_list_local)
-    )
+    edge_costs_local = probs_to_energies(ds_test,
+                                         p_test_local,
+                                         seg_id_test,
+                                         ExperimentSettings().weighting_scheme,
+                                         ExperimentSettings().weight,
+                                         ExperimentSettings().beta_local,
+                                         _get_feat_str(feature_list_local))
 
     # calculate the z distance for edges if 'weight_z_lifted == True'
     if weight_z_lifted:
@@ -226,15 +212,13 @@ def lifted_multicut_workflow(trainsets,
     else:
         edge_z_distance = None
 
-    edge_costs_lifted = lifted_probs_to_energies(
-        ds_test,
-        p_test_lifted,
-        seg_id_test,
-        edge_z_distance,
-        ExperimentSettings().lifted_neighborhood,
-        ExperimentSettings().beta_lifted,
-        gamma
-    )
+    edge_costs_lifted = lifted_probs_to_energies(ds_test,
+                                                 p_test_lifted,
+                                                 seg_id_test,
+                                                 edge_z_distance,
+                                                 ExperimentSettings().lifted_neighborhood,
+                                                 ExperimentSettings().beta_lifted,
+                                                 gamma)
 
     # weighting edges with their length for proper lifted to local scaling
     edge_costs_local  /= edge_costs_local.shape[0]
@@ -251,30 +235,25 @@ def lifted_multicut_workflow(trainsets,
     else:
         starting_point = None
 
-    node_labels, e_lifted, t_lifted = optimize_lifted(
-        uvs_local,
-        uv_ids_lifted,
-        edge_costs_local,
-        edge_costs_lifted,
-        starting_point
-    )
+    node_labels, e_lifted, t_lifted = optimize_lifted(uvs_local,
+                                                      uv_ids_lifted,
+                                                      edge_costs_local,
+                                                      edge_costs_lifted,
+                                                      starting_point)
     edge_labels = node_labels[uvs_local[:, 0]] != node_labels[uvs_local[:, 1]]
     return node_labels, edge_labels, e_lifted, t_lifted
 
 
 # lifted multicut on the test dataset, weights learned with a rf on the train dataset
-def lifted_multicut_workflow_with_defect_correction(
-    trainsets,
-    ds_test,
-    seg_id_train,
-    seg_id_test,
-    feature_list_local,
-    feature_list_lifted,
-    gamma=1.,
-    warmstart=False,
-    weight_z_lifted=True
-):
-
+def lifted_multicut_workflow_with_defect_correction(trainsets,
+                                                    ds_test,
+                                                    seg_id_train,
+                                                    seg_id_test,
+                                                    feature_list_local,
+                                                    feature_list_lifted,
+                                                    gamma=1.,
+                                                    warmstart=False,
+                                                    weight_z_lifted=True):
     assert isinstance(ds_test, DataSet)
     assert isinstance(trainsets, (DataSet, list, tuple))
 
@@ -284,41 +263,34 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         print("Weights learned on multiple datasets")
 
-    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_lifted,
-        feature_list_local,
-        with_defects=True
-    )
+    p_test_lifted, uv_ids_lifted = learn_and_predict_lifted_rf(trainsets,
+                                                               ds_test,
+                                                               seg_id_train,
+                                                               seg_id_test,
+                                                               feature_list_lifted,
+                                                               feature_list_local,
+                                                               with_defects=True)
 
     # get edge probabilities from random forest on the complete training set
-    p_test_local = learn_and_predict_rf_from_gt(
-        trainsets,
-        ds_test,
-        seg_id_train,
-        seg_id_test,
-        feature_list_local,
-        with_defects=True,
-        use_2rfs=ExperimentSettings().use_2rfs
-    )
-
+    p_test_local = learn_and_predict_rf_from_gt(trainsets,
+                                                ds_test,
+                                                seg_id_train,
+                                                seg_id_test,
+                                                feature_list_local,
+                                                with_defects=True,
+                                                use_2rfs=ExperimentSettings().use_2rfs)
     # get all parameters for the multicut
     uv_ids_local = modified_adjacency(ds_test, seg_id_test)
 
     # energies for the multicut
-    edge_costs_local = modified_probs_to_energies(
-        ds_test,
-        p_test_local,
-        seg_id_test,
-        uv_ids_local,
-        ExperimentSettings().weighting_scheme,
-        ExperimentSettings().weight,
-        ExperimentSettings().beta_local,
-        _get_feat_str(feature_list_local)
-    )
+    edge_costs_local = modified_probs_to_energies(ds_test,
+                                                  p_test_local,
+                                                  seg_id_test,
+                                                  uv_ids_local,
+                                                  ExperimentSettings().weighting_scheme,
+                                                  ExperimentSettings().weight,
+                                                  ExperimentSettings().beta_local,
+                                                  _get_feat_str(feature_list_local))
     assert not np.isnan(edge_costs_local).any()
 
     # lifted energies
@@ -330,16 +302,13 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         edge_z_distance = None
 
-    edge_costs_lifted = lifted_probs_to_energies(
-        ds_test,
-        p_test_lifted,
-        seg_id_test,
-        edge_z_distance,
-        ExperimentSettings().lifted_neighborhood,
-        ExperimentSettings().beta_lifted,
-        gamma,
-        True
-    )
+    edge_costs_lifted = lifted_probs_to_energies(ds_test,
+                                                 p_test_lifted,
+                                                 seg_id_test,
+                                                 edge_z_distance,
+                                                 ExperimentSettings().lifted_neighborhood,
+                                                 ExperimentSettings().beta_lifted,
+                                                 gamma, True)
     assert not np.isnan(edge_costs_lifted).any()
 
     # weighting edges with their length for proper lifted to local scaling
@@ -353,11 +322,10 @@ def lifted_multicut_workflow_with_defect_correction(
     else:
         starting_point = None
 
-    node_labels, e_lifted, t_lifted = optimize_lifted(
-        uv_ids_local,
-        uv_ids_lifted,
-        edge_costs_local,
-        edge_costs_lifted,
-        starting_point)
+    node_labels, e_lifted, t_lifted = optimize_lifted(uv_ids_local,
+                                                      uv_ids_lifted,
+                                                      edge_costs_local,
+                                                      edge_costs_lifted,
+                                                      starting_point)
     edge_labels = node_labels[uv_ids_local[:, 0]] != node_labels[uv_ids_local[:, 1]]
     return node_labels, edge_labels, e_lifted, t_lifted
