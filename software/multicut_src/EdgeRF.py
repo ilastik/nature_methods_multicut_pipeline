@@ -26,15 +26,14 @@ except ImportError:
 # wrapper for sklearn / random forest
 class RandomForest(object):
 
-    def __init__(
-        self,
-        train_data,
-        train_labels,
-        n_trees,
-        n_threads,
-        max_depth=None,
-        class_weight=None  # class weights are only supported for sklearn rf
-    ):
+    def __init__(self,
+                 train_data,
+                 train_labels,
+                 n_trees,
+                 n_threads,
+                 max_depth=None,
+                 # class weights are only supported for sklearn rf
+                 class_weight=None):
 
         if isinstance(train_data, str) and train_data == '__will_deserialize__':
             return

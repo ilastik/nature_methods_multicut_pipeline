@@ -14,7 +14,7 @@ from .tools import cacher_hdf5, find_matching_indices, find_matching_row_indices
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from .MCSolverImpl import weight_z_edges, weight_all_edges, weight_xyz_edges
 from .ExperimentSettings import ExperimentSettings
-from .sparse_lifted import mito_features
+from .sparse_lifted_features import mito_features
 
 from .defect_handling import defects_to_nodes, modified_adjacency
 from .defect_handling import modified_topology_features, modified_edge_indications, get_ignore_edge_ids
@@ -429,12 +429,9 @@ def lifted_fuzzy_gt(ds, seg_id, uv_ids, positive_threshold, negative_threshold):
     return edge_gt_fuzzy
 
 
-# with defects only for the cache name
-# otherwise this can lead to inconsistencies
-@cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_hard_gt(ds, seg_id, uv_ids, with_defects):
+def lifted_hard_gt(ds, seg_id, uv_ids):
     rag = ds.rag(seg_id)
-    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())  # ExperimentSettings().n_threads)
+    node_gt = nrag.gridRagAccumulateLabels(rag, ds.gt())
     labels  = (node_gt[uv_ids[:, 0]] != node_gt[uv_ids[:, 1]])
     return labels
 
@@ -476,15 +473,13 @@ def mask_lifted_edges(ds,
     return labeled
 
 
-def learn_lifted_rf(
-    trainsets,
-    seg_id,
-    feature_list_lifted,
-    feature_list_local,
-    trainstr,
-    paramstr,
-    with_defects=False
-):
+def learn_lifted_rf(trainsets,
+                    seg_id,
+                    feature_list_lifted,
+                    feature_list_local,
+                    trainstr,
+                    paramstr,
+                    with_defects=False):
 
     cache_folder = ExperimentSettings().rf_cache_folder
     # check if already cached
@@ -535,15 +530,13 @@ def learn_lifted_rf(
             seg_id,
             with_defects)
 
-        labels = lifted_hard_gt(train_cut, seg_id, uv_ids_train, with_defects)
+        labels = lifted_hard_gt(train_cut, seg_id, uv_ids_train)
 
-        labeled = mask_lifted_edges(
-            train_cut,
-            seg_id,
-            labels,
-            uv_ids_train,
-            with_defects
-        )
+        labeled = mask_lifted_edges(train_cut,
+                                    seg_id,
+                                    labels,
+                                    uv_ids_train,
+                                    with_defects)
 
         features_train.append(f_train[labeled])
         labels_train.append(labels[labeled])
@@ -725,17 +718,16 @@ def optimize_lifted(uvs_local,
 
 # TODO weight connections in plane: kappa=20
 @cacher_hdf5(ignoreNumpyArrays=True)
-def lifted_probs_to_energies(
-    ds,
-    edge_probs,
-    seg_id,
-    edge_z_distance,
-    lifted_nh,
-    beta_lifted=0.5,
-    gamma=1.,
-    with_defects=False,
-    is_long_range=False  # this is only a hack for caching
-):
+def lifted_probs_to_energies(ds,
+                             edge_probs,
+                             seg_id,
+                             edge_z_distance,
+                             lifted_nh,
+                             beta_lifted=0.5,
+                             gamma=1.,
+                             with_defects=False,
+                             # this is only a hack for caching
+                             is_long_range=False):
 
     p_min = 0.001
     p_max = 1. - p_min
