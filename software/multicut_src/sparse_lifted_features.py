@@ -7,7 +7,7 @@ def sparse_lifted_edges_and_features(ds, seg_id, prior_threshold=.5):
     n_nodes = rag.numberOfNodes
     with_priors = np.zeros(n_nodes, dtype='bool')
 
-    pixel_features = [ds.inp(1), ds.inp(2)]
+    pixel_features = [ds.inp(2), ds.inp(3)]
     seg = ds.seg(seg_id)
 
     for pf in pixel_features:
@@ -34,7 +34,7 @@ def sparse_lifted_edges_and_features(ds, seg_id, prior_threshold=.5):
     lifted_edges = np.zeros((len(chosen[0]), 2), dtype='uint64')
     lifted_edges[:, 0] = chosen[0]
     lifted_edges[:, 1] = chosen[1]
-    lifted_features = np.concatenate([from_pixels_to_edges(lifted_edges, pf, seg, prior_threshold=prior_threshold)
+    lifted_features = np.concatenate([from_pixels_to_edges(lifted_edges, pf, seg)
                                       for pf in pixel_features],
                                      axis=1)
     # sanity check
@@ -59,6 +59,6 @@ def from_pixels_to_edges(uv, pf, seg):
 
 def mito_features(ds, seg_id, extra_uv):
     seg = ds.seg(seg_id)
-    mito_prob = ds.inp(3)
+    mito_prob = ds.inp(4)
     feats = from_pixels_to_edges(extra_uv, mito_prob, seg)
     return feats

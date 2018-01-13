@@ -774,7 +774,7 @@ class DataSet(object):
         # FIXME local fastfilter build is broken
         try:
             import fastfilters as ff  # very weird, if we built nifty with debug, this causes a segfault
-        except ImportError as e:
+        except ImportError:
             import vigra.filters as ff
 
         assert anisotropy_factor >= 1., "Finer resolution in z-direction is not supported"
@@ -992,11 +992,9 @@ class DataSet(object):
         edge_indications = self.edge_indications(seg_id)
 
         # accumulate over the xy-channel
-        print("computing XY from", path_xy)
         feats, _ = self._accumulate_filter_over_edge(seg_id, self.inp(1), "", rag, z_direction)
 
         # accumulate over the z channel
-        print("computing Z from", path_z)
         featsZ, _  = self._accumulate_filter_over_edge(seg_id, self.inp(2), "", rag, z_direction)
 
         # merge the feats
@@ -1158,10 +1156,8 @@ class DataSet(object):
         ]
 
         feat_names = []
-        feat_names.extend(
-            ["RegionFeatures_%s_%s" % (name , combine)
-             for combine in ("min", "max", "absdiff", "sum") for name in regStatNames]
-        )
+        feat_names.extend(["RegionFeatures_%s_%s" % (name, combine)
+                           for combine in ("min", "max", "absdiff", "sum") for name in regStatNames])
 
         # we actively delete stuff we don't need to free memory
         # because this may become memory consuming for lifted edges
@@ -1313,7 +1309,7 @@ class DataSet(object):
         uv_ids = rag.uvIds()
         edge_labels = node_labels[uv_ids[:, 0]] != node_labels[uv_ids[:, 1]]
         edge_indications = self.edge_indications(0)
-        edge_labels[edge_indications==0] = 0
+        edge_labels[edge_indications == 0] = 0
         return edges_to_volume(rag, edge_labels)
 
     # get the edge labeling from dense groundtruth
@@ -1379,17 +1375,16 @@ class DataSet(object):
     # return mask that hides edges that lie between 2 superpixel for lifted edges
     # which are projected to an ignore label
     # -> we don t want to learn on these!
-    @cacher_hdf5(ignoreNumpyArrays=True)
-    def lifted_ignore_mask(self, seg_id, lifted_nh, uvs_lifted, with_defects=False):  # with defects only for caching
+    def lifted_ignore_mask(self, seg_id, uvs_lifted):
         assert seg_id < self.n_seg, str(seg_id) + " , " + str(self.n_seg)
         assert self.has_gt
 
         rag = self.rag(seg_id)
         gt = self.gt()
-        node_gt = nrag.gridRagAccumulateLabels(rag, gt)  # ExperimentSettings().n_threads) )
+        node_gt = nrag.gridRagAccumulateLabels(rag, gt)
 
         ignore_mask = np.zeros(uvs_lifted.shape[0], dtype=bool)
-        for edge_id in range(rag.numberOfEdges):
+        for edge_id in range(len(uvs_lifted)):
             n0 = uvs_lifted[edge_id][0]
             n1 = uvs_lifted[edge_id][1]
             # if both superpixel have ignore label in the gt
@@ -1573,11 +1568,9 @@ class DataSet(object):
 
         volumina_n_layer(data, labels)
 
-    def view_edge_labels(
-        self,
-        seg_id,
-        with_defects=False
-    ):
+    def view_edge_labels(self,
+                         seg_id,
+                         with_defects=False):
         from EdgeRF import mask_edges
 
         uv_ids = modified_adjacency(self, seg_id) if with_defects else self.uv_ids(seg_id)

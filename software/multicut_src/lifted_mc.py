@@ -98,15 +98,15 @@ def clustering_features(ds,
     wardness_vals = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
     with futures.ThreadPoolExecutor(max_workers=ExperimentSettings().n_threads) as executor:
         tasks = [executor.submit(cluster, w) for w in wardness_vals]
-        allFeat = [t.result() for t in tasks]
+        features = [t.result() for t in tasks]
 
-    weights = np.concatenate(allFeat, axis=1)
+    weights = np.concatenate(features, axis=1)
     mean = np.mean(weights, axis=1)[:, None]
     stddev = np.std(weights, axis=1)[:, None]
-    feats = np.nan_to_num(np.concatenate([weights, mean, stddev], axis=1))
-    feats = np.require(allFeat, dtype='float32')
-    assert feats.shape[0] == extra_uv.shape[0]
-    return feats
+    features = np.require(np.nan_to_num(np.concatenate([weights, mean, stddev], axis=1)),
+                          dtype='float32')
+    assert features.shape[0] == extra_uv.shape[0], "%i, %i" % (len(features), len(extra_uv))
+    return features
 
 #
 # Features from ensembling over segmentations
@@ -446,10 +446,7 @@ def mask_lifted_edges(ds,
 
     # mask edges in ignore mask
     if ExperimentSettings().use_ignore_mask:
-        ignore_mask = ds.lifted_ignore_mask(seg_id,
-                                            ExperimentSettings().lifted_neighborhood,
-                                            uv_ids,
-                                            with_defects)
+        ignore_mask = ds.lifted_ignore_mask(seg_id, uv_ids)
         labeled[ignore_mask] = False
 
     # check which of the edges is in plane and mask the others
@@ -717,7 +714,6 @@ def optimize_lifted(uvs_local,
 
 
 # TODO weight connections in plane: kappa=20
-@cacher_hdf5(ignoreNumpyArrays=True)
 def lifted_probs_to_energies(ds,
                              edge_probs,
                              seg_id,
@@ -725,10 +721,7 @@ def lifted_probs_to_energies(ds,
                              lifted_nh,
                              beta_lifted=0.5,
                              gamma=1.,
-                             with_defects=False,
-                             # this is only a hack for caching
-                             is_long_range=False):
-
+                             with_defects=False):
     p_min = 0.001
     p_max = 1. - p_min
     edge_probs = (p_max - p_min) * edge_probs + p_min
