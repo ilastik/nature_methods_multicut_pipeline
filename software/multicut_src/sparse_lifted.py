@@ -1,4 +1,16 @@
+from itertools import combinations
 import numpy as np
+import vigra
+try:
+    import nifty.graph.rag as nrag
+except ImportError:
+    try:
+        import nifty_with_cplex.graph.rag as nrag
+    except ImportError:
+        try:
+            import nifty_with_gurobi.graph.rag as nrag
+        except ImportError:
+            raise ImportError("No valid nifty version was found.")
 
 from .DataSet import DataSet
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
@@ -121,3 +133,88 @@ def sparse_lifted_workflow(trainsets, ds_test,
                                                       starting_point=None)
     edge_labels = node_labels[uvs_local[:, 0]] != node_labels[uvs_local[:, 1]]
     return node_labels, edge_labels, e_lifted, t_lifted
+
+
+def resolve_object(nodes, node_prior_list, multicut_costs, rag):
+    # find the nodes with priors in this object
+    nodes_priors1 = np.in1d(nodes, node_prior_list[0])
+    nodes_priors2 = np.in1d(nodes, node_prior_list[1])
+    assert nodes_priors1.size and nodes_priors2.size
+
+    # find the multicut weights corresponding to this object
+    edge_ids = rag.edgesFromNodeList(nodes.tolist())
+    local_costs = multicut_costs[edge_ids]
+    local_uvs = rag.uvIds()[edge_ids]
+
+    # map to consecutive node labeling
+    local_nodes, mapping, _ = vigra.analysis.relabelConsecutive(nodes)
+    # map local_uvs, local_weights and node priors
+    # TODO
+    nodes_priors1 = [mapping[npr] for npr in nodes_priors1]
+    nodes_priors2 = [mapping[npr] for npr in nodes_priors2]
+
+    # introduce repulsive lifted edges between priors of different types
+    lifted_uvs = np.array(combinations(nodes_priors1, nodes_priors2), dtype='uint32')
+    # TODO how dow we determine the strenght of the lifted repulstion
+    repl_strenght = 50.
+    lifted_costs = repl_strenght * np.ones(len(lifted_uvs))
+
+    # solve the new lifted model
+    return optimize_lifted(local_uvs, lifted_uvs,
+                           local_costs, lifted_costs,
+                           starting_point=None)[0]
+
+
+def sparse_lifted_topdown(ds,
+                          seg_id,
+                          result,
+                          multicut_costs,
+                          prior_threshold=.5):
+    seg = ds.seg(seg_id)
+    # vesicle and dendrite pixelwise maps
+    pix_maps = [ds.inp(2), ds.inp(3)]
+    # find the mapping of over-segmentation nodes to the result segmentation
+    rag = ds.rag(seg_id)
+    node_mapping = np.array(nrag.gridRagAccumulateLabels(rag, result), dtype='uint32')
+    object_ids = np.unique(result)
+    n_objects = len(object_ids)
+
+    # get the inverse mapping of objects in the result to oversegmentation nodes
+    # TODO this could be done more efficiently
+    object_mapping = {obj_id: node_mapping[node_mapping == obj_id]
+                      for obj_id in object_ids}
+
+    # iterate over the pixel-wise maps and find oversegmentation nodes
+    # with priors and the corresponding mapping of priors to objects
+    # find objects that have overlap with the priors
+    node_prior_list = []
+    objects_with_prior = np.zeros((n_objects, 2), dtype='bool')
+    for i, pf in enumerate(pix_maps):
+        acc_feats = vigra.analysis.extractRegionFeatures(pf, seg, ["maximum"])
+        acc_max = acc_feats["maximum"]
+        nodes_with_prior = acc_max > prior_threshold
+        node_prior_list.append(nodes_with_prior)
+        objects_with_prior[node_mapping[nodes_with_prior], i] = True
+
+    # find objects with contradicting priors (i.e. objects that
+    # contain nodes with both prior types)
+    contradicting_priors = objects_with_prior.all(axis=1)
+    objects_to_resolve = object_ids[contradicting_priors]
+    resolved_nodes = node_mapping.copy()
+    offset = object_ids.max() + 1
+
+    print("Found %i / %i objects that have contradicting priors and will be resolved"
+          % (len(objects_to_resolve), n_objects))
+
+    # TODO parallelize with threadpool !
+    # resolve the objects that were found
+    for obj_id in objects_to_resolve:
+        nodes = object_mapping[obj_id]
+        resolved = resolve_object(nodes, node_prior_list, multicut_costs, rag)
+        n_new_objs = resolved.max() + 1
+        resolved += offset
+        resolved_nodes[nodes] = resolved
+        offset += n_new_objs
+
+    vigra.analysis.relabelConsecutive(resolved_nodes, out=resolved_nodes)
+    return resolved_nodes
