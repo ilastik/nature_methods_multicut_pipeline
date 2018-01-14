@@ -224,13 +224,11 @@ def local_feature_aggregator_with_defects(
 
 # edge masking:
 # we set all labels that are going to be ignored to 0.5
-def mask_edges(
-    ds,
-    seg_id,
-    labels,
-    uv_ids,
-    with_defects
-):
+def mask_edges(ds,
+               seg_id,
+               labels,
+               uv_ids,
+               with_defects):
 
     labeled = np.ones_like(labels, dtype=bool)
     # set ignore mask to 0.5
@@ -538,15 +536,13 @@ def learn_rf(
 
 
 # set cache folder to None if you dont want to cache the resulting rf
-def learn_and_predict_rf_from_gt(
-    trainsets,
-    ds_test,
-    seg_id_train,
-    seg_id_test,
-    feature_list,
-    with_defects=False,
-    use_2rfs=False
-):
+def learn_and_predict_rf_from_gt(trainsets,
+                                 ds_test,
+                                 seg_id_train,
+                                 seg_id_test,
+                                 feature_list,
+                                 with_defects=False,
+                                 use_2rfs=False):
 
     # for only a single ds, put it in a list
     if not isinstance(trainsets, (list, tuple)):

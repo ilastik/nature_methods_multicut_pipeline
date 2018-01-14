@@ -12,22 +12,6 @@ from .lifted_mc import learn_and_predict_lifted_rf, optimize_lifted, lifted_prob
 from .defect_handling import modified_adjacency, modified_probs_to_energies
 
 
-# all these ifs look stupid, but we want to have a fixed order
-def _get_feat_str(feature_list):
-    feat_str = ""
-    if "raw" in feature_list:
-        feat_str += "raw"
-    if "prob" in feature_list:
-        feat_str += "prob"
-    if "affinities" in feature_list:
-        feat_str += "affinities"
-    if "reg" in feature_list:
-        feat_str += "reg"
-    if "topo" in feature_list:
-        feat_str += "topo"
-    return feat_str
-
-
 def run_mc_solver(n_var, uv_ids, edge_costs):
 
     # solve the multicut witht the given solver
@@ -107,8 +91,7 @@ def multicut_workflow(trainsets,
                                    seg_id_test,
                                    ExperimentSettings().weighting_scheme,
                                    ExperimentSettings().weight,
-                                   ExperimentSettings().beta_local,
-                                   _get_feat_str(feature_list))
+                                   ExperimentSettings().beta_local)
     return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
@@ -151,8 +134,7 @@ def multicut_workflow_with_defect_correction(trainsets,
                                             uv_ids,
                                             ExperimentSettings().weighting_scheme,
                                             ExperimentSettings().weight,
-                                            ExperimentSettings().beta_local,
-                                            _get_feat_str(feature_list))
+                                            ExperimentSettings().beta_local)
     return run_mc_solver(n_var, uv_ids, edge_costs)
 
 
@@ -201,8 +183,7 @@ def lifted_multicut_workflow(trainsets,
                                          seg_id_test,
                                          ExperimentSettings().weighting_scheme,
                                          ExperimentSettings().weight,
-                                         ExperimentSettings().beta_local,
-                                         _get_feat_str(feature_list_local))
+                                         ExperimentSettings().beta_local)
 
     # calculate the z distance for edges if 'weight_z_lifted == True'
     if weight_z_lifted:
@@ -289,8 +270,7 @@ def lifted_multicut_workflow_with_defect_correction(trainsets,
                                                   uv_ids_local,
                                                   ExperimentSettings().weighting_scheme,
                                                   ExperimentSettings().weight,
-                                                  ExperimentSettings().beta_local,
-                                                  _get_feat_str(feature_list_local))
+                                                  ExperimentSettings().beta_local)
     assert not np.isnan(edge_costs_local).any()
 
     # lifted energies

@@ -717,17 +717,13 @@ def modified_topology_features(ds, seg_id, use_2d_edges):
 
 
 # the last argument is only for caching results with different features correctly
-@cacher_hdf5(ignoreNumpyArrays=True)
-def modified_probs_to_energies(
-        ds,
-        edge_probs,
-        seg_id,
-        uv_ids,
-        weighting_scheme,
-        weight,
-        beta,
-        feat_cache
-):
+def modified_probs_to_energies(ds,
+                               edge_probs,
+                               seg_id,
+                               uv_ids,
+                               weighting_scheme,
+                               weight,
+                               beta):
 
     assert edge_probs.shape[0] == uv_ids.shape[0], "%s, %s" % (str(edge_probs.shape), str(uv_ids.shape))
 

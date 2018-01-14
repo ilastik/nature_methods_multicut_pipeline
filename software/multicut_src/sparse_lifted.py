@@ -15,7 +15,6 @@ except ImportError:
 from .DataSet import DataSet
 from .EdgeRF import learn_and_predict_rf_from_gt, RandomForest
 from .ExperimentSettings import ExperimentSettings
-from .MCSolver import _get_feat_str
 from .MCSolverImpl import probs_to_energies
 from .lifted_mc import lifted_probs_to_energies, lifted_hard_gt, mask_lifted_edges, optimize_lifted
 from .lifted_mc import learn_and_predict_lifted_rf
@@ -75,8 +74,7 @@ def sparse_lifted_workflow(trainsets, ds_test,
     edge_costs_local = probs_to_energies(ds_test, p_local, seg_id_test,
                                          ExperimentSettings().weighting_scheme,
                                          ExperimentSettings().weight,
-                                         ExperimentSettings().beta_local,
-                                         _get_feat_str(local_feature_list))
+                                         ExperimentSettings().beta_local)
 
     # probabilities and costs for sparse lifted edges
     p_test_sparse, uv_ids_sparse = learn_and_predict_sparse_lifted_rf(trainsets, ds_test,

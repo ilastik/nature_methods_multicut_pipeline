@@ -4,7 +4,6 @@ import numpy as np
 import time
 
 from .ExperimentSettings import ExperimentSettings
-from .tools import cacher_hdf5
 
 # if build from sorce and not a conda pkg, we assume that we have cplex
 try:
@@ -27,15 +26,12 @@ except ImportError:
 ###
 
 # calculate the energies for the multicut from membrane probabilities
-# the last argument is only for caching correctly with different feature combinations
-@cacher_hdf5(ignoreNumpyArrays=True)
 def probs_to_energies(ds,
                       edge_probs,
                       seg_id,
                       weighting_scheme,
                       weight,
-                      beta,
-                      feat_cache):
+                      beta):
 
     # scale the probabilities
     # this is pretty arbitrary, it used to be 1. / n_tress, but this does not make that much sense for sklearn impl
@@ -199,11 +195,11 @@ def multicut_fusionmoves(n_var,
     # greedy = obj.greedyAdditiveFactory()
     kl_factory = obj.multicutAndresKernighanLinFactory(greedyWarmstart=True)
 
-    #ilp_fac = obj.multicutIlpFactory(
-    #    ilpSolver=ilp_bkend,
-    #    addThreeCyclesConstraints=True,
-    #    addOnlyViolatedThreeCyclesConstraints=True
-    #)
+    # ilp_fac = obj.multicutIlpFactory(
+    #     ilpSolver=ilp_bkend,
+    #     addThreeCyclesConstraints=True,
+    #     addOnlyViolatedThreeCyclesConstraints=True
+    # )
 
     fm_factory = obj.ccFusionMoveBasedFactory(
         fusionMove=obj.fusionMoveSettings(mcFactory=kl_factory),
