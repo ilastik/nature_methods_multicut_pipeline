@@ -640,13 +640,13 @@ def optimize_lifted(uvs_local,
                     costs_local,
                     costs_lifted,
                     starting_point=None):
-    print("Optimizing lifted model")
+    #  print("Optimizing lifted model")
     lifted_solver = ExperimentSettings().lifted_solver
     assert lifted_solver in ('lifted_kl', 'lifted_fm'), lifted_solver
 
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
-    n_nodes = uvs_local.max() + 1
+    n_nodes = int(uvs_local.max() + 1)
     assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
 
     # build the graph with local edges
@@ -663,33 +663,33 @@ def optimize_lifted(uvs_local,
 
     # if no starting point is given, start with ehc solver
     if starting_point is None:
-        print("optimize_lifted: start from ehc solver")
+        # print("optimize_lifted: start from ehc solver")
         solver_ehc = lifted_obj.liftedMulticutGreedyAdditiveFactory().create(lifted_obj)
         result = solver_ehc.optimize(visitor) if ExperimentSettings().verbose else solver_ehc.optimize()
 
     else:  # else, we use the starting point that is given as argument
-        print("optimize_lifted: start from external node result")
+        # print("optimize_lifted: start from external node result")
         assert len(starting_point) == n_nodes
         result = starting_point
-    print("Start energy: %f" % lifted_obj.evalNodeLabels(result))
+    # print("Start energy: %f" % lifted_obj.evalNodeLabels(result))
     t0 = time.time()
 
     # run kernighan lin solver
-    print("optimize_lifted: run kernighan lin")
+    # print("optimize_lifted: run kernighan lin")
     solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)  # standard settings
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
     t1   = time.time()
     t_kl = t1 - t0
     energy_kl = lifted_obj.evalNodeLabels(result)
-    print("Energy after kernighan lin: %f" % energy_kl)
-    print("Kernighan lin took %f s" % t_kl)
+    # print("Energy after kernighan lin: %f" % energy_kl)
+    # print("Kernighan lin took %f s" % t_kl)
 
     if lifted_solver == 'lifted_kl':
         return result, energy_kl, t_kl
 
     else:
         # run fusion move solver
-        print("optimize_lifted: run fusion move solver")
+        # print("optimize_lifted: run fusion move solver")
         # proposal generator -> watersheds
         pgen = lifted_obj.watershedProposalGenerator(
             seedingStrategy=ExperimentSettings().seed_strategy_lifted,
@@ -705,8 +705,8 @@ def optimize_lifted(uvs_local,
         result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
         t_fm = time.time() - t1
         energy_fm = lifted_obj.evalNodeLabels(result)
-        print("Energy after fusion moves: %f" % energy_fm)
-        print("Fusion moves took %f s" % t_fm)
+        # print("Energy after fusion moves: %f" % energy_fm)
+        # print("Fusion moves took %f s" % t_fm)
 
         assert len(result) == n_nodes
         result, _, _ = vigra.analysis.relabelConsecutive(result, start_label=1)
