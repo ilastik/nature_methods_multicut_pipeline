@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from joblib import Parallel,delayed
 from time import time
 import h5py
+from multicut_src.Postprocessing import merge_fully_enclosed
 
 # relative imports from top level dir
 from ..Postprocessing import remove_small_segments
@@ -68,47 +69,52 @@ def extract_paths_from_segmentation(
         if all_paths.size:
             all_paths = np.array([path.reshape((len(path) / 3, 3)) for path in all_paths])
         paths_to_objs = vigra.readHDF5(paths_save_file, 'paths_to_objs')
-
+    # if False:
+    #     pass
     # otherwise compute the paths
     else:
         seg = vigra.readHDF5(seg_path, key)
         dt = ds.inp(2)
+        # array_for_dt=np.pad(seg,1,"constant",constant_values=np.max(seg)+1)
+        # dt=distance_transform(array_for_dt, [ExperimentSettings().anisotropy_factor, 1., 1.])[1:-1,1:-1,1:-1]
         all_paths = []
         paths_to_objs = []
-
-        # #creating distance transform of whole volume for border near paths
-        # volume_expanded = np.ones((dt.shape[0]+2,dt.shape[1]+2,dt.shape[1]+2))
-        # volume_expanded[1:-1, 1:-1, 1:-1] = 0
-        # volume_dt = vigra.filters.distanceTransform(
-        #     volume_expanded.astype("uint32"), background=True,
-        #     pixel_pitch=[10, 1, 1])[1:-1, 1:-1, 1:-1]
-        #
-        # #threshhold for distance transform for picking terminal
-        # #points near boundary
-        # threshhold_boundary=30
-        # volume_where_threshhold = np.where(volume_dt > threshhold_boundary)
-        # volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
-        #                        min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
-        #                        min(volume_where_threshhold[2]):max(volume_where_threshhold[2])]
-
-        #for counting and debugging purposes
-        len_uniq=len(np.unique(seg))-1
-
+        # parallel_array = parallel_wrapper(1, seg, dt, [],
+        #                                    anisotropy, 2,
+        #                                    1, [],
+        #                                    "testing")
+        # parallel_array = parallel_wrapper(1, seg, dt, [],
+        #                                   anisotropy, 1911,
+        #                                   1, [],
+        #                                   "testing")
+        # assert 1==2
         centres_dict = compute_border_contacts_old(seg, dt)
+        uniq_border_contacts=[key for key in centres_dict.keys()
+                              if len(centres_dict[key]) > 1]
 
+        # uniq_border_contacts=np.load("/mnt/localdata1/amatskev/debugging/debugging_uniq_border_contacts.npy")
+        #for counting and debugging purposes
+        # uniq=np.unique(seg)
+        len_uniq = len(uniq_border_contacts) - 1
+
+        # centres_dict = compute_border_contacts_old(seg, dt)
+        print "begin paths"
+        # parallel_array=[parallel_wrapper(idx, seg, dt, [],
+        #                                anisotropy, key,
+        #                                len_uniq, [],
+        #                                "testing") for idx,key in enumerate(uniq_border_contacts)]
+        # assert 1==0
         #parallelized path computation
         parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
-            (delayed(parallel_wrapper)(seg, dt, [],
-                                       anisotropy, key,
-                                       len_uniq, centres_dict[key],
-                                       "testing")
-             if len(centres_dict[key]) > 0 else delayed(parallel_wrapper)(seg, dt, [],
+            (delayed(parallel_wrapper)(idx, seg, dt, [],
                                        anisotropy, key,
                                        len_uniq, [],
                                        "testing")
-            for key in centres_dict.keys())
+            for idx,key in enumerate(uniq_border_contacts))
+        # assert 1==2
 
-
+        print "finished paths"
+        # assert 1==0,"test"
         [[all_paths.append(path)
            for path in seg_array[0] if seg_array!=[]]
             for seg_array in parallel_array]
@@ -120,6 +126,7 @@ def extract_paths_from_segmentation(
         all_paths=np.array(all_paths)
         paths_to_objs=np.array(paths_to_objs, dtype="float64")
 
+            # if we cache paths save the results
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
             all_paths_save = np.array([pp.flatten() for pp in all_paths])
@@ -141,6 +148,9 @@ def extract_paths_from_segmentation(
             #         f.create_dataset('all_paths', data = all_paths_save, dtype = dt)
             vigra.writeHDF5(paths_to_objs, paths_save_file, 'paths_to_objs')
 
+
+
+
     return all_paths, paths_to_objs
 
 
@@ -157,7 +167,8 @@ def extract_paths_and_labels_from_segmentation(
     """
 
     logger.debug('Extracting paths and labels from segmentation ...')
-
+    # if False:
+    #     pass
     if paths_cache_folder is not None:
         if not os.path.exists(paths_cache_folder):
             os.mkdir(paths_cache_folder)
@@ -182,36 +193,31 @@ def extract_paths_and_labels_from_segmentation(
         paths_to_objs = []
         path_classes = []
 
-        # # creating distance transform of whole volume for border near paths
-        # volume_expanded = np.ones((dt.shape[0] + 2, dt.shape[1] + 2, dt.shape[1] + 2))
-        # volume_expanded[1:-1, 1:-1, 1:-1] = 0
-        # volume_dt = vigra.filters.distanceTransform(
-        #     volume_expanded.astype("uint32"), background=True,
-        #     pixel_pitch=[10, 1, 1])[1:-1, 1:-1, 1:-1]
-        #
-        # # threshhold for distance transform for picking terminal
-        # # points near boundary
-        # threshhold_boundary=30
-        # volume_where_threshhold = np.where(volume_dt > threshhold_boundary)
-        # volume_dt_boundaries = np.s_[min(volume_where_threshhold[0]):max(volume_where_threshhold[0]),
-        #                        min(volume_where_threshhold[1]):max(volume_where_threshhold[1]),
-        #                        min(volume_where_threshhold[2]):max(volume_where_threshhold[2])]
-
-        # for counting and debugging purposes
-        len_uniq = len(np.unique(seg)) - 1
+        # parallel_array = parallel_wrapper(1, seg, dt, gt,
+        #                                anisotropy, 296,
+        #                                1,[])
 
         centres_dict = compute_border_contacts_old(seg, dt)
+        uniq_border_contacts = [key for key in centres_dict.keys()
+                                if len(centres_dict[key]) > 1]
+        # for counting and debugging purposes
+        # uniq=np.unique(seg)
+        len_uniq = len(uniq_border_contacts) - 1
 
-        #parallelized path computation
+        # centres_dict = compute_border_contacts_old(seg, dt)
+
+        # parallelized path computation
         parallel_array = Parallel(n_jobs=ExperimentSettings().n_threads)\
-            (delayed(parallel_wrapper)(seg, dt, [],
+            (delayed(parallel_wrapper)(idx,seg, dt, gt,
                                        anisotropy, key,
-                                       len_uniq, centres_dict[key])
-             if len(centres_dict[key]) > 0 else delayed(parallel_wrapper)(seg, dt, [],
-                                       anisotropy, key,
-                                       len_uniq, [])
-            for key in centres_dict.keys())
+                                       len_uniq,[])
+            for idx,key in enumerate(uniq_border_contacts))
 
+
+
+        # parallel_array = [parallel_wrapper(seg, dt, gt,
+        #                                    anisotropy, key, len_uniq)
+        #                   for key in uniq]
 
         [[all_paths.append(path)
            for path in seg_array[0]]
@@ -221,17 +227,19 @@ def extract_paths_and_labels_from_segmentation(
           for path_to_obj in seg_array[1]]
             for seg_array in parallel_array]
 
-        [[path_classes.append(path_class)
-           for path_class in seg_array[2]]
-            for seg_array in parallel_array]
-
+        # [[path_classes.append(path_class)
+        #    for path_class in seg_array[2]]
+        #     for seg_array in parallel_array]
+        path_classes = [
+            False if gt[path[0][0], path[0][1], path[0][2]] ==
+                    gt[path[-1][0], path[-1][1], path[-1][2]] else True
+            for path in all_paths]
 
         # print "finished appending"
         all_paths = np.array(all_paths)
         paths_to_objs = np.array(paths_to_objs, dtype="float64")
         path_classes = np.array(path_classes)
         # print "finished computing"
-
         # if caching is enabled, write the results to cache
         if paths_cache_folder is not None:
             # need to write paths with vlen and flatten before writing to properly save this
@@ -340,6 +348,7 @@ def train_random_forest_for_merges(
 
                 # Calculate the new distance transform and replace it in the dataset inputs
                 seg = remove_small_segments(vigra.readHDF5(seg_path, key))
+                seg = merge_fully_enclosed(seg)
                 dt  = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
 
                 # NOTE IMPORTANT:
@@ -432,6 +441,7 @@ def compute_false_merges(
 
     # load the segmentation, compute distance transform and add it to the test dataset
     seg = vigra.readHDF5(mc_seg_test, mc_seg_test_key)
+    seg=merge_fully_enclosed(seg)
     dt = distance_transform(seg, [ExperimentSettings().anisotropy_factor, 1., 1.])
     if ds_test.n_inp < 3:
         ds_test.add_input_from_data(dt)
@@ -581,7 +591,8 @@ def combine_paths(
     else:
         extra_path_uvs = np.array([np.array(
             [mapping[seg[coord[0]]],
-             mapping[seg[coord[1]]]]) for coord in extra_coords])
+             mapping[seg[coord[1]]]]) if seg[coord[0]] in mapping.keys() and seg[coord[1]] in mapping.keys()
+                                   else np.array([-1,-1]) for coord in extra_coords])
     extra_path_uvs = np.sort(extra_path_uvs, axis=1)
 
     # exclude paths with u == v
@@ -616,9 +627,6 @@ def mean_over_energies(uv_ids_paths,path_weights):
         where_in_idx_unique = np.where(indexes_unique == identical_ids_single[0])[0][0]
 
         path_weights_unique[where_in_idx_unique]=np.mean(path_weights[identical_ids_single])
-
-
-        pass
 
 
     return uv_ids_paths_unique, path_weights_unique
@@ -753,7 +761,7 @@ def resolve_merges_with_lifted_edges(
             uv_ids_paths_min_nh,
             seg,
             mapping)
-        print "paths_obj.shape after combine_paths: ", paths_obj.shape
+        # print "paths_obj.shape after combine_paths: ", paths_obj.shape
 
         if not paths_obj.size:
             continue

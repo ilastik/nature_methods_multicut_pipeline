@@ -274,8 +274,12 @@ class DataSet(object):
                 subsub = os.path.join(filter_folder, sub_folder)
                 # This will only work for inp_ids <= 9
                 for inp_folder in os.listdir(subsub):
-                    if inp_folder[-1] == inp_id:
-                        shutil.rmtree(os.path.join(subsub, inp_folder))
+                    if type(inp_folder[-1])!=type(inp_id):
+                        if inp_folder[-1] == type(inp_folder[-1])(inp_id):
+                            shutil.rmtree(os.path.join(subsub, inp_folder))
+                    else:
+                        if inp_folder[-1] == inp_id:
+                            shutil.rmtree(os.path.join(subsub, inp_folder))
 
     #
     # replace input data that was already added

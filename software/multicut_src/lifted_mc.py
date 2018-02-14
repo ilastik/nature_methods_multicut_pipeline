@@ -729,25 +729,27 @@ def optimize_lifted(
 ):
     print "Optimizing lifted model"
 
-    print "assert?: ",uvs_lifted.shape[0],", ",costs_lifted.shape[0]
+    print "assert?: ", uvs_lifted.shape[0], ", ", costs_lifted.shape[0]
 
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
     n_nodes = uvs_local.max() + 1
     assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
-
+    print "1"
     # build the graph with local edges
     graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
-
+    print "2"
     # build the lifted objective, insert local and lifted costs
     lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
+    print "2.1"
     lifted_obj.setCosts(uvs_local, costs_local)
+    print "2.2"
     lifted_obj.setCosts(uvs_lifted, costs_lifted)
-
+    print "3"
     if ExperimentSettings().verbose:
         visitor = lifted_obj.verboseVisitor(100)
-
+    print "4"
     # if no starting point is given, start with ehc solver
     if starting_point is None:
         print "optimize_lifted: start from ehc solver"
@@ -765,7 +767,7 @@ def optimize_lifted(
     print "optimize_lifted: run kernighan lin"
     solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)  # standard settings
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
-    t1   = time.time()
+    t1 = time.time()
     t_kl = t1 - t0
     print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
     print "Kernighan lin took %f s" % t_kl
