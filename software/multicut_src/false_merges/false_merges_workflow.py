@@ -80,11 +80,11 @@ def extract_paths_from_segmentation(
         all_paths = []
         paths_to_objs = []
         # parallel_array = parallel_wrapper(1, seg, dt, [],
-        #                                    anisotropy, 2,
+        #                                    anisotropy,1144,
         #                                    1, [],
         #                                    "testing")
         # parallel_array = parallel_wrapper(1, seg, dt, [],
-        #                                   anisotropy, 1911,
+        #                                   anisotropy, 236.0,
         #                                   1, [],
         #                                   "testing")
         # assert 1==2
@@ -194,9 +194,9 @@ def extract_paths_and_labels_from_segmentation(
         path_classes = []
 
         # parallel_array = parallel_wrapper(1, seg, dt, gt,
-        #                                anisotropy, 296,
+        #                                anisotropy, 236,
         #                                1,[])
-
+        # assert 1==2
         centres_dict = compute_border_contacts_old(seg, dt)
         uniq_border_contacts = [key for key in centres_dict.keys()
                                 if len(centres_dict[key]) > 1]
@@ -286,20 +286,18 @@ def train_random_forest_for_merges(
         if not os.path.exists(rf_cache_folder):
             os.mkdir(rf_cache_folder)
 
-    rf_save_path = '' if rf_cache_folder is None else os.path.join(
-        rf_cache_folder,
-        'rf_merges_%s' % '_'.join([ds.ds_name for ds in trainsets])
-    )  # TODO more meaningful save name
+    rf_save_path = rf_cache_folder
 
     # check if rf is already cached
     if RandomForest.is_cached(rf_save_path):
 
         logger.info("Loading RF from: {}".format(rf_save_path))
         rf = RandomForest.load_from_file(rf_save_path, 'rf', ExperimentSettings().n_threads)
+        print "RF ALREADY COMPUTED AND NOW LOADED"
 
     # otherwise do the actual calculations
     else:
-
+        assert 1==2, "WHY WASNT THE RF PRECOMPUTED"
         logger.info('RF was not cached and will be computed.')
 
         features_train = []
@@ -699,8 +697,10 @@ def resolve_merges_with_lifted_edges(
     seg = ds.seg(seg_id)  # returns the over-segmentation as 3d volume
 
     # I have moved this to the dataset to have it cached
-    ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
-
+    if ExperimentSettings().anisotropy_factor>1.:
+        ecc_centers_seg = ds.eccentricity_centers(seg_id, True)
+    else:
+        ecc_centers_seg = ds.eccentricity_centers(seg_id, False)
     # get local and lifted uv ids
     uv_ids = ds.uv_ids(seg_id)
     uv_ids_lifted = compute_and_save_lifted_nh(
@@ -766,23 +766,32 @@ def resolve_merges_with_lifted_edges(
         if not paths_obj.size:
             continue
 
-        # Compute the path features
-        features = path_feature_aggregator_for_resolving(ds, paths_obj,
-                                           feature_volumes_0,
-                                           feature_volumes_1,
-                                           feature_volumes_2,
-                                           merge_id)
-        features = np.nan_to_num(features)
-        print "features.shape: ", features.shape
+        # # Compute the path features
+        # features = path_feature_aggregator_for_resolving(ds, paths_obj,
+        #                                    feature_volumes_0,
+        #                                    feature_volumes_1,
+        #                                    feature_volumes_2,
+        #                                    merge_id)
+        # features = np.nan_to_num(features)
+        # # print "features.shape: ", features.shape
+        #
+        # # Cache features for debug purpose # TODO disabled for now
+        # # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
+        # #    pickle.dump(features, f)
+        #
+        # # compute the lifted weights from rf probabilities
+        # # FIXME TODO - not caching this for now -> should not be performance relevant
+        # lifted_path_weights = path_rf.predict_probabilities(features)[:, 1]
 
-        # Cache features for debug purpose # TODO disabled for now
-        # with open(export_paths_path + '../debug/features_resolve_{}.pkl'.format(merge_id), mode='w') as f:
-        #    pickle.dump(features, f)
-
-        # compute the lifted weights from rf probabilities
-        # FIXME TODO - not caching this for now -> should not be performance relevant
-        lifted_path_weights = path_rf.predict_probabilities(features)[:, 1]
-        print "lifted_path_weights.shape: ", lifted_path_weights.shape
+        #TODO HIER GT EINSETZTEN
+        print "ORACLE"
+        ds_gt=vigra.readHDF5("/media/hdb/amatskev/neuraldata/fib_25_blocks/"
+                             "gt_blocks/gt_"+ds.ds_name+".h5","data")
+        lifted_path_weights = np.array([
+            0.001 if ds_gt[path[0][0], path[0][1], path[0][2]] ==
+                     ds_gt[path[-1][0], path[-1][1], path[-1][2]] else 0.999
+            for path in paths_obj])
+        # print "lifted_path_weights.shape: ", lifted_path_weights.shape
         # Class 1: contain a merge
         # Class 0: don't contain a merge
 

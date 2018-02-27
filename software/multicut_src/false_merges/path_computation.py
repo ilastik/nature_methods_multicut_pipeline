@@ -1,4 +1,4 @@
-import nifty_with_cplex as nifty
+import nifty
 from math import sqrt
 from Queue import LifoQueue, Queue
 import numpy as np
@@ -15,11 +15,14 @@ def close_cavities(volume):
     test_vol=np.pad(test_vol, 1, "constant", constant_values=2)
 
     lab=label(test_vol,connectivity=1)
-    if len(np.unique(lab))==2:
+    uniq_lab=np.unique(lab)
+    if len(uniq_lab)==2:
         del test_vol
         return volume, False
+    if len(uniq_lab)>10:
+        return None,False
     count,what=0,0
-    for uniq in np.unique(lab):
+    for uniq in uniq_lab:
         if len(np.where(lab == uniq)[0])> count:
             count=len(np.where(lab == uniq)[0])
             what=uniq
@@ -616,7 +619,7 @@ def terminal_func(start_queue,g,finished_dict,node_dict,main_dict,edges,nodes_li
 
 def pruning_2_nodes(edges,term_list):
 
-    assert len(edges)==1, "if we have two nodes we should have only one edge"
+    assert len(edges)<3, "if we have two nodes we should have only one edge"
     assert len(term_list)==2,"if we have two nodes we should have two term points"
 
     ratio=(edges[0][1]/2)/edges[0][3]
@@ -643,11 +646,17 @@ def graph_pruning(g,term_list,edges,nodes_list, dict_border_points=None):
     last_point_was_a_loop=0
 
 
+
     for term_point in term_list:
         start_queue.put([term_point,term_point])
 
     assert start_queue.qsize()!=1
     #TODO implement clean case for 3 or 2 term_points
+
+    #provisory
+    if start_queue.qsize()<5 or len(edges)<7:
+        return np.array(term_list)
+
     if start_queue.qsize()==2:
         return pruning_2_nodes(edges,term_list)
 
@@ -932,7 +941,14 @@ def graph_pruning(g,term_list,edges,nodes_list, dict_border_points=None):
 
         assert(queue.qsize()>0),"contraction finished before all the nodes were seen"
 
+    if len(edges)==4 and len(finished_dict.keys())==3:
 
+        help_arr=np.array([[key,finished_dict[key][4]] for key in finished_dict.keys()])
+        longest_key=help_arr[np.argsort(help_arr[:,1])[::-1][0]][0]
+
+        for key in finished_dict.keys():
+            if len(finished_dict[key])<6:
+                finished_dict[key].append(longest_key)
 
     #Here begins the actual pruning
     # TODO maybe faster ?
@@ -1423,10 +1439,15 @@ def parallel_wrapper(idx,seg, dt, gt, anisotropy,
     img=np.zeros(seg.shape,dtype="uint8")
     img[seg==label]=1
     img, bool_closed=close_cavities(img)
+    if img==None:
+        print "found background !"
+        return [],[]
+    img=np.uint64(img)
     if bool_closed==True:
         dt=distance_transform(np.uint64(img),
                               [ExperimentSettings().anisotropy_factor,1.,1.])
-    paths_full = compute_graph_and_paths(img, dt, anisotropy,
+
+    paths_full = compute_graph_and_paths(np.uint8(img), dt, anisotropy,
                                     border_points, mode)
     del dt
     del img
@@ -1434,6 +1455,7 @@ def parallel_wrapper(idx,seg, dt, gt, anisotropy,
     paths = shorten_paths(paths_full)
     del paths_full
     if len(paths) == 0:
+
         print "no paths found for label ", label
 
 

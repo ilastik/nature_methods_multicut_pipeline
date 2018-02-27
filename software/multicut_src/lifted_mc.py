@@ -700,7 +700,7 @@ def learn_and_predict_lifted_rf(
         with_defects=with_defects,
         use_2rfs=ExperimentSettings().use_2rfs
     )
-
+    print "features now"
     features_test = lifted_feature_aggregator(
         ds_test,
         [ds_train.get_cutout(i) for i in (0, 2) for ds_train in trainsets],
@@ -769,32 +769,33 @@ def optimize_lifted(
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
     t1 = time.time()
     t_kl = t1 - t0
-    print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
+    energy_kl = lifted_obj.evalNodeLabels(result)
+    print "Energy after kernighan lin: %f" % energy_kl
     print "Kernighan lin took %f s" % t_kl
 
-    # run fusion move solver
-    print "optimize_lifted: run fusion move solver"
-    # proposal generator -> watersheds
-    pgen = lifted_obj.watershedProposalGenerator(
-        seedingStrategy=ExperimentSettings().seed_strategy_lifted,
-        sigma=ExperimentSettings().sigma_lifted,
-        numberOfSeeds=ExperimentSettings().seed_fraction_lifted
-    )
-    # we leave the number of iterations at default values for now
-    solver_fm = lifted_obj.fusionMoveBasedFactory(
-        proposalGenerator=pgen,
-        # numberOfThreads = ExperimentSettings().n_threads
-        numberOfThreads=1  # TODO only n = 1 implemented
-    ).create(lifted_obj)
-    result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
-    t_fm = time.time() - t1
-    energy_fm = lifted_obj.evalNodeLabels(result)
-    print "Energy after fusion moves: %f" % energy_fm
-    print "Fusion moves took %f s" % t_fm
+    # # run fusion move solver
+    # print "optimize_lifted: run fusion move solver"
+    # # proposal generator -> watersheds
+    # pgen = lifted_obj.watershedProposalGenerator(
+    #     seedingStrategy=ExperimentSettings().seed_strategy_lifted,
+    #     sigma=ExperimentSettings().sigma_lifted,
+    #     numberOfSeeds=ExperimentSettings().seed_fraction_lifted
+    # )
+    # # we leave the number of iterations at default values for now
+    # solver_fm = lifted_obj.fusionMoveBasedFactory(
+    #     proposalGenerator=pgen,
+    #     # numberOfThreads = ExperimentSettings().n_threads
+    #     numberOfThreads=1  # TODO only n = 1 implemented
+    # ).create(lifted_obj)
+    # result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
+    # t_fm = time.time() - t1
+    # energy_fm = lifted_obj.evalNodeLabels(result)
+    # print "Energy after fusion moves: %f" % energy_fm
+    # print "Fusion moves took %f s" % t_fm
 
     assert len(result) == n_nodes
     result, _, _ = vigra.analysis.relabelConsecutive(result, start_label=1)
-    return result, energy_fm, t_fm + t_kl
+    return result, energy_kl, t_kl
 
 
 # TODO weight connections in plane: kappa=20

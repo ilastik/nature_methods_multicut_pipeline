@@ -190,7 +190,7 @@ def lifted_multicut_workflow(
         feature_list_lifted,
         feature_list_local
     )
-
+    print "YAY"
     # get edge probabilities from random forest on the complete training set
     p_test_local = learn_and_predict_rf_from_gt(
         trainsets,
@@ -201,7 +201,6 @@ def lifted_multicut_workflow(
         with_defects=False,
         use_2rfs=ExperimentSettings().use_2rfs
     )
-
     # energies for the multicut
     edge_energies_local = probs_to_energies(
         ds_test,

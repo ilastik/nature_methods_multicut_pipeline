@@ -85,7 +85,7 @@ class ExperimentSettings(object):
         # locacl training slices
         self.nLocalTrainingSlices = 5
         # number of neighbors for the lifted neighborhood
-        self.lifted_neighborhood = 4
+        self.lifted_neighborhood = 3
 
         self.pAndMapIterations = 1000
 
