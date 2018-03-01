@@ -16,7 +16,7 @@ class ExperimentSettings(object):
     def __init__(self):
 
         # cache folder for random forest results
-        self.rf_cache_folder = None
+        self.rf_cache_folder = "/media/hdb/amatskev/neuraldata/random_forest_false_merges/"
         # number of threads for all things in parallel, set to max - 1
         import multiprocessing
         self.n_threads   = max(multiprocessing.cpu_count() - 1, 1)
@@ -85,7 +85,7 @@ class ExperimentSettings(object):
         # locacl training slices
         self.nLocalTrainingSlices = 5
         # number of neighbors for the lifted neighborhood
-        self.lifted_neighborhood = 4
+        self.lifted_neighborhood = 3
 
         self.pAndMapIterations = 1000
 
@@ -98,7 +98,7 @@ class ExperimentSettings(object):
         self.paths_penalty_power = 10
         self.paths_avoid_duplicates = True
         self.min_nh_range = 5
-        self.max_sample_size = 20
+        self.max_sample_size = 0
         self.paths_penalty_power = 10
         self.lifted_path_weights_factor = 1.
 
@@ -108,4 +108,8 @@ class ExperimentSettings(object):
         # parameter for path-computation (border distance)
         self.border_distance = 30
         # for training on labels without border contacts
-        self.max_number_of_paths =2
+        self.max_number_of_paths_for_training =20
+        # for shortening our paths
+        self.ratio_for_shortage=0.05
+        # Number for adding pixels on the edges for skeletonization
+        self.pad_width=10

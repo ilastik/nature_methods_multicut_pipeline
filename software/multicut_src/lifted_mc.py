@@ -700,7 +700,7 @@ def learn_and_predict_lifted_rf(
         with_defects=with_defects,
         use_2rfs=ExperimentSettings().use_2rfs
     )
-
+    print "features now"
     features_test = lifted_feature_aggregator(
         ds_test,
         [ds_train.get_cutout(i) for i in (0, 2) for ds_train in trainsets],
@@ -729,25 +729,19 @@ def optimize_lifted(
 ):
     print "Optimizing lifted model"
 
-    print "assert?: ",uvs_lifted.shape[0],", ",costs_lifted.shape[0]
-
     assert uvs_local.shape[0] == costs_local.shape[0], "Local uv ids and energies do not match!"
     assert uvs_lifted.shape[0] == costs_lifted.shape[0], "Lifted uv ids and energies do not match!"
     n_nodes = uvs_local.max() + 1
     assert n_nodes >= uvs_lifted.max() + 1, "Local and lifted nodes do not match!"
-
     # build the graph with local edges
     graph = nifty.graph.UndirectedGraph(n_nodes)
     graph.insertEdges(uvs_local)
-
     # build the lifted objective, insert local and lifted costs
     lifted_obj = nifty.graph.lifted_multicut.liftedMulticutObjective(graph)
     lifted_obj.setCosts(uvs_local, costs_local)
     lifted_obj.setCosts(uvs_lifted, costs_lifted)
-
     if ExperimentSettings().verbose:
         visitor = lifted_obj.verboseVisitor(100)
-
     # if no starting point is given, start with ehc solver
     if starting_point is None:
         print "optimize_lifted: start from ehc solver"
@@ -765,34 +759,35 @@ def optimize_lifted(
     print "optimize_lifted: run kernighan lin"
     solver_kl = lifted_obj.liftedMulticutKernighanLinFactory().create(lifted_obj)  # standard settings
     result = solver_kl.optimize(visitor, result) if ExperimentSettings().verbose else solver_kl.optimize(result)
-    t1   = time.time()
+    t1 = time.time()
     t_kl = t1 - t0
-    print "Energy after kernighan lin: %f" % lifted_obj.evalNodeLabels(result)
+    energy_kl = lifted_obj.evalNodeLabels(result)
+    print "Energy after kernighan lin: %f" % energy_kl
     print "Kernighan lin took %f s" % t_kl
 
-    # run fusion move solver
-    print "optimize_lifted: run fusion move solver"
-    # proposal generator -> watersheds
-    pgen = lifted_obj.watershedProposalGenerator(
-        seedingStrategy=ExperimentSettings().seed_strategy_lifted,
-        sigma=ExperimentSettings().sigma_lifted,
-        numberOfSeeds=ExperimentSettings().seed_fraction_lifted
-    )
-    # we leave the number of iterations at default values for now
-    solver_fm = lifted_obj.fusionMoveBasedFactory(
-        proposalGenerator=pgen,
-        # numberOfThreads = ExperimentSettings().n_threads
-        numberOfThreads=1  # TODO only n = 1 implemented
-    ).create(lifted_obj)
-    result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
-    t_fm = time.time() - t1
-    energy_fm = lifted_obj.evalNodeLabels(result)
-    print "Energy after fusion moves: %f" % energy_fm
-    print "Fusion moves took %f s" % t_fm
+    # # run fusion move solver
+    # print "optimize_lifted: run fusion move solver"
+    # # proposal generator -> watersheds
+    # pgen = lifted_obj.watershedProposalGenerator(
+    #     seedingStrategy=ExperimentSettings().seed_strategy_lifted,
+    #     sigma=ExperimentSettings().sigma_lifted,
+    #     numberOfSeeds=ExperimentSettings().seed_fraction_lifted
+    # )
+    # # we leave the number of iterations at default values for now
+    # solver_fm = lifted_obj.fusionMoveBasedFactory(
+    #     proposalGenerator=pgen,
+    #     # numberOfThreads = ExperimentSettings().n_threads
+    #     numberOfThreads=1  # TODO only n = 1 implemented
+    # ).create(lifted_obj)
+    # result = solver_fm.optimize(visitor, result) if ExperimentSettings().verbose else solver_fm.optimize(result)
+    # t_fm = time.time() - t1
+    # energy_fm = lifted_obj.evalNodeLabels(result)
+    # print "Energy after fusion moves: %f" % energy_fm
+    # print "Fusion moves took %f s" % t_fm
 
     assert len(result) == n_nodes
     result, _, _ = vigra.analysis.relabelConsecutive(result, start_label=1)
-    return result, energy_fm, t_fm + t_kl
+    return result, energy_kl, t_kl
 
 
 # TODO weight connections in plane: kappa=20

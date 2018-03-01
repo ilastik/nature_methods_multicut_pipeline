@@ -222,6 +222,11 @@ class DataSet(object):
     # Saving the dataset, and clearing caches
     #
 
+    def change_directory(self,new_meta):
+
+        self.cache_folder = os.path.join(new_meta, self.ds_name)
+        self.save()
+
     def save(self):
         obj_save_path = os.path.join(self.cache_folder, 'ds_obj.pkl')
         with open(obj_save_path, 'w') as f:
@@ -274,8 +279,12 @@ class DataSet(object):
                 subsub = os.path.join(filter_folder, sub_folder)
                 # This will only work for inp_ids <= 9
                 for inp_folder in os.listdir(subsub):
-                    if inp_folder[-1] == inp_id:
-                        shutil.rmtree(os.path.join(subsub, inp_folder))
+                    if type(inp_folder[-1])!=type(inp_id):
+                        if inp_folder[-1] == type(inp_folder[-1])(inp_id):
+                            shutil.rmtree(os.path.join(subsub, inp_folder))
+                    else:
+                        if inp_folder[-1] == inp_id:
+                            shutil.rmtree(os.path.join(subsub, inp_folder))
 
     #
     # replace input data that was already added
@@ -728,6 +737,7 @@ class DataSet(object):
     @cacher_hdf5()
     def eccentricity_centers(self, seg_id, is_2d_stacked):
         seg = self.seg(seg_id)
+        seg=seg.astype("uint32")
         if is_2d_stacked:  # if we have a stacked segmentation, we can parallelize over the slices
 
             # calculate the centers for a 2d slice
@@ -750,7 +760,10 @@ class DataSet(object):
             assert len(centers_list) == n_segs, "%i, %i" % (len(centers_list), n_segs)
             return centers_list
         else:
-            return vigra.filters.eccentricityCenters(seg)
+            centers_list=vigra.filters.eccentricityCenters(seg)
+            n_segs = seg.max() + 1
+            assert len(centers_list) == n_segs, "%i, %i" % (len(centers_list), n_segs)
+            return centers_list
 
     #
     # Feature Calculation
@@ -1200,7 +1213,7 @@ class DataSet(object):
     @cacher_hdf5()
     def node_z_coord(self, seg_id):
         seg = self.seg(seg_id)
-        nz = np.zeros(seg.max() + 1, dtype='uint32')
+        nz = np.zeros(int(seg.max() + 1), dtype='uint32')
         for z in xrange(seg.shape[0]):
             lz = seg[z]
             nz[lz] = z

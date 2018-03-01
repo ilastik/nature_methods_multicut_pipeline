@@ -170,6 +170,7 @@ def compute_path_lengths(ds, paths, anisotropy, append_to_cache_name):
         path_euclidean_diff = aniso_temp * np.diff(path, axis=0)
         path_euclidean_diff = np.sqrt(np.sum(np.square(path_euclidean_diff), axis=1))
         return np.sum(path_euclidean_diff, axis=0)
+
     aniso_temp = np.array(anisotropy)
     return np.array([compute_path_length(np.array(path), aniso_temp) for path in paths])[:, None]
 
@@ -297,24 +298,20 @@ def path_features_from_feature_images_for_resolving(
         pixel_values_all = [python_region_features_extractor_sc (path)
                               for idx,path in enumerate(paths)]
         time2 = time()
-        print "pixel values took ",time2-time1," secs"
         out = np.array(Parallel(n_jobs=ExperimentSettings().n_threads) \
             (delayed(python_region_features_extractor_2_mc)(single_vals)
              for single_vals in pixel_values_all ))
-        time3 = time()
-        print "filters took ", time3 - time2, " secs"
 
+        time3 = time()
 
     else:
         time1=time()
         pixel_values_all = [python_region_features_extractor_sc (path)
                               for idx,path in enumerate(paths)]
         time2 = time()
-        print "pixel values took ",time2-time1," secs"
         out=np.array([python_region_features_extractor_2_mc(single_vals)
                             for single_vals in pixel_values_all])
         time3 = time()
-        print "filters took ", time3 - time2, " secs"
 
     assert out.ndim == 2, str(out.shape)
     assert out.shape[0] == len(paths), str(out.shape)
