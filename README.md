@@ -4,7 +4,7 @@ This repository contains the software used for the publication [`Multicut brings
 It is a snapshot of the state of the software we developed for this publication.
 
 Since then, we have reimplemented some functionality in an [open-source C++ library](https://github.com/DerThorsten/nifty) and implemented a [pipeline for processing large volumes](https://github.com/constantinpape/cluster_tools).
-Also, there is a beta version of an interactive multicut workflow in the GUI-based [ilastik program] (http://ilastik.org/).
+Also, there is aan interactive multicut workflow in [ilastik](http://ilastik.org/).
 
 This package (git tag 1.0) reflects the state of the software at the time of publication. Subsequent development happens mainly in the above repositories. 
 
