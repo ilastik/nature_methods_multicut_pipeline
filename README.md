@@ -1,10 +1,10 @@
 # nature_methods_multicut_pipeline
 
-This repository contains the software used for the publication about the Multicut pipeline in Nature Methods (http://www.nature.com/nmeth/journal/v14/n2/full/nmeth.4151.html).
+This repository contains the software used for the publication [`Multicut brings automated neurite segmentation closer to human performance`](http://www.nature.com/nmeth/journal/v14/n2/full/nmeth.4151.html).
 It is a snapshot of the state of the software we developed for this publication.
 
-Since then, we have reimplemented some functionality in an open-source C++ pipeline (https://github.com/DerThorsten/nifty) and reimplemented the pipeline code for processing large volumes (https://github.com/constantinpape/McLuigi).
-Also, there is a beta version of an interactive multicut workflow in the GUI-based ilastik program (http://ilastik.org/).
+Since then, we have reimplemented some functionality in an [open-source C++ library](https://github.com/DerThorsten/nifty) and implemented a [pipeline for processing large volumes](https://github.com/constantinpape/cluster_tools).
+Also, there is a beta version of an interactive multicut workflow in the GUI-based [ilastik program] (http://ilastik.org/).
 
 This package (git tag 1.0) reflects the state of the software at the time of publication. Subsequent development happens mainly in the above repositories. 
 
