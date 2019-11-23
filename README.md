@@ -3,8 +3,8 @@
 This repository contains the software used for the publication [`Multicut brings automated neurite segmentation closer to human performance`](http://www.nature.com/nmeth/journal/v14/n2/full/nmeth.4151.html).
 It is a snapshot of the state of the software we developed for this publication.
 
-Since then, we have reimplemented some functionality in an [open-source C++ library](https://github.com/DerThorsten/nifty) and implemented a [pipeline for processing large volumes](https://github.com/constantinpape/cluster_tools).
-Also, there is aan interactive multicut workflow in [ilastik](http://ilastik.org/).
+Since then, we have reimplemented most functionality in an [open-source C++ library](https://github.com/DerThorsten/nifty) and build a [library for more convenient usage of multicut segmentation](https://github.com/constantinpape/elf) as well as a [pipeline for processing large volumes](https://github.com/constantinpape/cluster_tools).
+Also, there is an interactive multicut workflow in [ilastik](http://ilastik.org/).
 
 This package (git tag 1.0) reflects the state of the software at the time of publication. Subsequent development happens mainly in the above repositories. 
 
