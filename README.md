@@ -49,7 +49,7 @@ The tarball of our binary distribution can be reproduced with the commands:
        Reproducing these binary packages on Windows requires a special version of conda-build.
        Please contact us if you want to do Windows-based development.)
 
-Note: there are some dependency issues with conda new conda versions >= 4.7.
+Note: there are some dependency issues with conda versions >= 4.7.
 If you run into these issues, please use conda version 4.6.14, which you can download from [here](https://repo.anaconda.com/miniconda/).
       
 The structure of the source code is described in file [`software/README.txt`](https://github.com/ilastik/nature_methods_multicut_pipeline/blob/1.0/software/README.txt) of the source repository at
