@@ -15,7 +15,7 @@ If you are interested in using Multicut for your data and cannot make it work wi
 
 ## Installation
 
-We provide precompiled binaries at http://files.ilastik.org/multicut/. Just unpack the appropriate file for your operating system (Linux, Windows, or Mac), link against CPLEX and you are ready to go.
+We provide precompiled binaries: Just unpack the appropriate file for your operating system ([Linux](https://files.ilastik.org/multicut/multicut-software-linux.tar.gz), [Windows](https://files.ilastik.org/multicut/multicut-software_win64.zip), or [Mac](https://files.ilastik.org/multicut/multicut-software-mac.tar.gz)), link against CPLEX and you are ready to go. Source is available as a [tarball](https://files.ilastik.org/multicut/multicut-software-sources.tar.gz), or [zip-file](https://files.ilastik.org/multicut/multicut-software-sources.zip).
 
 To run the multicut solver you need to link against CPLEX:
 If you have CPLEX already installed on your machine, you can link to it to via calling the
