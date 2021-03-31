@@ -12,6 +12,7 @@ You can find jupyter notebooks with examples for the core functionality of the p
 
 If you are interested in using Multicut for your data and cannot make it work with any of the options suggested here, or to get a pointer to the latest post-publication implementation, please do not hesitate to contact us.
 
+The data used in the publication is [available here](https://files.ilastik.org/multicut/NaturePaperDataUpl.zip), neural network weights are [available here](https://files.ilastik.org/multicut/nnet.zip).
 
 ## Installation
 
